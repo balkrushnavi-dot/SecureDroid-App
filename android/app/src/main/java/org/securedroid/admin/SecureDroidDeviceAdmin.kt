@@ -1,16 +1,22 @@
 package org.securedroid.admin
 
+import android.content.ComponentName
 import android.content.Context
 
 class SecureDroidDeviceAdmin(
-    context: Context
+    private val context: Context
 ) {
 
     private val policyService =
         DevicePolicyManagerService(context)
 
     fun isEnabled(): Boolean {
-        return policyService.isAdminActive()
+        val component = ComponentName(
+            context,
+            SecureDroidDeviceAdminReceiver::class.java
+        )
+
+        return policyService.isAdminActive(component)
     }
 
     fun getPolicy(): AdminPolicy {
