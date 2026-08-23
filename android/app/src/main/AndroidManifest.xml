@@ -1,12 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
+
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- VPN -->
+    <!-- Internet access for Secure VPN -->
     <uses-permission android:name="android.permission.INTERNET" />
 
-    <!-- Foreground VPN service -->
+    <!-- Foreground service -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+
+    <!-- Android 14+ special-use foreground service -->
+    <uses-permission
+        android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
     <application
         android:name=".SecureDroidApplication"
@@ -16,6 +20,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.SecureDroid">
 
+        <!-- Main application screen -->
         <activity
             android:name=".MainActivity"
             android:exported="true">
@@ -27,7 +32,7 @@
 
         </activity>
 
-        <!-- Device administration receiver -->
+        <!-- Device Administrator -->
         <receiver
             android:name=".admin.SecureDroidDeviceAdminReceiver"
             android:description="@string/app_name"
@@ -45,7 +50,7 @@
 
         </receiver>
 
-        <!-- Secure VPN service -->
+        <!-- Secure VPN -->
         <service
             android:name=".vpn.SecureVpnService"
             android:exported="false"
@@ -61,11 +66,6 @@
                 android:value="secure_vpn" />
 
         </service>
-
-    </application>
-
-</manifest>
-        </activity>
 
     </application>
 
