@@ -8,8 +8,8 @@ class SecureSpaceManager(
 ) {
 
     companion object {
-        private const val PREFS_NAME = "securedroid_secure_space"
-        private const val KEY_ENABLED = "secure_space_enabled"
+        private const val PREFS_NAME = "securedroid_space"
+        private const val KEY_ENABLED = "space_enabled"
     }
 
     private val preferences: SharedPreferences =
@@ -19,31 +19,40 @@ class SecureSpaceManager(
         )
 
     fun isEnabled(): Boolean {
-        return preferences.getBoolean(
-            KEY_ENABLED,
-            false
-        )
+        return preferences.getBoolean(KEY_ENABLED, false)
     }
 
     fun enable(): Boolean {
-        return preferences.edit()
+        preferences.edit()
             .putBoolean(KEY_ENABLED, true)
-            .commit()
+            .apply()
+
+        return true
     }
 
     fun disable(): Boolean {
-        return preferences.edit()
+        preferences.edit()
             .putBoolean(KEY_ENABLED, false)
-            .commit()
+            .apply()
+
+        return true
+    }
+
+    fun setEnabled(enabled: Boolean): Boolean {
+        preferences.edit()
+            .putBoolean(KEY_ENABLED, enabled)
+            .apply()
+
+        return true
     }
 
     fun toggle(): Boolean {
-        val newState = !isEnabled()
+        return setEnabled(!isEnabled())
+    }
 
+    fun clear() {
         preferences.edit()
-            .putBoolean(KEY_ENABLED, newState)
+            .clear()
             .apply()
-
-        return newState
     }
 }
