@@ -1,30 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
-
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- VPN -->
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Foreground VPN service -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
     <application
         android:name=".SecureDroidApplication"
         android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
         android:label="SecureDroid"
-        android:supportsRtl="true">
-        <receiver
-    android:name=".admin.SecureDroidDeviceAdminReceiver"
-    android:description="@string/app_name"
-    android:exported="true"
-    android:label="@string/app_name"
-    android:permission="android.permission.BIND_DEVICE_ADMIN">
-
-    <meta-data
-        android:name="android.app.device_admin"
-        android:resource="@xml/device_admin_receiver" />
-
-    <intent-filter>
-        <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
-    </intent-filter>
-
-</receiver>
+        android:supportsRtl="true"
+        android:theme="@style/Theme.SecureDroid">
 
         <activity
             android:name=".MainActivity"
@@ -35,6 +25,46 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+        </activity>
+
+        <!-- Device administration receiver -->
+        <receiver
+            android:name=".admin.SecureDroidDeviceAdminReceiver"
+            android:description="@string/app_name"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_DEVICE_ADMIN">
+
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin_receiver" />
+
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+            </intent-filter>
+
+        </receiver>
+
+        <!-- Secure VPN service -->
+        <service
+            android:name=".vpn.SecureVpnService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse"
+            android:permission="android.permission.BIND_VPN_SERVICE">
+
+            <intent-filter>
+                <action android:name="android.net.VpnService" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="secure_vpn" />
+
+        </service>
+
+    </application>
+
+</manifest>
         </activity>
 
     </application>
