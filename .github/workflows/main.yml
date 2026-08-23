@@ -34,6 +34,16 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Build web app
+        run: npm run build
+
+      - name: Verify web assets
+        run: |
+          echo "Checking dist directory..."
+          ls -la dist
+          test -f dist/index.html
+          echo "dist/index.html found successfully"
+
       - name: Sync Capacitor
         run: npx cap sync android
 
