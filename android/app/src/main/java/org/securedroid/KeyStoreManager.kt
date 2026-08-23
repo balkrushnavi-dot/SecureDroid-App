@@ -1,105 +1,108 @@
-package org.securedroid.vault
+package org.securedroid.security
 
-import android.util.Base64
-import java.nio.charset.StandardCharsets
-import javax.crypto.Cipher
-import javax.crypto.spec.GCMParameterSpec
-import org.securedroid.security.KeyStoreManager
+import android.content.Context
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
+import java.security.KeyStore
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
 
-class SecureVault(
-    private val keyStoreManager: KeyStoreManager
+class KeyStoreManager(
+    private val context: Context
 ) {
 
     companion object {
-        private const val TRANSFORMATION = "AES/GCM/NoPadding"
-        private const val GCM_TAG_LENGTH = 128
+        private const val KEYSTORE_NAME =
+            "AndroidKeyStore"
+
+        private const val MASTER_KEY_ALIAS =
+            "SecureDroidMasterKey"
     }
 
-    data class EncryptedData(
-        val ciphertext: String,
-        val iv: String
-    )
+    private val keyStore: KeyStore =
+        KeyStore.getInstance(KEYSTORE_NAME).apply {
+            load(null)
+        }
 
-    fun encrypt(data: String): EncryptedData {
-
-        val secretKey =
-            keyStoreManager.getMasterKey()
-                ?: throw IllegalStateException(
-                    "SecureDroid master key is unavailable"
-                )
-
-        val cipher =
-            Cipher.getInstance(TRANSFORMATION)
-
-        cipher.init(
-            Cipher.ENCRYPT_MODE,
-            secretKey
-        )
-
-        val encryptedBytes =
-            cipher.doFinal(
-                data.toByteArray(StandardCharsets.UTF_8)
-            )
-
-        return EncryptedData(
-            ciphertext =
-                Base64.encodeToString(
-                    encryptedBytes,
-                    Base64.NO_WRAP
-                ),
-
-            iv =
-                Base64.encodeToString(
-                    cipher.iv,
-                    Base64.NO_WRAP
-                )
-        )
+    init {
+        generateMasterKeyIfNeeded()
     }
 
-    fun decrypt(
-        encryptedData: EncryptedData
-    ): String {
+    private fun generateMasterKeyIfNeeded() {
 
-        val secretKey =
-            keyStoreManager.getMasterKey()
-                ?: throw IllegalStateException(
-                    "SecureDroid master key is unavailable"
+        if (keyStore.containsAlias(MASTER_KEY_ALIAS)) {
+            return
+        }
+
+        val keyGenerator =
+            KeyGenerator.getInstance(
+                KeyProperties.KEY_ALGORITHM_AES,
+                KEYSTORE_NAME
+            )
+
+        val parameterSpec =
+            KeyGenParameterSpec.Builder(
+                MASTER_KEY_ALIAS,
+                KeyProperties.PURPOSE_ENCRYPT or
+                    KeyProperties.PURPOSE_DECRYPT
+            )
+                .setBlockModes(
+                    KeyProperties.BLOCK_MODE_GCM
                 )
+                .setEncryptionPaddings(
+                    KeyProperties.ENCRYPTION_PADDING_NONE
+                )
+                .setKeySize(256)
+                .setUserAuthenticationRequired(false)
+                .build()
 
-        val iv =
-            Base64.decode(
-                encryptedData.iv,
-                Base64.NO_WRAP
-            )
-
-        val ciphertext =
-            Base64.decode(
-                encryptedData.ciphertext,
-                Base64.NO_WRAP
-            )
-
-        val cipher =
-            Cipher.getInstance(TRANSFORMATION)
-
-        cipher.init(
-            Cipher.DECRYPT_MODE,
-            secretKey,
-            GCMParameterSpec(
-                GCM_TAG_LENGTH,
-                iv
-            )
-        )
-
-        val decryptedBytes =
-            cipher.doFinal(ciphertext)
-
-        return String(
-            decryptedBytes,
-            StandardCharsets.UTF_8
-        )
+        keyGenerator.init(parameterSpec)
+        keyGenerator.generateKey()
     }
 
-    fun deleteEncryptionKey() {
-        keyStoreManager.deleteMasterKey()
+    fun getMasterKey(): SecretKey? {
+
+        return try {
+
+            val entry =
+                keyStore.getEntry(
+                    MASTER_KEY_ALIAS,
+                    null
+                ) as? KeyStore.SecretKeyEntry
+
+            entry?.secretKey
+
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    fun deleteMasterKey() {
+
+        try {
+            if (keyStore.containsAlias(MASTER_KEY_ALIAS)) {
+                keyStore.deleteEntry(MASTER_KEY_ALIAS)
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    fun isHardwareBacked(): Boolean {
+
+        return try {
+
+            val key = getMasterKey()
+                ?: return false
+
+            val provider =
+                key.javaClass
+                    .getMethod("getAlgorithm")
+                    .invoke(key)
+
+            provider != null
+
+        } catch (_: Exception) {
+            false
+        }
     }
 }
