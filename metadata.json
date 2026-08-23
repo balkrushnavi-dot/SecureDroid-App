@@ -1,0 +1,6 @@
+{
+  "name": "SecureDroid VM",
+  "description": "SecureDroid OS hardened mobile platform & VM manager with PWA standalone install support, native mobile hardware navigation, fail-closed sensor killswitches, and hardware KeyMint security.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
