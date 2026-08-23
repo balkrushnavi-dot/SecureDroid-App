@@ -1,18 +1,25 @@
 package org.securedroid.vault
 
+import android.content.Context
 import android.util.Base64
+import org.securedroid.security.KeyStoreManager
 import java.nio.charset.StandardCharsets
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
-import javax.crypto.spec.SecretKey
 
 class SecureVault(
-    private val keyStoreManager: KeyStoreManager = KeyStoreManager()
+    context: Context
 ) {
 
+    private val keyStoreManager =
+        KeyStoreManager(context.applicationContext)
+
     companion object {
-        private const val TRANSFORMATION = "AES/GCM/NoPadding"
-        private const val GCM_TAG_LENGTH = 128
+        private const val TRANSFORMATION =
+            "AES/GCM/NoPadding"
+
+        private const val GCM_TAG_LENGTH =
+            128
     }
 
     data class EncryptedData(
@@ -21,49 +28,76 @@ class SecureVault(
     )
 
     fun encrypt(data: String): EncryptedData {
-        val cipher = Cipher.getInstance(TRANSFORMATION)
+
+        val key =
+            keyStoreManager.getMasterKey()
+                ?: throw IllegalStateException(
+                    "SecureDroid master key unavailable"
+                )
+
+        val cipher =
+            Cipher.getInstance(TRANSFORMATION)
 
         cipher.init(
             Cipher.ENCRYPT_MODE,
-            keyStoreManager.getOrCreateKey()
+            key
         )
 
-        val encryptedBytes = cipher.doFinal(
-            data.toByteArray(StandardCharsets.UTF_8)
-        )
+        val encryptedBytes =
+            cipher.doFinal(
+                data.toByteArray(StandardCharsets.UTF_8)
+            )
 
         return EncryptedData(
-            ciphertext = Base64.encodeToString(
-                encryptedBytes,
-                Base64.NO_WRAP
-            ),
-            iv = Base64.encodeToString(
-                cipher.iv,
-                Base64.NO_WRAP
-            )
+            ciphertext =
+                Base64.encodeToString(
+                    encryptedBytes,
+                    Base64.NO_WRAP
+                ),
+            iv =
+                Base64.encodeToString(
+                    cipher.iv,
+                    Base64.NO_WRAP
+                )
         )
     }
 
-    fun decrypt(encryptedData: EncryptedData): String {
-        val cipher = Cipher.getInstance(TRANSFORMATION)
+    fun decrypt(
+        encryptedData: EncryptedData
+    ): String {
 
-        val iv = Base64.decode(
-            encryptedData.iv,
-            Base64.NO_WRAP
-        )
+        val key =
+            keyStoreManager.getMasterKey()
+                ?: throw IllegalStateException(
+                    "SecureDroid master key unavailable"
+                )
 
-        val ciphertext = Base64.decode(
-            encryptedData.ciphertext,
-            Base64.NO_WRAP
-        )
+        val cipher =
+            Cipher.getInstance(TRANSFORMATION)
+
+        val iv =
+            Base64.decode(
+                encryptedData.iv,
+                Base64.NO_WRAP
+            )
+
+        val ciphertext =
+            Base64.decode(
+                encryptedData.ciphertext,
+                Base64.NO_WRAP
+            )
 
         cipher.init(
             Cipher.DECRYPT_MODE,
-            keyStoreManager.getOrCreateKey(),
-            GCMParameterSpec(GCM_TAG_LENGTH, iv)
+            key,
+            GCMParameterSpec(
+                GCM_TAG_LENGTH,
+                iv
+            )
         )
 
-        val decryptedBytes = cipher.doFinal(ciphertext)
+        val decryptedBytes =
+            cipher.doFinal(ciphertext)
 
         return String(
             decryptedBytes,
