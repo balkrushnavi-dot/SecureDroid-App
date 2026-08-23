@@ -1,6 +1,8 @@
 package org.securedroid.vpn
 
 import android.content.Context
+import android.content.Intent
+import androidx.core.content.ContextCompat
 
 class SecureVpnManager(
     private val context: Context
@@ -26,20 +28,41 @@ class SecureVpnManager(
 
         state = VpnState.CONNECTING
 
-        /*
-         * The actual Android VPN connection is established
-         * by SecureVpnService after user authorization.
-         */
-        return true
+        return try {
+            val intent = Intent(
+                context,
+                SecureVpnService::class.java
+            ).apply {
+                action = SecureVpnService.ACTION_START
+            }
+
+            ContextCompat.startForegroundService(
+                context,
+                intent
+            )
+
+            true
+        } catch (_: Exception) {
+            state = VpnState.ERROR
+            false
+        }
     }
 
     fun stop() {
+        if (state == VpnState.DISCONNECTED) {
+            return
+        }
+
         state = VpnState.DISCONNECTING
 
-        /*
-         * SecureVpnService performs the actual shutdown.
-         */
-        state = VpnState.DISCONNECTED
+        val intent = Intent(
+            context,
+            SecureVpnService::class.java
+        ).apply {
+            action = SecureVpnService.ACTION_STOP
+        }
+
+        context.startService(intent)
     }
 
     internal fun updateState(newState: VpnState) {
