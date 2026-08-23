@@ -1,63 +1,28 @@
-package org.securedroid.admin
+package org.securedroid
 
-import android.app.admin.DevicePolicyManager
-import android.content.ComponentName
 import android.content.Context
+import org.securedroid.admin.AdminPolicy
 
 class DevicePolicyManagerService(
-    private val context: Context
+    context: Context
 ) {
 
-    private val dpm: DevicePolicyManager? =
-        context.getSystemService(Context.DEVICE_POLICY_SERVICE) as? DevicePolicyManager
+    private val delegate =
+        org.securedroid.admin.DevicePolicyManagerService(context)
 
-    private val adminComponent =
-        ComponentName(context, SecureDroidDeviceAdmin::class.java)
-
-    fun isDeviceOwnerActive(): Boolean {
-        return try {
-            dpm?.isDeviceOwnerApp(context.packageName) == true
-        } catch (_: Exception) {
-            false
-        }
+    fun isAdminActive(): Boolean {
+        return delegate.isAdminActive()
     }
 
-    fun isProfileOwnerActive(): Boolean {
-        return try {
-            dpm?.isProfileOwnerApp(context.packageName) == true
-        } catch (_: Exception) {
-            false
-        }
+    fun getPolicy(): AdminPolicy {
+        return delegate.getPolicy()
     }
 
-    fun getPolicyStatusSummary(): String {
-        return when {
-            isDeviceOwnerActive() ->
-                "Active (Device Owner Mode)"
-
-            isProfileOwnerActive() ->
-                "Active (Managed Profile Mode)"
-
-            else ->
-                "Inactive (Normal Mode - Application Level Only)"
-        }
+    fun setCameraDisabled(disabled: Boolean): Boolean {
+        return delegate.setCameraDisabled(disabled)
     }
 
-    fun applyScreenCaptureRestriction(restrict: Boolean): Boolean {
-        if (!isDeviceOwnerActive()) {
-            return false
-        }
-
-        return try {
-            dpm?.setScreenCaptureDisabled(
-                adminComponent,
-                restrict
-            )
-            true
-        } catch (_: SecurityException) {
-            false
-        } catch (_: Exception) {
-            false
-        }
+    fun isCameraDisabled(): Boolean {
+        return delegate.isCameraDisabled()
     }
 }
