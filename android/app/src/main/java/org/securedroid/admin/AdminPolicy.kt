@@ -1,7 +1,8 @@
 package org.securedroid.admin
 
 data class AdminPolicy(
-    val requireSecureLockScreen: Boolean = true,
-    val allowCamera: Boolean = true,
-    val allowScreenCapture: Boolean = true
+    val cameraDisabled: Boolean = false,
+    val screenCaptureDisabled: Boolean = false,
+    val keyguardDisabled: Boolean = false,
+    val passwordRequired: Boolean = false
 )
