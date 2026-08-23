@@ -59,6 +59,15 @@ class DevicePolicyManagerService(
         }
     }
 
+    fun getPolicy(): AdminPolicy {
+        return AdminPolicy(
+            cameraDisabled = isCameraDisabled(),
+            screenCaptureDisabled = isScreenCaptureDisabled(),
+            keyguardDisabled = false,
+            passwordRequired = false
+        )
+    }
+
     fun setCameraDisabled(disabled: Boolean): Boolean {
         return try {
             if (!isAdminActive() && !isDeviceOwnerActive()) {
@@ -86,8 +95,8 @@ class DevicePolicyManagerService(
         }
     }
 
-    fun applyScreenCaptureRestriction(
-        restrict: Boolean
+    fun setScreenCaptureDisabled(
+        disabled: Boolean
     ): Boolean {
         return try {
             if (!isDeviceOwnerActive()) {
@@ -96,7 +105,7 @@ class DevicePolicyManagerService(
 
             dpm.setScreenCaptureDisabled(
                 adminComponent,
-                restrict
+                disabled
             )
 
             true
@@ -105,5 +114,19 @@ class DevicePolicyManagerService(
         } catch (_: Exception) {
             false
         }
+    }
+
+    fun isScreenCaptureDisabled(): Boolean {
+        return try {
+            dpm.getScreenCaptureDisabled(adminComponent)
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    fun applyScreenCaptureRestriction(
+        restrict: Boolean
+    ): Boolean {
+        return setScreenCaptureDisabled(restrict)
     }
 }
