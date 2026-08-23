@@ -2,10 +2,12 @@ package org.securedroid.security
 
 import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyInfo
 import android.security.keystore.KeyProperties
 import java.security.KeyStore
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
+import javax.crypto.SecretKeyFactory
 
 class KeyStoreManager(
     private val context: Context
@@ -89,9 +91,31 @@ class KeyStoreManager(
     }
 
     fun isHardwareBacked(): Boolean {
+
+        val key =
+            getMasterKey() ?: return false
+
         return try {
-            keyStore.containsAlias(MASTER_KEY_ALIAS)
+
+            val factory =
+                SecretKeyFactory.getInstance(
+                    key.algorithm,
+                    KEYSTORE_PROVIDER
+                )
+
+            val keyInfo =
+                factory.getKeySpec(
+                    key,
+                    KeyInfo::class.java
+                ) as KeyInfo
+
+            keyInfo.isInsideSecureHardware
+
         } catch (_: Exception) {
+
+            // If KeyInfo cannot be obtained, we cannot prove
+            // hardware backing. Fail closed: report false rather
+            // than assuming hardware backing.
             false
         }
     }
