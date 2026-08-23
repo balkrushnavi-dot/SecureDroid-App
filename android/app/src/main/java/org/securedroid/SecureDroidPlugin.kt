@@ -1,9 +1,11 @@
-package org.securedroid.app
+package org.securedroid
 
 import android.content.Context
 import org.securedroid.admin.SecureDroidDeviceAdmin
+import org.securedroid.apps.InstalledAppInfo
 import org.securedroid.apps.InstalledAppScanner
 import org.securedroid.diagnostics.DeviceDiagnostics
+import org.securedroid.diagnostics.DeviceDiagnosticsResult
 import org.securedroid.space.SecureSpaceManager
 import org.securedroid.vault.SecureVault
 import org.securedroid.vpn.SecureVpnManager
@@ -69,15 +71,17 @@ class SecureDroidPlugin(
         return secureSpace.disable()
     }
 
-    fun scanInstalledApps() =
-        appScanner.scan()
+    fun scanInstalledApps(): List<InstalledAppInfo> {
+        return appScanner.scan()
+    }
 
     fun isAppInstalled(packageName: String): Boolean {
         return appScanner.isInstalled(packageName)
     }
 
-    fun runDiagnostics() =
-        diagnostics.run()
+    fun runDiagnostics(): DeviceDiagnosticsResult {
+        return diagnostics.run()
+    }
 
     fun encryptText(text: String): SecureVault.EncryptedData {
         return vault.encrypt(text)
