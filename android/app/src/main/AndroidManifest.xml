@@ -7,7 +7,7 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
 
-    <!-- Camera / Microphone -->
+    <!-- Camera and microphone -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
@@ -15,7 +15,7 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
-    <!-- Authentication -->
+    <!-- Biometrics -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
 
     <!-- Notifications -->
@@ -29,7 +29,7 @@
     <uses-permission android:name="android.permission.READ_CALENDAR" />
     <uses-permission android:name="android.permission.WRITE_CALENDAR" />
 
-    <!-- Foreground Services -->
+    <!-- VPN / foreground service -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
@@ -45,7 +45,7 @@
         android:extractNativeLibs="false"
         tools:targetApi="34">
 
-        <!-- Main application activity -->
+        <!-- Main Activity -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -59,7 +59,7 @@
 
         </activity>
 
-        <!-- SecureDroid VPN service -->
+        <!-- VPN service -->
         <service
             android:name=".services.SecureDroidVpnService"
             android:permission="android.permission.BIND_VPN_SERVICE"
@@ -71,7 +71,7 @@
 
         </service>
 
-        <!-- SecureDroid notification listener -->
+        <!-- Notification listener -->
         <service
             android:name=".services.SecureDroidNotificationListenerService"
             android:label="SecureDroid Security Audit"
@@ -81,18 +81,6 @@
             <intent-filter>
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
-
-        </service>
-
-        <!-- Android 14 special-use foreground service -->
-        <service
-            android:name=".services.SecureDroidForegroundService"
-            android:exported="false"
-            android:foregroundServiceType="specialUse">
-
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="security monitoring and network protection" />
 
         </service>
 
