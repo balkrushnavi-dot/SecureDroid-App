@@ -23,18 +23,54 @@ class DeviceDiagnostics(
 ) {
 
     fun run(): DeviceDiagnosticsResult {
-
         val connectivityManager =
-            context.getSystemService(
-                Context.CONNECTIVITY_SERVICE
-            ) as ConnectivityManager
+            context.getSystemService(Context.CONNECTIVITY_SERVICE)
+                as ConnectivityManager
 
         val keyguardManager =
-            context.getSystemService(
-                Context.KEYGUARD_SERVICE
-            ) as KeyguardManager
+            context.getSystemService(Context.KEYGUARD_SERVICE)
+                as KeyguardManager
 
         val powerManager =
+            context.getSystemService(Context.POWER_SERVICE)
+                as PowerManager
+
+        val network = connectivityManager.activeNetwork
+
+        val capabilities = network?.let {
+            connectivityManager.getNetworkCapabilities(it)
+        }
+
+        val networkAvailable =
+            capabilities?.hasCapability(
+                NetworkCapabilities.NET_CAPABILITY_INTERNET
+            ) == true
+
+        val vpnActive =
+            capabilities?.hasTransport(
+                NetworkCapabilities.TRANSPORT_VPN
+            ) == true
+
+        val screenLocked =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                keyguardManager.isDeviceLocked
+            } else {
+                @Suppress("DEPRECATION")
+                keyguardManager.isKeyguardLocked
+            }
+
+        return DeviceDiagnosticsResult(
+            androidVersion = Build.VERSION.RELEASE ?: "Unknown",
+            sdkVersion = Build.VERSION.SDK_INT,
+            deviceModel = Build.MODEL ?: "Unknown",
+            manufacturer = Build.MANUFACTURER ?: "Unknown",
+            isNetworkAvailable = networkAvailable,
+            isVpnActive = vpnActive,
+            isScreenLocked = screenLocked,
+            isPowerSaveMode = powerManager.isPowerSaveMode
+        )
+    }
+}        val powerManager =
             context.getSystemService(
                 Context.POWER_SERVICE
             ) as PowerManager
