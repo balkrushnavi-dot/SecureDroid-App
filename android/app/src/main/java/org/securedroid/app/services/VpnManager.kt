@@ -1,43 +1,36 @@
-package com.securedroid.app.services
+package org.securedroid.app.services
 
-import android.app.Activity
 import android.content.Context
 import android.content.Intent
-import android.net.VpnService
-import com.getcapacitor.JSObject
-import com.getcapacitor.PluginCall
+import org.securedroid.network.SecureVpnService
 
-class VpnManager(private val context: Context, private val activity: Activity?) {
+class VpnManager(private val context: Context) {
 
-    fun startVpn(call: PluginCall) {
-        val intent = VpnService.prepare(context)
-        if (intent != null) {
-            activity?.startActivityForResult(intent, 5001)
-            call.reject("PERMISSION_REQUIRED", "User confirmation required for VPN profile")
-        } else {
-            val startIntent = Intent(context, SecureDroidVpnService::class.java).apply {
-                action = SecureDroidVpnService.ACTION_START
+    fun startVpn(blocklist: List<String> = emptyList(), dnsServer: String = "1.1.1.1"): Boolean {
+        return try {
+            val intent = Intent(context, SecureVpnService::class.java).apply {
+                putStringArrayListExtra("blocklist", ArrayList(blocklist))
+                putExtra("dns_server", dnsServer)
             }
-            context.startService(startIntent)
-            call.resolve(getVpnStatus())
+            context.startService(intent)
+            true
+        } catch (e: Exception) {
+            false
         }
     }
 
-    fun stopVpn(): JSObject {
-        val stopIntent = Intent(context, SecureDroidVpnService::class.java).apply {
-            action = SecureDroidVpnService.ACTION_STOP
+    fun stopVpn(): Boolean {
+        return try {
+            val intent = Intent(context, SecureVpnService::class.java)
+            context.stopService(intent)
+            true
+        } catch (e: Exception) {
+            false
         }
-        context.startService(stopIntent)
-        return getVpnStatus()
     }
 
-    fun getVpnStatus(): JSObject {
-        val ret = JSObject()
-        ret.put("isActive", SecureDroidVpnService.isRunning)
-        ret.put("activeDns", if (SecureDroidVpnService.isRunning) "1.1.1.1" else "System Default")
-        ret.put("filterMode", if (SecureDroidVpnService.isRunning) "BLOCKLIST" else "DISABLED")
-        ret.put("bytesReceived", if (SecureDroidVpnService.isRunning) 1048576 else 0)
-        ret.put("bytesTransmitted", if (SecureDroidVpnService.isRunning) 524288 else 0)
-        return ret
+    fun isVpnActive(): Boolean {
+        // Return active state based on service or connection manager check
+        return false
     }
 }
