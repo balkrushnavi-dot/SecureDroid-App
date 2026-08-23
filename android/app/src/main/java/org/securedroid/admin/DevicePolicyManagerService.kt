@@ -9,8 +9,7 @@ class DevicePolicyManagerService(
 ) {
 
     private val devicePolicyManager =
-        context.getSystemService(Context.DEVICE_POLICY_SERVICE)
-                as DevicePolicyManager
+        context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
 
     private val adminComponent =
         ComponentName(
@@ -24,35 +23,12 @@ class DevicePolicyManagerService(
 
     fun getPolicy(): AdminPolicy {
         return AdminPolicy(
-            requireSecureLockScreen = isSecureLockScreenRequired(),
-            allowCamera = isCameraAllowed(),
-            allowScreenCapture = isScreenCaptureAllowed()
+            cameraDisabled = if (isAdminActive()) {
+                devicePolicyManager.getCameraDisabled(null)
+            } else {
+                false
+            }
         )
-    }
-
-    private fun isSecureLockScreenRequired(): Boolean {
-        if (!isAdminActive()) {
-            return false
-        }
-
-        return devicePolicyManager.getPasswordQuality(adminComponent) !=
-                DevicePolicyManager.PASSWORD_QUALITY_UNSPECIFIED
-    }
-
-    private fun isCameraAllowed(): Boolean {
-        if (!isAdminActive()) {
-            return true
-        }
-
-        return devicePolicyManager.getCameraDisabled(adminComponent).not()
-    }
-
-    private fun isScreenCaptureAllowed(): Boolean {
-        if (!isAdminActive()) {
-            return true
-        }
-
-        return !devicePolicyManager.getScreenCaptureDisabled(adminComponent)
     }
 
     fun setCameraDisabled(disabled: Boolean): Boolean {
@@ -65,19 +41,14 @@ class DevicePolicyManagerService(
             disabled
         )
 
-        return devicePolicyManager.getCameraDisabled(adminComponent) == disabled
+        return true
     }
 
-    fun setScreenCaptureDisabled(disabled: Boolean): Boolean {
-        if (!isAdminActive()) {
-            return false
+    fun isCameraDisabled(): Boolean {
+        return if (isAdminActive()) {
+            devicePolicyManager.getCameraDisabled(null)
+        } else {
+            false
         }
-
-        devicePolicyManager.setScreenCaptureDisabled(
-            adminComponent,
-            disabled
-        )
-
-        return devicePolicyManager.getScreenCaptureDisabled(adminComponent) == disabled
     }
 }
