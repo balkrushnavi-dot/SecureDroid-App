@@ -113,9 +113,13 @@ class SecureVpnService : VpnService() {
                     createNotification()
                 )
 
+                VpnStateStore.set(VpnState.CONNECTED)
+
             } else {
 
                 isRunning = false
+
+                VpnStateStore.set(VpnState.ERROR)
             }
 
         } catch (_: Exception) {
@@ -128,6 +132,8 @@ class SecureVpnService : VpnService() {
             }
 
             vpnInterface = null
+
+            VpnStateStore.set(VpnState.ERROR)
         }
     }
 
@@ -141,6 +147,8 @@ class SecureVpnService : VpnService() {
         }
 
         vpnInterface = null
+
+        VpnStateStore.set(VpnState.DISCONNECTED)
     }
 
     fun isVpnRunning(): Boolean {
