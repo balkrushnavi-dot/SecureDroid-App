@@ -12,7 +12,7 @@ class KeyStoreManager(
 ) {
 
     companion object {
-        private const val KEYSTORE_NAME =
+        private const val KEYSTORE_PROVIDER =
             "AndroidKeyStore"
 
         private const val MASTER_KEY_ALIAS =
@@ -20,7 +20,7 @@ class KeyStoreManager(
     }
 
     private val keyStore: KeyStore =
-        KeyStore.getInstance(KEYSTORE_NAME).apply {
+        KeyStore.getInstance(KEYSTORE_PROVIDER).apply {
             load(null)
         }
 
@@ -37,7 +37,7 @@ class KeyStoreManager(
         val keyGenerator =
             KeyGenerator.getInstance(
                 KeyProperties.KEY_ALGORITHM_AES,
-                KEYSTORE_NAME
+                KEYSTORE_PROVIDER
             )
 
         val parameterSpec =
@@ -73,11 +73,12 @@ class KeyStoreManager(
             entry?.secretKey
 
         } catch (_: Exception) {
+
             null
         }
     }
 
-    fun deleteMasterKey() {
+    fun deleteKey() {
 
         try {
             if (keyStore.containsAlias(MASTER_KEY_ALIAS)) {
@@ -88,19 +89,8 @@ class KeyStoreManager(
     }
 
     fun isHardwareBacked(): Boolean {
-
         return try {
-
-            val key = getMasterKey()
-                ?: return false
-
-            val provider =
-                key.javaClass
-                    .getMethod("getAlgorithm")
-                    .invoke(key)
-
-            provider != null
-
+            keyStore.containsAlias(MASTER_KEY_ALIAS)
         } catch (_: Exception) {
             false
         }
