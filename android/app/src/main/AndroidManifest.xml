@@ -15,7 +15,7 @@
     <application
         android:name=".SecureDroidApplication"
         android:allowBackup="false"
-        android:icon="@mipmap/ic_launcher"
+        android:icon="@android:drawable/sym_def_app_icon"
         android:label="SecureDroid"
         android:supportsRtl="true"
         android:theme="@style/Theme.SecureDroid">
