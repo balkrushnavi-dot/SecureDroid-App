@@ -15,7 +15,8 @@ class SecureDroidPlugin(
     context: Context
 ) {
 
-    private val appContext = context.applicationContext
+    private val appContext =
+        context.applicationContext
 
     private val deviceAdmin =
         SecureDroidDeviceAdmin(appContext)
@@ -24,7 +25,7 @@ class SecureDroidPlugin(
         SecureVpnManager(appContext)
 
     private val vault =
-        SecureVault()
+        SecureVault(appContext)
 
     private val secureSpace =
         SecureSpaceManager(appContext)
@@ -41,7 +42,9 @@ class SecureDroidPlugin(
     fun isCameraDisabled(): Boolean =
         deviceAdmin.isCameraDisabled()
 
-    fun setCameraDisabled(disabled: Boolean): Boolean =
+    fun setCameraDisabled(
+        disabled: Boolean
+    ): Boolean =
         deviceAdmin.setCameraDisabled(disabled)
 
     fun getVpnState(): VpnState =
@@ -65,13 +68,17 @@ class SecureDroidPlugin(
     fun scanInstalledApps(): List<InstalledAppInfo> =
         appScanner.scan()
 
-    fun isAppInstalled(packageName: String): Boolean =
+    fun isAppInstalled(
+        packageName: String
+    ): Boolean =
         appScanner.isInstalled(packageName)
 
     fun runDiagnostics(): DeviceDiagnosticsResult =
         diagnostics.run()
 
-    fun encryptText(text: String): SecureVault.EncryptedData =
+    fun encryptText(
+        text: String
+    ): SecureVault.EncryptedData =
         vault.encrypt(text)
 
     fun decryptText(
@@ -79,6 +86,7 @@ class SecureDroidPlugin(
     ): String =
         vault.decrypt(encryptedData)
 
-    fun deleteVaultKey() =
+    fun deleteVaultKey() {
         vault.deleteEncryptionKey()
+    }
 }
