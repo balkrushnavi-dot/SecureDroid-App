@@ -1,4 +1,4 @@
-package org.securedroid.network
+package org.securedroid.vpn
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -11,7 +11,6 @@ import android.os.IBinder
 import android.os.ParcelFileDescriptor
 import androidx.core.app.NotificationCompat
 import org.securedroid.MainActivity
-import org.securedroid.vpn.VpnState
 
 class SecureVpnService : VpnService() {
 
@@ -59,13 +58,11 @@ class SecureVpnService : VpnService() {
             }
 
             ACTION_START, null -> {
-
                 if (!isRunning) {
 
                     val dnsServer =
-                        intent?.getStringExtra(
-                            EXTRA_DNS_SERVER
-                        ) ?: "1.1.1.1"
+                        intent?.getStringExtra(EXTRA_DNS_SERVER)
+                            ?: "1.1.1.1"
 
                     startVpn(dnsServer)
                 }
@@ -75,9 +72,7 @@ class SecureVpnService : VpnService() {
         return START_STICKY
     }
 
-    private fun startVpn(
-        dnsServer: String
-    ) {
+    private fun startVpn(dnsServer: String) {
 
         if (isRunning) {
             return
@@ -85,10 +80,8 @@ class SecureVpnService : VpnService() {
 
         try {
 
-            val configureIntent = Intent(
-                this,
-                MainActivity::class.java
-            )
+            val configureIntent =
+                Intent(this, MainActivity::class.java)
 
             val pendingIntent =
                 PendingIntent.getActivity(
@@ -99,12 +92,13 @@ class SecureVpnService : VpnService() {
                         PendingIntent.FLAG_UPDATE_CURRENT
                 )
 
-            val builder = Builder()
-                .setSession("SecureDroid")
-                .addAddress("10.0.0.2", 32)
-                .addRoute("0.0.0.0", 0)
-                .addDnsServer(dnsServer)
-                .setConfigureIntent(pendingIntent)
+            val builder =
+                Builder()
+                    .setSession("SecureDroid")
+                    .addAddress("10.0.0.2", 32)
+                    .addRoute("0.0.0.0", 0)
+                    .addDnsServer(dnsServer)
+                    .setConfigureIntent(pendingIntent)
 
             vpnInterface?.close()
 
@@ -158,24 +152,20 @@ class SecureVpnService : VpnService() {
         super.onDestroy()
     }
 
-    override fun onBind(
-        intent: Intent
-    ): IBinder? {
+    override fun onBind(intent: Intent): IBinder? {
         return super.onBind(intent)
     }
 
     private fun createNotificationChannel() {
 
-        if (
-            Build.VERSION.SDK_INT >=
-            Build.VERSION_CODES.O
-        ) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
 
-            val channel = NotificationChannel(
-                NOTIFICATION_CHANNEL_ID,
-                "SecureDroid VPN",
-                NotificationManager.IMPORTANCE_LOW
-            )
+            val channel =
+                NotificationChannel(
+                    NOTIFICATION_CHANNEL_ID,
+                    "SecureDroid VPN",
+                    NotificationManager.IMPORTANCE_LOW
+                )
 
             channel.description =
                 "SecureDroid VPN protection status"
@@ -191,10 +181,8 @@ class SecureVpnService : VpnService() {
 
     private fun createNotification(): Notification {
 
-        val intent = Intent(
-            this,
-            MainActivity::class.java
-        )
+        val intent =
+            Intent(this, MainActivity::class.java)
 
         val pendingIntent =
             PendingIntent.getActivity(
@@ -210,12 +198,8 @@ class SecureVpnService : VpnService() {
             NOTIFICATION_CHANNEL_ID
         )
             .setContentTitle("SecureDroid VPN")
-            .setContentText(
-                "VPN protection is active"
-            )
-            .setSmallIcon(
-                android.R.drawable.ic_lock_lock
-            )
+            .setContentText("VPN protection is active")
+            .setSmallIcon(android.R.drawable.ic_lock_lock)
             .setOngoing(true)
             .setContentIntent(pendingIntent)
             .setCategory(
