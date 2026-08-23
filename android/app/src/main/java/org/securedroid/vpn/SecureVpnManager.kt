@@ -5,23 +5,29 @@ import android.content.Intent
 import androidx.core.content.ContextCompat
 
 class SecureVpnManager(
+package org.securedroid.vpn
+
+import android.content.Context
+import android.content.Intent
+import androidx.core.content.ContextCompat
+
+class SecureVpnManager(
     private val context: Context
 ) {
 
     @Volatile
     private var state: VpnState = VpnState.DISCONNECTED
 
-    fun getState(): VpnState {
-        return state
-    }
+    fun getState(): VpnState = state
 
     fun isConnected(): Boolean {
         return state == VpnState.CONNECTED
     }
 
     fun start(): Boolean {
-        if (state == VpnState.CONNECTED ||
-            state == VpnState.CONNECTING
+        if (
+            state == VpnState.CONNECTING ||
+            state == VpnState.CONNECTED
         ) {
             return false
         }
@@ -61,6 +67,20 @@ class SecureVpnManager(
         ).apply {
             action = SecureVpnService.ACTION_STOP
         }
+
+        try {
+            context.startService(intent)
+        } catch (_: Exception) {
+            state = VpnState.ERROR
+        }
+    }
+
+    internal fun updateState(
+        newState: VpnState
+    ) {
+        state = newState
+    }
+}        }
 
         context.startService(intent)
     }
