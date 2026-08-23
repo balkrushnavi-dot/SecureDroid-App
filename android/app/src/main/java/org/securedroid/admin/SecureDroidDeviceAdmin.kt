@@ -1,29 +1,27 @@
 package org.securedroid.admin
 
-import android.app.admin.DeviceAdminReceiver
 import android.content.Context
-import android.content.Intent
-import android.widget.Toast
 
-class SecureDroidDeviceAdminReceiver : DeviceAdminReceiver() {
+class SecureDroidDeviceAdmin(
+    context: Context
+) {
 
-    override fun onEnabled(context: Context, intent: Intent) {
-        super.onEnabled(context, intent)
+    private val policyService =
+        DevicePolicyManagerService(context)
 
-        Toast.makeText(
-            context,
-            "SecureDroid device administration enabled",
-            Toast.LENGTH_SHORT
-        ).show()
+    fun isEnabled(): Boolean {
+        return policyService.isAdminActive()
     }
 
-    override fun onDisabled(context: Context, intent: Intent) {
-        super.onDisabled(context, intent)
+    fun getPolicy(): AdminPolicy {
+        return policyService.getPolicy()
+    }
 
-        Toast.makeText(
-            context,
-            "SecureDroid device administration disabled",
-            Toast.LENGTH_SHORT
-        ).show()
+    fun setCameraDisabled(disabled: Boolean): Boolean {
+        return policyService.setCameraDisabled(disabled)
+    }
+
+    fun isCameraDisabled(): Boolean {
+        return policyService.isCameraDisabled()
     }
 }
