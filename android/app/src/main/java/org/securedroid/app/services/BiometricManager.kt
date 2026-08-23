@@ -7,76 +7,160 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import com.getcapacitor.JSObject
 
-class BiometricManager(private val activity: Activity?) {
+class BiometricManager(
+    private val activity: Activity?
+) {
 
     interface BiometricAuthCallback {
         fun onSuccess()
-        fun onError(errorCode: Int, errString: CharSequence)
+        fun onError(
+            errorCode: Int,
+            errString: CharSequence
+        )
         fun onFailed()
     }
 
     fun isBiometricAvailable(): JSObject {
-        val ret = JSObject()
-        if (activity == null) {
-            ret.put("isAvailable", false)
-            ret.put("hardwarePresent", false)
-            ret.put("enrolled", false)
-            return ret
+        val result = JSObject()
+
+        val currentActivity = activity
+
+        if (currentActivity == null) {
+            result.put("isAvailable", false)
+            result.put("hardwarePresent", false)
+            result.put("enrolled", false)
+            result.put("canAuthenticateStrong", false)
+            result.put("canAuthenticateDeviceCredential", false)
+            return result
         }
 
-        val bm = AndroidBiometricManager.from(activity)
-        val canAuth = bm.canAuthenticate(AndroidBiometricManager.Authenticators.BIOMETRIC_STRONG or AndroidBiometricManager.Authenticators.DEVICE_CREDENTIAL)
+        val biometricManager =
+            AndroidBiometricManager.from(currentActivity)
 
-        val isAvailable = canAuth == AndroidBiometricManager.BIOMETRIC_SUCCESS
-        val hardwarePresent = canAuth != AndroidBiometricManager.BIOMETRIC_ERROR_NO_HARDWARE
-        val enrolled = canAuth != AndroidBiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED
+        val authenticators =
+            AndroidBiometricManager.Authenticators.BIOMETRIC_STRONG or
+                AndroidBiometricManager.Authenticators.DEVICE_CREDENTIAL
 
-        ret.put("isAvailable", isAvailable)
-        ret.put("biometricType", "FINGERPRINT")
-        ret.put("hardwarePresent", hardwarePresent)
-        ret.put("enrolled", enrolled)
-        ret.put("canAuthenticateStrong", canAuth == AndroidBiometricManager.BIOMETRIC_SUCCESS)
-        ret.put("canAuthenticateDeviceCredential", true)
+        val authenticationStatus =
+            biometricManager.canAuthenticate(authenticators)
 
-        return ret
+        val hardwarePresent =
+            authenticationStatus !=
+                AndroidBiometricManager.BIOMETRIC_ERROR_NO_HARDWARE
+
+        val enrolled =
+            authenticationStatus !=
+                AndroidBiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED
+
+        val available =
+            authenticationStatus ==
+                AndroidBiometricManager.BIOMETRIC_SUCCESS
+
+        result.put("isAvailable", available)
+        result.put("hardwarePresent", hardwarePresent)
+        result.put("enrolled", enrolled)
+        result.put("canAuthenticateStrong", available)
+        result.put("canAuthenticateDeviceCredential", available)
+
+        return result
     }
 
-    fun authenticate(title: String, subtitle: String?, description: String?, callback: BiometricAuthCallback) {
-        val fragActivity = activity as? FragmentActivity
-        if (fragActivity == null) {
-            callback.onError(999, "Activity not available for BiometricPrompt")
+    fun authenticate(
+        title: String,
+        subtitle: String?,
+        description: String?,
+        callback: BiometricAuthCallback
+    ) {
+        val fragmentActivity =
+            activity as? FragmentActivity
+
+        if (fragmentActivity == null) {
+            callback.onError(
+                ERROR_ACTIVITY_UNAVAILABLE,
+                "Activity is not available for biometric authentication."
+            )
             return
         }
 
-        fragActivity.runOnUiThread {
-            val executor = ContextCompat.getMainExecutor(fragActivity)
-            val prompt = BiometricPrompt(fragActivity, executor, object : BiometricPrompt.AuthenticationCallback() {
-                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                    super.onAuthenticationSucceeded(result)
-                    callback.onSuccess()
-                }
+        fragmentActivity.runOnUiThread {
+            try {
+                val executor =
+                    ContextCompat.getMainExecutor(fragmentActivity)
 
-                override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                    super.onAuthenticationError(errorCode, errString)
-                    callback.onError(errorCode, errString)
-                }
+                val authenticationCallback =
+                    object : BiometricPrompt.AuthenticationCallback() {
 
-                override fun onAuthenticationFailed() {
-                    super.onAuthenticationFailed()
-                    callback.onFailed()
-                }
-            })
+                        override fun onAuthenticationSucceeded(
+                            result: BiometricPrompt.AuthenticationResult
+                        ) {
+                            super.onAuthenticationSucceeded(result)
+                            callback.onSuccess()
+                        }
 
-            val promptInfo = BiometricPrompt.PromptInfo.Builder()
-                .setTitle(title)
-                .apply {
-                    if (!subtitle.isNullOrBlank()) setSubtitle(subtitle)
-                    if (!description.isNullOrBlank()) setDescription(description)
-                }
-                .setAllowedAuthenticators(AndroidBiometricManager.Authenticators.BIOMETRIC_STRONG or AndroidBiometricManager.Authenticators.DEVICE_CREDENTIAL)
-                .build()
+                        override fun onAuthenticationError(
+                            errorCode: Int,
+                            errString: CharSequence
+                        ) {
+                            super.onAuthenticationError(
+                                errorCode,
+                                errString
+                            )
 
-            prompt.authenticate(promptInfo)
+                            callback.onError(
+                                errorCode,
+                                errString
+                            )
+                        }
+
+                        override fun onAuthenticationFailed() {
+                            super.onAuthenticationFailed()
+                            callback.onFailed()
+                        }
+                    }
+
+                val prompt =
+                    BiometricPrompt(
+                        fragmentActivity,
+                        executor,
+                        authenticationCallback
+                    )
+
+                val promptInfo =
+                    BiometricPrompt.PromptInfo.Builder()
+                        .setTitle(
+                            title.ifBlank {
+                                "SecureDroid Authentication"
+                            }
+                        )
+                        .apply {
+                            if (!subtitle.isNullOrBlank()) {
+                                setSubtitle(subtitle)
+                            }
+
+                            if (!description.isNullOrBlank()) {
+                                setDescription(description)
+                            }
+                        }
+                        .setAllowedAuthenticators(
+                            AndroidBiometricManager.Authenticators.BIOMETRIC_STRONG or
+                                AndroidBiometricManager.Authenticators.DEVICE_CREDENTIAL
+                        )
+                        .build()
+
+                prompt.authenticate(promptInfo)
+
+            } catch (exception: Exception) {
+                callback.onError(
+                    ERROR_AUTHENTICATION_EXCEPTION,
+                    exception.message
+                        ?: "Biometric authentication could not be started."
+                )
+            }
         }
+    }
+
+    companion object {
+        private const val ERROR_ACTIVITY_UNAVAILABLE = 999
+        private const val ERROR_AUTHENTICATION_EXCEPTION = 998
     }
 }
