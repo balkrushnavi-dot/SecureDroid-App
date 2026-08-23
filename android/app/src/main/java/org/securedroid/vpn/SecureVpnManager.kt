@@ -3,13 +3,7 @@ package org.securedroid.vpn
 import android.content.Context
 import android.content.Intent
 import androidx.core.content.ContextCompat
-
-class SecureVpnManager(
-package org.securedroid.vpn
-
-import android.content.Context
-import android.content.Intent
-import androidx.core.content.ContextCompat
+import org.securedroid.network.SecureVpnService
 
 class SecureVpnManager(
     private val context: Context
@@ -48,6 +42,7 @@ class SecureVpnManager(
             )
 
             true
+
         } catch (_: Exception) {
             state = VpnState.ERROR
             false
@@ -78,14 +73,6 @@ class SecureVpnManager(
     internal fun updateState(
         newState: VpnState
     ) {
-        state = newState
-    }
-}        }
-
-        context.startService(intent)
-    }
-
-    internal fun updateState(newState: VpnState) {
         state = newState
     }
 }
