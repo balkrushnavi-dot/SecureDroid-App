@@ -17,37 +17,42 @@ jobs:
       - name: Setup Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: "22"
+          cache: npm
 
       - name: Install Dependencies
-        run: npm install
+        run: npm ci
 
-      - name: Build web application
+      - name: Build Web Application
         run: npm run build
 
-      - name: Set up JDK 17
+      - name: Setup JDK 17
         uses: actions/setup-java@v5
         with:
-          distribution: 'temurin'
-          java-version: '17'
+          distribution: temurin
+          java-version: "17"
 
-      - name: Sync Capacitor Android Project
+      - name: Verify Capacitor Installation
+        run: npx cap --version
+
+      - name: Sync Capacitor Android
         run: npx cap sync android
 
       - name: Generate Gradle Wrapper
-        working-directory: ./android
-        run: gradle wrapper --gradle-version 8.5
+        working-directory: android
+        run: gradle wrapper --gradle-version 8.14.3
 
       - name: Make Gradle Wrapper Executable
-        working-directory: ./android
+        working-directory: android
         run: chmod +x gradlew
 
-      - name: Build Debug APK with Gradle
-        working-directory: ./android
-        run: ./gradlew assembleDebug
+      - name: Build Debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug --stacktrace
 
-      - name: Upload APK Artifact
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: SecureDroid-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
