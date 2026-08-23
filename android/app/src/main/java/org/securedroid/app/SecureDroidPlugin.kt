@@ -1,270 +1,375 @@
-
-package com.securedroid.app
+package org.securedroid.app
 
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
-import com.securedroid.app.services.*
+import org.securedroid.admin.SecureDroidDeviceAdmin
+import org.securedroid.apps.InstalledAppScanner
+import org.securedroid.diagnostics.DeviceDiagnostics
+import org.securedroid.space.SecureSpaceManager
+import org.securedroid.vault.SecureVault
+import org.securedroid.vpn.SecureVpnManager
 
 @CapacitorPlugin(name = "SecureDroid")
 class SecureDroidPlugin : Plugin() {
 
-    private val deviceInfoManager by lazy { DeviceInfoManager(context) }
-    private val batteryManager by lazy { BatteryManager(context) }
-    private val networkManager by lazy { NetworkManager(context) }
-    private val storageManager by lazy { StorageManager(context) }
-    private val sensorManager by lazy { SensorManager(context) }
-    private val biometricManager by lazy { BiometricManager(activity) }
-    private val permissionManager by lazy { PermissionManager(activity) }
-    private val appManager by lazy { AppManager(context) }
-    private val calendarManager by lazy { CalendarManager(context) }
-    private val contactsManager by lazy { ContactsManager(context) }
-    private val fileManager by lazy { FileManager(context) }
-    private val securityManager by lazy { SecurityManager(context) }
-    private val secureStorageManager by lazy { SecureStorageManager(context) }
-    private val securityLogManager by lazy { SecurityLogManager(context) }
-    private val vpnManager by lazy { VpnManager(context, activity) }
+    private val admin by lazy {
+        SecureDroidDeviceAdmin(context)
+    }
 
-    @PluginMethod
-    fun getDeviceInfo(call: PluginCall) {
-        try {
-            val data = deviceInfoManager.getDeviceInfo()
-            val ret = JSObject().apply {
-                put("success", true)
-                put("data", data)
-                put("runtimePlatform", "android_native")
-                put("isSupported", true)
-            }
-            call.resolve(ret)
-        } catch (e: Exception) {
-            call.reject("DEVICE_INFO_ERROR", e.localizedMessage, e)
-        }
+    private val appScanner by lazy {
+        InstalledAppScanner(context)
+    }
+
+    private val diagnostics by lazy {
+        DeviceDiagnostics(context)
+    }
+
+    private val secureSpace by lazy {
+        SecureSpaceManager(context)
+    }
+
+    private val vault by lazy {
+        SecureVault()
+    }
+
+    private val vpn by lazy {
+        SecureVpnManager(context)
     }
 
     @PluginMethod
-    fun getBatteryStatus(call: PluginCall) {
+    fun getSecurityStatus(call: PluginCall) {
         try {
-            val data = batteryManager.getBatteryStatus()
-            val ret = JSObject().apply {
-                put("success", true)
-                put("data", data)
-                put("runtimePlatform", "android_native")
-                put("isSupported", true)
+            val diagnostic = diagnostics.run()
+
+            val data = JSObject().apply {
+                put("adminEnabled", admin.isEnabled())
+                put("cameraDisabled", admin.isCameraDisabled())
+                put("vpnConnected", vpn.isConnected())
+                put("vpnState", vpn.getState().name)
+                put("secureSpaceEnabled", secureSpace.isEnabled())
+                put("networkAvailable", diagnostic.isNetworkAvailable)
+                put("vpnActive", diagnostic.isVpnActive)
+                put("screenLocked", diagnostic.isScreenLocked)
+                put("powerSaveMode", diagnostic.isPowerSaveMode)
             }
-            call.resolve(ret)
-        } catch (e: Exception) {
-            call.reject("BATTERY_ERROR", e.localizedMessage, e)
-        }
-    }
 
-    @PluginMethod
-    fun getNetworkState(call: PluginCall) {
-        try {
-            val data = networkManager.getNetworkState()
-            val ret = JSObject().apply {
-                put("success", true)
-                put("data", data)
-                put("runtimePlatform", "android_native")
-                put("isSupported", true)
-            }
-            call.resolve(ret)
-        } catch (e: Exception) {
-            call.reject("NETWORK_ERROR", e.localizedMessage, e)
-        }
-    }
-
-    @PluginMethod
-    fun getStorageInfo(call: PluginCall) {
-        try {
-            val data = storageManager.getStorageInfo()
-            val ret = JSObject().apply {
-                put("success", true)
-                put("data", data)
-                put("runtimePlatform", "android_native")
-                put("isSupported", true)
-            }
-            call.resolve(ret)
-        } catch (e: Exception) {
-            call.reject("STORAGE_ERROR", e.localizedMessage, e)
-        }
-    }
-
-    @PluginMethod
-    fun getAvailableSensors(call: PluginCall) {
-        try {
-            val data = sensorManager.getAvailableSensors()
-            val ret = JSObject().apply {
-                put("success", true)
-                put("data", data)
-                put("runtimePlatform", "android_native")
-                put("isSupported", true)
-            }
-            call.resolve(ret)
-        } catch (e: Exception) {
-            call.reject("SENSOR_ERROR", e.localizedMessage, e)
-        }
-    }
-
-    @PluginMethod
-    fun isBiometricAvailable(call: PluginCall) {
-        try {
-            val data = biometricManager.isBiometricAvailable()
-            val ret = JSObject().apply {
-                put("success", true)
-                put("data", data)
-                put("runtimePlatform", "android_native")
-                put("isSupported", true)
-            }
-            call.resolve(ret)
-        } catch (e: Exception) {
-            call.reject("BIOMETRIC_CHECK_ERROR", e.localizedMessage, e)
-        }
-    }
-
-    @PluginMethod
-    fun authenticateBiometric(call: PluginCall) {
-        val title = call.getString("title") ?: "Authenticate"
-        val subtitle = call.getString("subtitle")
-        val description = call.getString("description")
-
-        biometricManager.authenticate(title, subtitle, description, object : BiometricManager.BiometricAuthCallback {
-            override fun onSuccess() {
-                val data = JSObject().apply {
-                    put("authenticated", true)
-                    put("authType", "BIOMETRIC_STRONG")
-                    put("timestamp", System.currentTimeMillis())
-                }
-                val ret = JSObject().apply {
+            call.resolve(
+                JSObject().apply {
                     put("success", true)
                     put("data", data)
-                    put("runtimePlatform", "android_native")
                 }
-                call.resolve(ret)
+            )
+        } catch (e: Exception) {
+            call.reject(
+                "SECURITY_STATUS_ERROR",
+                e.message ?: "Unable to get security status",
+                e
+            )
+        }
+    }
+
+    @PluginMethod
+    fun getDeviceDiagnostics(call: PluginCall) {
+        try {
+            val result = diagnostics.run()
+
+            val data = JSObject().apply {
+                put("androidVersion", result.androidVersion)
+                put("sdkVersion", result.sdkVersion)
+                put("deviceModel", result.deviceModel)
+                put("manufacturer", result.manufacturer)
+                put("networkAvailable", result.isNetworkAvailable)
+                put("vpnActive", result.isVpnActive)
+                put("screenLocked", result.isScreenLocked)
+                put("powerSaveMode", result.isPowerSaveMode)
             }
 
-            override fun onError(errorCode: Int, errString: CharSequence) {
-                val ret = JSObject().apply {
-                    put("success", false)
-                    put("errorCode", "AUTHENTICATION_FAILED")
-                    put("message", errString.toString())
-                    put("recoverable", true)
+            call.resolve(
+                JSObject().apply {
+                    put("success", true)
+                    put("data", data)
                 }
-                call.resolve(ret)
-            }
-
-            override fun onFailed() {
-                val ret = JSObject().apply {
-                    put("success", false)
-                    put("errorCode", "AUTHENTICATION_FAILED")
-                    put("message", "Biometric verification failed.")
-                    put("recoverable", true)
-                }
-                call.resolve(ret)
-            }
-        })
+            )
+        } catch (e: Exception) {
+            call.reject(
+                "DIAGNOSTICS_ERROR",
+                e.message ?: "Unable to run diagnostics",
+                e
+            )
+        }
     }
 
     @PluginMethod
     fun getInstalledApps(call: PluginCall) {
         try {
-            val data = appManager.getInstalledApps()
-            val ret = JSObject().apply {
-                put("success", true)
-                put("data", data)
-                put("runtimePlatform", "android_native")
-                put("isSupported", true)
+            val apps = appScanner.scan()
+
+            val array = com.getcapacitor.JSArray()
+
+            apps.forEach { app ->
+                array.put(
+                    JSObject().apply {
+                        put("packageName", app.packageName)
+                        put("appName", app.appName)
+                        put("versionName", app.versionName)
+                        put("versionCode", app.versionCode)
+                        put("isSystemApp", app.isSystemApp)
+                        put("isEnabled", app.isEnabled)
+                    }
+                )
             }
-            call.resolve(ret)
+
+            call.resolve(
+                JSObject().apply {
+                    put("success", true)
+                    put("data", array)
+                    put("count", apps.size)
+                }
+            )
         } catch (e: Exception) {
-            call.reject("APP_MANAGER_ERROR", e.localizedMessage, e)
+            call.reject(
+                "APP_SCAN_ERROR",
+                e.message ?: "Unable to scan installed applications",
+                e
+            )
         }
     }
 
     @PluginMethod
-    fun launchApp(call: PluginCall) {
-        val pkg = call.getString("packageName")
-        if (pkg == null) {
-            call.reject("INVALID_ARGUMENT", "Package name is required")
+    fun isAppInstalled(call: PluginCall) {
+        val packageName = call.getString("packageName")
+
+        if (packageName.isNullOrBlank()) {
+            call.reject(
+                "INVALID_ARGUMENT",
+                "packageName is required"
+            )
             return
         }
-        val launched = appManager.launchApp(pkg)
-        val ret = JSObject().apply {
-            put("success", launched)
-            put("data", launched)
-            if (!launched) {
-                put("errorCode", "SERVICE_UNAVAILABLE")
-                put("message", "Could not launch package $pkg")
+
+        try {
+            val installed = appScanner.isInstalled(packageName)
+
+            call.resolve(
+                JSObject().apply {
+                    put("success", true)
+                    put("data", installed)
+                    put("packageName", packageName)
+                }
+            )
+        } catch (e: Exception) {
+            call.reject(
+                "APP_CHECK_ERROR",
+                e.message ?: "Unable to check application",
+                e
+            )
+        }
+    }
+
+    @PluginMethod
+    fun getAdminStatus(call: PluginCall) {
+        try {
+            call.resolve(
+                JSObject().apply {
+                    put("success", true)
+                    put("enabled", admin.isEnabled())
+                    put("cameraDisabled", admin.isCameraDisabled())
+                }
+            )
+        } catch (e: Exception) {
+            call.reject(
+                "ADMIN_STATUS_ERROR",
+                e.message ?: "Unable to get administrator status",
+                e
+            )
+        }
+    }
+
+    @PluginMethod
+    fun setCameraDisabled(call: PluginCall) {
+        val disabled = call.getBoolean("disabled")
+
+        if (disabled == null) {
+            call.reject(
+                "INVALID_ARGUMENT",
+                "disabled is required"
+            )
+            return
+        }
+
+        try {
+            val success = admin.setCameraDisabled(disabled)
+
+            call.resolve(
+                JSObject().apply {
+                    put("success", success)
+                    put("data", success)
+                }
+            )
+        } catch (e: Exception) {
+            call.reject(
+                "CAMERA_POLICY_ERROR",
+                e.message ?: "Unable to change camera policy",
+                e
+            )
+        }
+    }
+
+    @PluginMethod
+    fun getSecureSpaceStatus(call: PluginCall) {
+        call.resolve(
+            JSObject().apply {
+                put("success", true)
+                put("enabled", secureSpace.isEnabled())
             }
-        }
-        call.resolve(ret)
+        )
     }
 
     @PluginMethod
-    fun openAppSettings(call: PluginCall) {
-        permissionManager.openAppSettings()
-        call.resolve(JSObject().apply { put("success", true) })
-    }
+    fun setSecureSpace(call: PluginCall) {
+        val enabled = call.getBoolean("enabled")
 
-    @PluginMethod
-    fun secureStorageSet(call: PluginCall) {
-        val key = call.getString("key")
-        val value = call.getString("value")
-        if (key == null || value == null) {
-            call.reject("INVALID_ARGUMENT", "Key and value required")
+        if (enabled == null) {
+            call.reject(
+                "INVALID_ARGUMENT",
+                "enabled is required"
+            )
             return
         }
-        val success = secureStorageManager.set(key, value)
-        call.resolve(JSObject().apply { put("success", success); put("data", success) })
+
+        val success = secureSpace.setEnabled(enabled)
+
+        call.resolve(
+            JSObject().apply {
+                put("success", success)
+                put("enabled", secureSpace.isEnabled())
+            }
+        )
     }
 
     @PluginMethod
-    fun secureStorageGet(call: PluginCall) {
-        val key = call.getString("key")
-        if (key == null) {
-            call.reject("INVALID_ARGUMENT", "Key required")
+    fun encrypt(call: PluginCall) {
+        val data = call.getString("data")
+
+        if (data == null) {
+            call.reject(
+                "INVALID_ARGUMENT",
+                "data is required"
+            )
             return
         }
-        val value = secureStorageManager.get(key)
-        call.resolve(JSObject().apply { put("success", true); put("data", value) })
+
+        try {
+            val encrypted = vault.encrypt(data)
+
+            call.resolve(
+                JSObject().apply {
+                    put("success", true)
+                    put(
+                        "data",
+                        JSObject().apply {
+                            put("ciphertext", encrypted.ciphertext)
+                            put("iv", encrypted.iv)
+                        }
+                    )
+                }
+            )
+        } catch (e: Exception) {
+            call.reject(
+                "ENCRYPTION_ERROR",
+                e.message ?: "Unable to encrypt data",
+                e
+            )
+        }
     }
 
     @PluginMethod
-    fun secureStorageRemove(call: PluginCall) {
-        val key = call.getString("key")
-        if (key == null) {
-            call.reject("INVALID_ARGUMENT", "Key required")
+    fun decrypt(call: PluginCall) {
+        val ciphertext = call.getString("ciphertext")
+        val iv = call.getString("iv")
+
+        if (ciphertext == null || iv == null) {
+            call.reject(
+                "INVALID_ARGUMENT",
+                "ciphertext and iv are required"
+            )
             return
         }
-        val removed = secureStorageManager.remove(key)
-        call.resolve(JSObject().apply { put("success", removed); put("data", removed) })
+
+        try {
+            val decrypted = vault.decrypt(
+                SecureVault.EncryptedData(
+                    ciphertext = ciphertext,
+                    iv = iv
+                )
+            )
+
+            call.resolve(
+                JSObject().apply {
+                    put("success", true)
+                    put("data", decrypted)
+                }
+            )
+        } catch (e: Exception) {
+            call.reject(
+                "DECRYPTION_ERROR",
+                e.message ?: "Unable to decrypt data",
+                e
+            )
+        }
     }
 
     @PluginMethod
     fun startVpn(call: PluginCall) {
-        vpnManager.startVpn(call)
+        try {
+            val started = vpn.start()
+
+            call.resolve(
+                JSObject().apply {
+                    put("success", started)
+                    put("state", vpn.getState().name)
+                }
+            )
+        } catch (e: Exception) {
+            call.reject(
+                "VPN_START_ERROR",
+                e.message ?: "Unable to start VPN",
+                e
+            )
+        }
     }
 
     @PluginMethod
     fun stopVpn(call: PluginCall) {
-        val status = vpnManager.stopVpn()
-        call.resolve(JSObject().apply { put("success", true); put("data", status) })
+        try {
+            vpn.stop()
+
+            call.resolve(
+                JSObject().apply {
+                    put("success", true)
+                    put("state", vpn.getState().name)
+                }
+            )
+        } catch (e: Exception) {
+            call.reject(
+                "VPN_STOP_ERROR",
+                e.message ?: "Unable to stop VPN",
+                e
+            )
+        }
     }
 
     @PluginMethod
     fun getVpnStatus(call: PluginCall) {
-        val status = vpnManager.getVpnStatus()
-        call.resolve(JSObject().apply { put("success", true); put("data", status) })
-    }
-
-    @PluginMethod
-    fun getVmHardwareCapability(call: PluginCall) {
-        val data = securityManager.getVmHardwareCapability()
-        call.resolve(JSObject().apply {
-            put("success", true)
-            put("data", data)
-            put("runtimePlatform", "android_native")
-        })
+        call.resolve(
+            JSObject().apply {
+                put("success", true)
+                put("connected", vpn.isConnected())
+                put("state", vpn.getState().name)
+            }
+        )
     }
 }
