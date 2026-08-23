@@ -1,3 +1,8 @@
-# Proguard rules for SecureDroid
--keep class com.securedroid.app.** { *; }
+# SecureDroid
+-keep class org.securedroid.** { *; }
+
+# Capacitor
 -keep class com.getcapacitor.** { *; }
+
+# AndroidX Biometric
+-keep class androidx.biometric.** { *; }
