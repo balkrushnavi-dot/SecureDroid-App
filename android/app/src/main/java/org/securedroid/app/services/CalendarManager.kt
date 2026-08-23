@@ -1,57 +1,132 @@
 package com.securedroid.app.services
 
 import android.content.Context
-import android.database.Cursor
 import android.provider.CalendarContract
 import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
 
-class CalendarManager(private val context: Context) {
+class CalendarManager(
+    private val context: Context
+) {
 
     fun getCalendarEvents(): JSArray {
-        val ret = JSArray()
+        val result = JSArray()
+
+        val projection = arrayOf(
+            CalendarContract.Events._ID,
+            CalendarContract.Events.TITLE,
+            CalendarContract.Events.DESCRIPTION,
+            CalendarContract.Events.DTSTART,
+            CalendarContract.Events.DTEND,
+            CalendarContract.Events.ALL_DAY,
+            CalendarContract.Events.EVENT_LOCATION
+        )
+
+        val uri = CalendarContract.Events.CONTENT_URI
+            .buildUpon()
+            .appendQueryParameter("limit", "50")
+            .build()
+
         try {
-            val projection = arrayOf(
-                CalendarContract.Events._ID,
-                CalendarContract.Events.TITLE,
-                CalendarContract.Events.DESCRIPTION,
-                CalendarContract.Events.DTSTART,
-                CalendarContract.Events.DTEND,
-                CalendarContract.Events.ALL_DAY,
-                CalendarContract.Events.EVENT_LOCATION
-            )
-            val cursor: Cursor? = context.contentResolver.query(
-                CalendarContract.Events.CONTENT_URI,
+            context.contentResolver.query(
+                uri,
                 projection,
                 null,
                 null,
-                "${CalendarContract.Events.DTSTART} DESC LIMIT 50"
-            )
+                "${CalendarContract.Events.DTSTART} DESC"
+            )?.use { cursor ->
 
-            cursor?.use {
-                val idIdx = it.getColumnIndex(CalendarContract.Events._ID)
-                val titleIdx = it.getColumnIndex(CalendarContract.Events.TITLE)
-                val descIdx = it.getColumnIndex(CalendarContract.Events.DESCRIPTION)
-                val startIdx = it.getColumnIndex(CalendarContract.Events.DTSTART)
-                val endIdx = it.getColumnIndex(CalendarContract.Events.DTEND)
-                val allDayIdx = it.getColumnIndex(CalendarContract.Events.ALL_DAY)
-                val locIdx = it.getColumnIndex(CalendarContract.Events.EVENT_LOCATION)
+                val idIndex =
+                    cursor.getColumnIndex(CalendarContract.Events._ID)
 
-                while (it.moveToNext()) {
-                    val obj = JSObject()
-                    obj.put("id", it.getString(idIdx))
-                    obj.put("title", it.getString(titleIdx) ?: "Untitled Event")
-                    obj.put("description", it.getString(descIdx) ?: "")
-                    obj.put("startTime", it.getLong(startIdx))
-                    obj.put("endTime", it.getLong(endIdx))
-                    obj.put("allDay", it.getInt(allDayIdx) == 1)
-                    obj.put("location", it.getString(locIdx) ?: "")
-                    ret.put(obj)
+                val titleIndex =
+                    cursor.getColumnIndex(CalendarContract.Events.TITLE)
+
+                val descriptionIndex =
+                    cursor.getColumnIndex(CalendarContract.Events.DESCRIPTION)
+
+                val startIndex =
+                    cursor.getColumnIndex(CalendarContract.Events.DTSTART)
+
+                val endIndex =
+                    cursor.getColumnIndex(CalendarContract.Events.DTEND)
+
+                val allDayIndex =
+                    cursor.getColumnIndex(CalendarContract.Events.ALL_DAY)
+
+                val locationIndex =
+                    cursor.getColumnIndex(CalendarContract.Events.EVENT_LOCATION)
+
+                while (cursor.moveToNext()) {
+                    val event = JSObject()
+
+                    if (idIndex >= 0) {
+                        event.put(
+                            "id",
+                            cursor.getString(idIndex)
+                        )
+                    }
+
+                    event.put(
+                        "title",
+                        if (titleIndex >= 0) {
+                            cursor.getString(titleIndex) ?: "Untitled Event"
+                        } else {
+                            "Untitled Event"
+                        }
+                    )
+
+                    event.put(
+                        "description",
+                        if (descriptionIndex >= 0) {
+                            cursor.getString(descriptionIndex) ?: ""
+                        } else {
+                            ""
+                        }
+                    )
+
+                    event.put(
+                        "startTime",
+                        if (startIndex >= 0) {
+                            cursor.getLong(startIndex)
+                        } else {
+                            0L
+                        }
+                    )
+
+                    event.put(
+                        "endTime",
+                        if (endIndex >= 0) {
+                            cursor.getLong(endIndex)
+                        } else {
+                            0L
+                        }
+                    )
+
+                    event.put(
+                        "allDay",
+                        allDayIndex >= 0 &&
+                            cursor.getInt(allDayIndex) == 1
+                    )
+
+                    event.put(
+                        "location",
+                        if (locationIndex >= 0) {
+                            cursor.getString(locationIndex) ?: ""
+                        } else {
+                            ""
+                        }
+                    )
+
+                    result.put(event)
                 }
             }
-        } catch (e: Exception) {
-            // Permission not granted or query failed
+        } catch (_: SecurityException) {
+            // Calendar permission not granted.
+        } catch (_: Exception) {
+            // Calendar provider unavailable or query failed.
         }
-        return ret
+
+        return result
     }
 }
