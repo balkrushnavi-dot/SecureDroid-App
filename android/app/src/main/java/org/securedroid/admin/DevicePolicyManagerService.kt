@@ -8,10 +8,11 @@ class DevicePolicyManagerService(
     context: Context
 ) {
 
-    private val devicePolicyManager =
-        context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+    private val devicePolicyManager: DevicePolicyManager =
+        context.getSystemService(Context.DEVICE_POLICY_SERVICE)
+            as DevicePolicyManager
 
-    private val adminComponent =
+    private val adminComponent: ComponentName =
         ComponentName(
             context,
             SecureDroidDeviceAdminReceiver::class.java
@@ -22,12 +23,12 @@ class DevicePolicyManagerService(
     }
 
     fun getPolicy(): AdminPolicy {
+        if (!isAdminActive()) {
+            return AdminPolicy()
+        }
+
         return AdminPolicy(
-            cameraDisabled = if (isAdminActive()) {
-                devicePolicyManager.getCameraDisabled(null)
-            } else {
-                false
-            }
+            cameraDisabled = devicePolicyManager.getCameraDisabled(null)
         )
     }
 
@@ -36,12 +37,15 @@ class DevicePolicyManagerService(
             return false
         }
 
-        devicePolicyManager.setCameraDisabled(
-            adminComponent,
-            disabled
-        )
-
-        return true
+        return try {
+            devicePolicyManager.setCameraDisabled(
+                adminComponent,
+                disabled
+            )
+            true
+        } catch (_: SecurityException) {
+            false
+        }
     }
 
     fun isCameraDisabled(): Boolean {
