@@ -15,7 +15,7 @@ class SecureDroidDeviceAdminReceiver : DeviceAdminReceiver() {
 
         Toast.makeText(
             context,
-            "SecureDroid device administration enabled",
+            "SecureDroid Device Admin enabled",
             Toast.LENGTH_SHORT
         ).show()
     }
@@ -28,7 +28,7 @@ class SecureDroidDeviceAdminReceiver : DeviceAdminReceiver() {
 
         Toast.makeText(
             context,
-            "SecureDroid device administration disabled",
+            "SecureDroid Device Admin disabled",
             Toast.LENGTH_SHORT
         ).show()
     }
