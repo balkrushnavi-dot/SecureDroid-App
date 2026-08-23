@@ -3,6 +3,7 @@ package org.securedroid.apps
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageInfo
+import android.os.Build
 
 data class InstalledAppInfo(
     val packageName: String,
@@ -21,27 +22,36 @@ class InstalledAppScanner(
         val packageManager = context.packageManager
 
         val packages: List<PackageInfo> =
-            packageManager.getInstalledPackages(0)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                packageManager.getInstalledPackages(
+                    android.content.pm.PackageManager.PackageInfoFlags.of(0)
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                packageManager.getInstalledPackages(0)
+            }
 
         return packages
-            .map { packageInfo ->
+            .mapNotNull { packageInfo ->
                 val applicationInfo = packageInfo.applicationInfo
+                    ?: return@mapNotNull null
 
                 InstalledAppInfo(
                     packageName = packageInfo.packageName,
-                    appName = applicationInfo?.loadLabel(packageManager)?.toString()
-                        ?: packageInfo.packageName,
+                    appName = applicationInfo
+                        .loadLabel(packageManager)
+                        .toString()
+                        .ifBlank { packageInfo.packageName },
                     versionName = packageInfo.versionName,
-                    versionCode = if (android.os.Build.VERSION.SDK_INT >= 28) {
+                    versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                         packageInfo.longVersionCode
                     } else {
                         @Suppress("DEPRECATION")
                         packageInfo.versionCode.toLong()
                     },
-                    isSystemApp = applicationInfo?.let {
-                        (it.flags and ApplicationInfo.FLAG_SYSTEM) != 0
-                    } ?: false,
-                    isEnabled = applicationInfo?.enabled ?: false
+                    isSystemApp =
+                        (applicationInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0,
+                    isEnabled = applicationInfo.enabled
                 )
             }
             .sortedBy { it.appName.lowercase() }
