@@ -7,7 +7,7 @@ pluginManagement {
 }
 
 dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
 
     repositories {
         google()
@@ -18,14 +18,7 @@ dependencyResolutionManagement {
 rootProject.name = "SecureDroid-OS"
 
 include(":app")
+include(":capacitor-android")
 
-def capacitorAndroidDir = file("../node_modules/@capacitor/android/capacitor")
-
-if (capacitorAndroidDir.exists()) {
-    include(":capacitor-android")
-    project(":capacitor-android").projectDir = capacitorAndroidDir
-} else {
-    throw new GradleException(
-        "Capacitor Android module not found at: ${capacitorAndroidDir.absolutePath}"
-    )
-}
+project(":capacitor-android").projectDir =
+    file("../node_modules/@capacitor/android/capacitor")
