@@ -8,26 +8,24 @@ class SecureVpnManager(
     private val context: Context
 ) {
 
-    @Volatile
-    private var state =
-        VpnState.DISCONNECTED
-
     fun getState(): VpnState =
-        state
+        VpnStateStore.get()
 
     fun isConnected(): Boolean =
-        state == VpnState.CONNECTED
+        VpnStateStore.get() == VpnState.CONNECTED
 
     fun start(): Boolean {
 
+        val currentState = VpnStateStore.get()
+
         if (
-            state == VpnState.CONNECTING ||
-            state == VpnState.CONNECTED
+            currentState == VpnState.CONNECTING ||
+            currentState == VpnState.CONNECTED
         ) {
             return false
         }
 
-        state = VpnState.CONNECTING
+        VpnStateStore.set(VpnState.CONNECTING)
 
         return try {
 
@@ -45,27 +43,25 @@ class SecureVpnManager(
                 intent
             )
 
-            state = VpnState.CONNECTED
-
+            // Do NOT set CONNECTED here.
+            // SecureVpnService reports CONNECTED to VpnStateStore
+            // only after builder.establish() actually succeeds.
             true
 
         } catch (_: Exception) {
 
-            state = VpnState.ERROR
+            VpnStateStore.set(VpnState.ERROR)
             false
         }
     }
 
     fun stop() {
 
-        if (
-            state == VpnState.DISCONNECTED
-        ) {
+        if (VpnStateStore.get() == VpnState.DISCONNECTED) {
             return
         }
 
-        state =
-            VpnState.DISCONNECTING
+        VpnStateStore.set(VpnState.DISCONNECTING)
 
         val intent =
             Intent(
@@ -80,18 +76,13 @@ class SecureVpnManager(
 
             context.startService(intent)
 
-            state =
-                VpnState.DISCONNECTED
+            // Do NOT set DISCONNECTED here.
+            // SecureVpnService reports DISCONNECTED to VpnStateStore
+            // once it has actually torn down the VPN interface.
 
         } catch (_: Exception) {
 
-            state = VpnState.ERROR
+            VpnStateStore.set(VpnState.ERROR)
         }
-    }
-
-    internal fun updateState(
-        newState: VpnState
-    ) {
-        state = newState
     }
 }
