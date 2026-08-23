@@ -7,7 +7,7 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
 
-    <!-- Camera and microphone -->
+    <!-- Camera / microphone -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
@@ -29,7 +29,7 @@
     <uses-permission android:name="android.permission.READ_CALENDAR" />
     <uses-permission android:name="android.permission.WRITE_CALENDAR" />
 
-    <!-- VPN / foreground service -->
+    <!-- Foreground service -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
@@ -42,11 +42,11 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.AppCompat.NoActionBar"
         android:networkSecurityConfig="@xml/network_security_config"
-        tools:targetApi="34">
+        tools:targetApi="35">
 
-        <!-- Main Activity -->
+        <!-- Main Capacitor activity -->
         <activity
-            android:name=".MainActivity"
+            android:name="org.securedroid.app.MainActivity"
             android:exported="true"
             android:launchMode="singleTask"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode">
@@ -58,9 +58,9 @@
 
         </activity>
 
-        <!-- VPN service -->
+        <!-- SecureDroid VPN -->
         <service
-            android:name=".services.SecureDroidVpnService"
+            android:name="org.securedroid.network.SecureVpnService"
             android:permission="android.permission.BIND_VPN_SERVICE"
             android:exported="false">
 
@@ -69,6 +69,23 @@
             </intent-filter>
 
         </service>
+
+        <!-- Device administrator -->
+        <receiver
+            android:name="org.securedroid.admin.SecureDroidDeviceAdmin"
+            android:permission="android.permission.BIND_DEVICE_ADMIN"
+            android:exported="true">
+
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin_receiver" />
+
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+                <action android:name="android.app.action.DEVICE_ADMIN_DISABLED" />
+            </intent-filter>
+
+        </receiver>
 
         <!-- Notification listener -->
         <service
