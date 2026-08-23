@@ -8,6 +8,7 @@ import org.securedroid.admin.DevicePolicyManagerService
 import org.securedroid.diagnostics.DeviceDiagnostics
 import org.securedroid.space.SecureSpaceManager
 import org.securedroid.security.KeyStoreManager
+import org.securedroid.app.services.VpnManager
 
 @CapacitorPlugin(name = "SecureDroidNative")
 class SecureDroidPlugin : Plugin() {
@@ -59,6 +60,45 @@ class SecureDroidPlugin : Plugin() {
         val ret = JSObject().apply {
             put("isDeviceOwner", policyService.isDeviceOwnerActive())
             put("statusSummary", policyService.getPolicyStatusSummary())
+        }
+        call.resolve(ret)
+    }
+
+    @PluginMethod
+    fun startVpn(call: com.getcapacitor.PluginCall) {
+        val blocklist = call.getArray("blocklist")?.toList<String>() ?: emptyList()
+        val dnsServer = call.getString("dnsServer") ?: "1.1.1.1"
+        
+        val vpnManager = VpnManager(context)
+        val success = vpnManager.startVpn(blocklist, dnsServer)
+
+        val ret = JSObject().apply {
+            put("success", success as Boolean)
+            put("isActive", success as Boolean)
+        }
+        call.resolve(ret)
+    }
+
+    @PluginMethod
+    fun stopVpn(call: com.getcapacitor.PluginCall) {
+        val vpnManager = VpnManager(context)
+        val success = vpnManager.stopVpn()
+
+        val ret = JSObject().apply {
+            put("success", success as Boolean)
+            put("isActive", false as Boolean)
+        }
+        call.resolve(ret)
+    }
+
+    @PluginMethod
+    fun getVpnStatus(call: com.getcapacitor.PluginCall) {
+        val vpnManager = VpnManager(context)
+        val isActive = vpnManager.isVpnActive()
+
+        val ret = JSObject().apply {
+            put("isActive", isActive as Boolean)
+            put("activeDns", "1.1.1.1" as String)
         }
         call.resolve(ret)
     }
