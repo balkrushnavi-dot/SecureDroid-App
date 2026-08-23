@@ -1,39 +1,59 @@
 package org.securedroid.admin
 
+import android.app.admin.DevicePolicyManager
+import android.content.ComponentName
 import android.content.Context
 
 class SecureDroidDeviceAdmin(
-    context: Context
+    private val context: Context
 ) {
 
-    private val policyService =
-        DevicePolicyManagerService(context)
+    private val devicePolicyManager: DevicePolicyManager =
+        context.getSystemService(Context.DEVICE_POLICY_SERVICE)
+            as DevicePolicyManager
+
+    private val adminComponent: ComponentName =
+        ComponentName(
+            context,
+            SecureDroidDeviceAdminReceiver::class.java
+        )
 
     fun isEnabled(): Boolean {
-        return policyService.isAdminActive()
-    }
-
-    fun getPolicy(): AdminPolicy {
-        return policyService.getPolicy()
-    }
-
-    fun setCameraDisabled(
-        disabled: Boolean
-    ): Boolean {
-        return policyService.setCameraDisabled(disabled)
+        return try {
+            devicePolicyManager.isAdminActive(adminComponent)
+        } catch (_: Exception) {
+            false
+        }
     }
 
     fun isCameraDisabled(): Boolean {
-        return policyService.isCameraDisabled()
+        if (!isEnabled()) {
+            return false
+        }
+
+        return try {
+            devicePolicyManager.getCameraDisabled(null)
+        } catch (_: Exception) {
+            false
+        }
     }
 
-    fun setScreenCaptureDisabled(
-        disabled: Boolean
-    ): Boolean {
-        return policyService.setScreenCaptureDisabled(disabled)
-    }
+    fun setCameraDisabled(disabled: Boolean): Boolean {
+        if (!isEnabled()) {
+            return false
+        }
 
-    fun isScreenCaptureDisabled(): Boolean {
-        return policyService.isScreenCaptureDisabled()
+        return try {
+            devicePolicyManager.setCameraDisabled(
+                adminComponent,
+                disabled
+            )
+
+            true
+        } catch (_: SecurityException) {
+            false
+        } catch (_: Exception) {
+            false
+        }
     }
 }
