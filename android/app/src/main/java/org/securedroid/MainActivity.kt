@@ -1,12 +1,11 @@
-package org.securedroid.app
+package org.securedroid
 
 import android.os.Bundle
-import com.getcapacitor.BridgeActivity
+import androidx.appcompat.app.AppCompatActivity
 
-class MainActivity : BridgeActivity() {
+class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        registerPlugin(SecureDroidPlugin::class.java)
         super.onCreate(savedInstanceState)
     }
 }
