@@ -1,12 +1,9 @@
 package org.securedroid.network
 
+import android.app.PendingIntent
 import android.content.Intent
 import android.net.VpnService
 import android.os.ParcelFileDescriptor
-import java.io.FileInputStream
-import java.io.FileOutputStream
-import java.nio.ByteBuffer
-import java.nio.channels.FileChannel
 
 class SecureVpnService : VpnService() {
 
@@ -22,18 +19,25 @@ class SecureVpnService : VpnService() {
 
     private fun startVpnTunnel() {
         try {
+            // Safe PendingIntent flag handling for modern Android versions (API 31+)
+            val pendingIntent = PendingIntent.getActivity(
+                this,
+                0,
+                Intent(this, org.securedroid.MainActivity::class.java),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            )
+
             val builder = Builder()
                 .addAddress("10.0.0.2", 24)
                 .addRoute("0.0.0.0", 0)
                 .addDnsServer("1.1.1.1")
                 .setSession("SecureDroid Application Firewall")
-                .setConfigureIntent(null)
+                .setConfigureIntent(pendingIntent)
 
             vpnInterface = builder.establish()
             isRunning = true
         } catch (e: Exception) {
             isRunning = false
-            // Handle or log VPN establishment error cleanly
         }
     }
 
@@ -48,4 +52,3 @@ class SecureVpnService : VpnService() {
         super.onDestroy()
     }
 }
-
