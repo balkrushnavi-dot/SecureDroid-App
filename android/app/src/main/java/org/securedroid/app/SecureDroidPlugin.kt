@@ -1,3 +1,4 @@
+
 package com.securedroid.app
 
 import com.getcapacitor.JSObject
