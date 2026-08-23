@@ -35,65 +35,50 @@ class SecureDroidPlugin(
     private val diagnostics =
         DeviceDiagnostics(appContext)
 
-    fun isDeviceAdminEnabled(): Boolean {
-        return deviceAdmin.isEnabled()
-    }
+    fun isDeviceAdminEnabled(): Boolean =
+        deviceAdmin.isEnabled()
 
-    fun isCameraDisabled(): Boolean {
-        return deviceAdmin.isCameraDisabled()
-    }
+    fun isCameraDisabled(): Boolean =
+        deviceAdmin.isCameraDisabled()
 
-    fun setCameraDisabled(disabled: Boolean): Boolean {
-        return deviceAdmin.setCameraDisabled(disabled)
-    }
+    fun setCameraDisabled(disabled: Boolean): Boolean =
+        deviceAdmin.setCameraDisabled(disabled)
 
-    fun getVpnState(): VpnState {
-        return vpnManager.getState()
-    }
+    fun getVpnState(): VpnState =
+        vpnManager.getState()
 
-    fun startVpn(): Boolean {
-        return vpnManager.start()
-    }
+    fun startVpn(): Boolean =
+        vpnManager.start()
 
-    fun stopVpn() {
+    fun stopVpn() =
         vpnManager.stop()
-    }
 
-    fun isSecureSpaceEnabled(): Boolean {
-        return secureSpace.isEnabled()
-    }
+    fun isSecureSpaceEnabled(): Boolean =
+        secureSpace.isEnabled()
 
-    fun enableSecureSpace(): Boolean {
-        return secureSpace.enable()
-    }
+    fun enableSecureSpace(): Boolean =
+        secureSpace.enable()
 
-    fun disableSecureSpace(): Boolean {
-        return secureSpace.disable()
-    }
+    fun disableSecureSpace(): Boolean =
+        secureSpace.disable()
 
-    fun scanInstalledApps(): List<InstalledAppInfo> {
-        return appScanner.scan()
-    }
+    fun scanInstalledApps(): List<InstalledAppInfo> =
+        appScanner.scan()
 
-    fun isAppInstalled(packageName: String): Boolean {
-        return appScanner.isInstalled(packageName)
-    }
+    fun isAppInstalled(packageName: String): Boolean =
+        appScanner.isInstalled(packageName)
 
-    fun runDiagnostics(): DeviceDiagnosticsResult {
-        return diagnostics.run()
-    }
+    fun runDiagnostics(): DeviceDiagnosticsResult =
+        diagnostics.run()
 
-    fun encryptText(text: String): SecureVault.EncryptedData {
-        return vault.encrypt(text)
-    }
+    fun encryptText(text: String): SecureVault.EncryptedData =
+        vault.encrypt(text)
 
     fun decryptText(
         encryptedData: SecureVault.EncryptedData
-    ): String {
-        return vault.decrypt(encryptedData)
-    }
+    ): String =
+        vault.decrypt(encryptedData)
 
-    fun deleteVaultKey() {
+    fun deleteVaultKey() =
         vault.deleteEncryptionKey()
-    }
 }
