@@ -19,6 +19,7 @@ class SecureVpnService : VpnService() {
     ): Int {
 
         when (intent?.action) {
+
             ACTION_START -> {
                 startForegroundService()
                 startVpn()
@@ -35,15 +36,18 @@ class SecureVpnService : VpnService() {
     private fun startForegroundService() {
         createNotificationChannel()
 
-        val notification = Notification.Builder(
-            this,
-            NOTIFICATION_CHANNEL_ID
-        )
-            .setContentTitle("SecureDroid VPN")
-            .setContentText("Secure VPN service is running")
-            .setSmallIcon(android.R.drawable.ic_lock_lock)
-            .setOngoing(true)
-            .build()
+        val notification =
+            Notification.Builder(
+                this,
+                NOTIFICATION_CHANNEL_ID
+            )
+                .setContentTitle("SecureDroid VPN")
+                .setContentText("Secure VPN service is running")
+                .setSmallIcon(
+                    android.R.drawable.ic_lock_lock
+                )
+                .setOngoing(true)
+                .build()
 
         startForeground(
             NOTIFICATION_ID,
@@ -53,9 +57,11 @@ class SecureVpnService : VpnService() {
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+
             val manager =
-                getSystemService(NOTIFICATION_SERVICE)
-                    as NotificationManager
+                getSystemService(
+                    NOTIFICATION_SERVICE
+                ) as NotificationManager
 
             val channel = NotificationChannel(
                 NOTIFICATION_CHANNEL_ID,
@@ -68,40 +74,86 @@ class SecureVpnService : VpnService() {
     }
 
     private fun startVpn() {
+
         if (vpnInterface != null) {
             return
         }
 
-        vpnInterface = Builder()
-            .setSession("SecureDroid VPN")
-            .addAddress("10.0.0.2", 32)
-            .addRoute("0.0.0.0", 0)
-            .establish()
+        VpnStateStore.set(
+            VpnState.CONNECTING
+        )
 
-        if (vpnInterface == null) {
-            stopSelf()
+        try {
+
+            vpnInterface = Builder()
+                .setSession("SecureDroid VPN")
+                .addAddress("10.0.0.2", 32)
+                .addRoute("0.0.0.0", 0)
+                .establish()
+
+            if (vpnInterface == null) {
+                VpnStateStore.set(
+                    VpnState.ERROR
+                )
+
+                stopVpn()
+                return
+            }
+
+            VpnStateStore.set(
+                VpnState.CONNECTED
+            )
+
+        } catch (_: Exception) {
+
+            VpnStateStore.set(
+                VpnState.ERROR
+            )
+
+            stopVpn()
         }
     }
 
     private fun stopVpn() {
+
+        VpnStateStore.set(
+            VpnState.DISCONNECTING
+        )
+
         vpnInterface?.close()
         vpnInterface = null
 
-        stopForeground(STOP_FOREGROUND_REMOVE)
+        VpnStateStore.set(
+            VpnState.DISCONNECTED
+        )
+
+        stopForeground(
+            STOP_FOREGROUND_REMOVE
+        )
+
         stopSelf()
     }
 
     override fun onDestroy() {
+
         vpnInterface?.close()
         vpnInterface = null
+
+        VpnStateStore.set(
+            VpnState.DISCONNECTED
+        )
+
         super.onDestroy()
     }
 
-    override fun onBind(intent: Intent): IBinder? {
+    override fun onBind(
+        intent: Intent
+    ): IBinder? {
         return super.onBind(intent)
     }
 
     companion object {
+
         const val ACTION_START =
             "org.securedroid.vpn.action.START"
 
