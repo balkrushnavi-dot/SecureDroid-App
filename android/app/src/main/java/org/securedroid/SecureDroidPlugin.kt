@@ -2,6 +2,8 @@ package org.securedroid
 
 import android.content.Context
 import org.securedroid.admin.SecureDroidDeviceAdmin
+import org.securedroid.apps.AppSecurityAnalyzer
+import org.securedroid.apps.AppSecurityAssessment
 import org.securedroid.apps.InstalledAppInfo
 import org.securedroid.apps.InstalledAppScanner
 import org.securedroid.diagnostics.DeviceDiagnostics
@@ -33,8 +35,15 @@ class SecureDroidPlugin(
     private val appScanner =
         InstalledAppScanner(appContext)
 
+    private val appSecurityAnalyzer =
+        AppSecurityAnalyzer()
+
     private val diagnostics =
         DeviceDiagnostics(appContext)
+
+    // --------------------------------------------------
+    // DEVICE ADMIN
+    // --------------------------------------------------
 
     fun isDeviceAdminEnabled(): Boolean =
         deviceAdmin.isEnabled()
@@ -47,6 +56,10 @@ class SecureDroidPlugin(
     ): Boolean =
         deviceAdmin.setCameraDisabled(disabled)
 
+    // --------------------------------------------------
+    // VPN
+    // --------------------------------------------------
+
     fun getVpnState(): VpnState =
         vpnManager.getState()
 
@@ -55,6 +68,10 @@ class SecureDroidPlugin(
 
     fun stopVpn() =
         vpnManager.stop()
+
+    // --------------------------------------------------
+    // SECURE SPACE
+    // --------------------------------------------------
 
     fun isSecureSpaceEnabled(): Boolean =
         secureSpace.isEnabled()
@@ -65,6 +82,10 @@ class SecureDroidPlugin(
     fun disableSecureSpace(): Boolean =
         secureSpace.disable()
 
+    // --------------------------------------------------
+    // INSTALLED APPS
+    // --------------------------------------------------
+
     fun scanInstalledApps(): List<InstalledAppInfo> =
         appScanner.scan()
 
@@ -73,8 +94,37 @@ class SecureDroidPlugin(
     ): Boolean =
         appScanner.isInstalled(packageName)
 
+    // --------------------------------------------------
+    // APP SECURITY AUDITOR
+    // --------------------------------------------------
+
+    fun analyzeInstalledApp(
+        packageName: String
+    ): AppSecurityAssessment? =
+        appScanner
+            .findPackage(packageName)
+            ?.let {
+                appSecurityAnalyzer.analyze(it)
+            }
+
+    fun analyzeAllInstalledApps():
+        List<AppSecurityAssessment> =
+        appScanner
+            .scan()
+            .map {
+                appSecurityAnalyzer.analyze(it)
+            }
+
+    // --------------------------------------------------
+    // DIAGNOSTICS
+    // --------------------------------------------------
+
     fun runDiagnostics(): DeviceDiagnosticsResult =
         diagnostics.run()
+
+    // --------------------------------------------------
+    // VAULT
+    // --------------------------------------------------
 
     fun encryptText(
         text: String
