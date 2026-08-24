@@ -24,6 +24,8 @@ import type {
   ThreatAssessmentReport,
   EncryptedBackupArchive,
   VmHardwareCapability,
+  NativeAppRiskReport,
+  NativeHardeningReport,
 } from '../../types/native';
 
 export interface SecureDroidPlugin {
@@ -58,6 +60,8 @@ export interface SecureDroidPlugin {
   logSecurityEvent(options: { event: Omit<NativeSecurityEvent, 'id' | 'timestamp'> }): Promise<NativeResult<NativeSecurityEvent>>;
   getSecurityLogs(options?: { limit?: number; category?: string }): Promise<NativeResult<NativeSecurityEvent[]>>;
   getVmHardwareCapability(): Promise<NativeResult<VmHardwareCapability>>;
+  getAppRiskReports(): Promise<NativeResult<NativeAppRiskReport[]>>;
+  getHardeningReport(): Promise<NativeResult<NativeHardeningReport>>;
 }
 
 const NativePlugin = registerPlugin<SecureDroidPlugin>('SecureDroid');
@@ -536,11 +540,18 @@ class SecureDroidNativeService {
       try {
         return await NativePlugin.getInstalledApps();
       } catch (err: any) {
+        // A failed native call must be reported honestly, never
+        // silently replaced with fabricated app data on a real device.
         console.warn('Native getInstalledApps error:', err);
+        return {
+          success: false,
+          errorCode: 'SERVICE_UNAVAILABLE',
+          message: err?.message || 'Installed app data is unavailable on this device.',
+        };
       }
     }
 
-    // Comprehensive real package manifest inventory
+    // Example data for web preview only (this.isNative is false here).
     const apps: NativeInstalledApp[] = [
       {
         packageName: 'org.securedroid.vault',
@@ -657,6 +668,50 @@ class SecureDroidNativeService {
     };
   }
 
+  // 31. App Risk Auditor
+  async getAppRiskReports(): Promise<NativeResult<NativeAppRiskReport[]>> {
+    if (this.isNative) {
+      try {
+        return await NativePlugin.getAppRiskReports();
+      } catch (err: any) {
+        console.warn('Native getAppRiskReports error:', err);
+        return {
+          success: false,
+          errorCode: 'SERVICE_UNAVAILABLE',
+          message: err?.message || 'App risk analysis is unavailable on this device.',
+        };
+      }
+    }
+
+    return {
+      success: false,
+      errorCode: 'SERVICE_UNAVAILABLE',
+      message: 'App risk analysis requires a native device; not available in web preview.',
+    };
+  }
+
+  // 32. Device Hardening Score
+  async getHardeningReport(): Promise<NativeResult<NativeHardeningReport>> {
+    if (this.isNative) {
+      try {
+        return await NativePlugin.getHardeningReport();
+      } catch (err: any) {
+        console.warn('Native getHardeningReport error:', err);
+        return {
+          success: false,
+          errorCode: 'SERVICE_UNAVAILABLE',
+          message: err?.message || 'Device hardening analysis is unavailable on this device.',
+        };
+      }
+    }
+
+    return {
+      success: false,
+      errorCode: 'SERVICE_UNAVAILABLE',
+      message: 'Device hardening analysis requires a native device; not available in web preview.',
+    };
+  }
+
   async launchApp(options: { packageName: string }): Promise<NativeResult<boolean>> {
     if (this.isNative) {
       try {
@@ -684,65 +739,101 @@ class SecureDroidNativeService {
     const deviceRes = await this.getDeviceInfo();
     const netRes = await this.getNetworkState();
     const appsRes = await this.getInstalledApps();
+    const hardeningRes = await this.getHardeningReport();
 
     const device = deviceRes.data;
     const net = netRes.data;
     const apps = appsRes.data || [];
 
-    const checks: SystemSecurityAssessment['checks'] = [
-      {
+    const checks: SystemSecurityAssessment['checks'] = [];
+
+    // Security patch level: only reported if we actually have a real
+    // value from the device. No fabricated fallback date.
+    if (device?.securityPatch) {
+      checks.push({
         id: 'check_os_patch',
         name: 'Android Security Patch Level',
         category: 'OS_INTEGRITY',
-        status: 'PASSED',
+        status: 'INFO',
         severity: 'HIGH',
-        details: `Patch level: ${device?.securityPatch || '2026-08-01'}. Within recommended 30-day freshness window.`,
-      },
-      {
-        id: 'check_bootloader',
-        name: 'Hardware Root of Trust & Bootloader State',
-        category: 'OS_INTEGRITY',
-        status: 'PASSED',
-        severity: 'CRITICAL',
-        details: 'AVB (Android Verified Boot) 2.0 green state. Keystore hardware attestations intact.',
-      },
-      {
-        id: 'check_encryption',
-        name: 'File-Based Encryption (FBE)',
-        category: 'DEVICE_ENCRYPTION',
-        status: 'PASSED',
-        severity: 'CRITICAL',
-        details: 'AES-256-XTS CE/DE storage keys backed by hardware KeyMint / Titan M2 chip.',
-      },
-      {
+        details: `Patch level: ${device.securityPatch}.`,
+      });
+    }
+
+    // Debuggable app audit: only reported if we have real installed-app
+    // data (i.e. the native call actually succeeded).
+    if (appsRes.success && appsRes.data) {
+      const debuggableApps = apps.filter((a) => a.isDebuggable);
+      checks.push({
         id: 'check_debuggable_apps',
         name: 'Debuggable Application Audit',
         category: 'DEBUGGING',
-        status: apps.some((a) => a.isDebuggable) ? 'WARNING' : 'PASSED',
+        status: debuggableApps.length > 0 ? 'WARNING' : 'PASSED',
         severity: 'MEDIUM',
-        details: apps.some((a) => a.isDebuggable)
-          ? `Found ${apps.filter((a) => a.isDebuggable).length} debuggable application(s). Debuggable apps allow JDWP debugger attachment and memory dumping.`
-          : 'No debuggable applications discovered.',
-        remediation: 'Uninstall or rebuild debuggable apps with android:debuggable="false".',
-      },
-      {
+        details:
+          debuggableApps.length > 0
+            ? `Found ${debuggableApps.length} debuggable application(s). Debuggable apps allow debugger attachment and memory inspection.`
+            : 'No debuggable applications discovered.',
+        remediation:
+          debuggableApps.length > 0
+            ? 'Uninstall or rebuild debuggable apps with android:debuggable="false".'
+            : undefined,
+      });
+    }
+
+    // VPN status: only reported if the network-state call actually
+    // succeeded, and only claims what SecureDroid's own VPN state is
+    // (not a generic "any VPN detected" signal).
+    if (netRes.success && net) {
+      checks.push({
         id: 'check_vpn_isolation',
-        name: 'Encrypted Network & VPN Tunnel',
+        name: 'SecureDroid VPN Tunnel',
         category: 'NETWORK',
-        status: net?.isVpnActive ? 'PASSED' : 'INFO',
+        status: net.isVpnActive ? 'PASSED' : 'INFO',
         severity: 'LOW',
-        details: net?.isVpnActive ? 'Encrypted VpnService tunnel active with DNS filter.' : 'Local network active without continuous VPN tunnel.',
-        remediation: 'Enable SecureDroid Always-On VPN tunnel in Network Settings.',
-      },
-    ];
+        details: net.isVpnActive
+          ? 'SecureDroid VPN tunnel is active.'
+          : 'SecureDroid VPN tunnel is not currently active.',
+        remediation: net.isVpnActive
+          ? undefined
+          : 'Enable the SecureDroid VPN tunnel in Network Settings.',
+      });
+    }
+
+    // Device hardening findings (screen lock, USB debugging, developer
+    // options, patch staleness) come from the real native
+    // HardeningAnalyzer when available.
+    if (hardeningRes.success && hardeningRes.data) {
+      hardeningRes.data.findings.forEach((finding) => {
+        checks.push({
+          id: finding.id,
+          name: finding.id.replace(/_/g, ' '),
+          category: 'OS_INTEGRITY',
+          status: finding.level === 'CRITICAL' ? 'FAILED' : 'WARNING',
+          severity: finding.level === 'CRITICAL' ? 'CRITICAL' : 'MEDIUM',
+          details: finding.summary,
+        });
+      });
+    }
+
+    if (checks.length === 0) {
+      // No underlying data was available at all (e.g. native plugin
+      // unreachable and no fallback data exists). Report this
+      // honestly rather than fabricating a score.
+      return {
+        success: false,
+        errorCode: 'SERVICE_UNAVAILABLE',
+        message: 'No security assessment data is currently available on this device.',
+      };
+    }
 
     const failedCount = checks.filter((c) => c.status === 'FAILED').length;
     const warningCount = checks.filter((c) => c.status === 'WARNING').length;
 
-    let score = 96;
-    if (failedCount > 0) score -= failedCount * 25;
-    if (warningCount > 0) score -= warningCount * 8;
-    score = Math.max(10, Math.min(100, score));
+    let score = 100;
+    score -= failedCount * 25;
+    score -= warningCount * 8;
+    score = Math.max(0, Math.min(100, score));
 
     let tier: SystemSecurityAssessment['qualitativeTier'] = 'HARDENED';
     if (score < 70) tier = 'ATTENTION_REQUIRED';
