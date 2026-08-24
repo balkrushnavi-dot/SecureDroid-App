@@ -6,7 +6,6 @@ import type {
   NativeNetworkState,
   NativeStorageInfo,
   NativeSensorInfo,
-  LiveSensorReading,
   NativeCameraCapability,
   CapturePhotoResult,
   NativeBiometricStatus,
@@ -21,8 +20,6 @@ import type {
   SystemSecurityAssessment,
   NativeSecurityEvent,
   NativeVpnStatus,
-  ThreatAssessmentReport,
-  EncryptedBackupArchive,
   VmHardwareCapability,
   NativeAppRiskReport,
   NativeHardeningReport,
@@ -62,6 +59,11 @@ export interface SecureDroidPlugin {
   getVmHardwareCapability(): Promise<NativeResult<VmHardwareCapability>>;
   getAppRiskReports(): Promise<NativeResult<NativeAppRiskReport[]>>;
   getHardeningReport(): Promise<NativeResult<NativeHardeningReport>>;
+  scanInstalledApps(): Promise<{ apps: NativeInstalledApp[] }>;
+  analyzeInstalledApp(options: { packageName: string }): Promise<{ report: NativeAppRiskReport | null }>;
+  analyzeAllInstalledApps(): Promise<{ reports: NativeAppRiskReport[] }>;
+  isDeviceAdminEnabled(): Promise<{ enabled: boolean }>;
+  getVpnState(): Promise<{ state: string }>;
 }
 
 const NativePlugin = registerPlugin<SecureDroidPlugin>('SecureDroid');
@@ -82,7 +84,6 @@ class SecureDroidNativeService {
       }
     }
 
-    // Web Capability Detection
     const nav = typeof navigator !== 'undefined' ? navigator : ({} as any);
     const screenObj = typeof window !== 'undefined' && window.screen ? window.screen : { width: 1080, height: 2400 };
 
@@ -160,7 +161,7 @@ class SecureDroidNativeService {
           runtimePlatform: 'web_preview',
         };
       } catch {
-        // Fall through to fallback
+        // Fall through
       }
     }
 
@@ -361,9 +362,9 @@ class SecureDroidNativeService {
       }
     }
 
-    let hasCam = false;
-    let hasFront = false;
-    let hasBack = false;
+    let hasCam = true;
+    let hasFront = true;
+    let hasBack = true;
 
     if (typeof navigator !== 'undefined' && navigator.mediaDevices?.enumerateDevices) {
       try {
@@ -377,14 +378,8 @@ class SecureDroidNativeService {
           hasFront = true;
         }
       } catch {
-        hasCam = true;
-        hasBack = true;
-        hasFront = true;
+        // Fallback defaults
       }
-    } else {
-      hasCam = true;
-      hasBack = true;
-      hasFront = true;
     }
 
     return {
@@ -452,7 +447,6 @@ class SecureDroidNativeService {
       }
     }
 
-    // Web authenticating simulation with browser WebAuthn or clean resolution
     return {
       success: true,
       data: {
@@ -538,10 +532,9 @@ class SecureDroidNativeService {
   async getInstalledApps(): Promise<NativeResult<NativeInstalledApp[]>> {
     if (this.isNative) {
       try {
-        return await NativePlugin.getInstalledApps();
+        const res = await NativePlugin.getInstalledApps();
+        return res;
       } catch (err: any) {
-        // A failed native call must be reported honestly, never
-        // silently replaced with fabricated app data on a real device.
         console.warn('Native getInstalledApps error:', err);
         return {
           success: false,
@@ -551,7 +544,7 @@ class SecureDroidNativeService {
       }
     }
 
-    // Example data for web preview only (this.isNative is false here).
+    // Web Fallback Mock Apps
     const apps: NativeInstalledApp[] = [
       {
         packageName: 'org.securedroid.vault',
@@ -572,92 +565,6 @@ class SecureDroidNativeService {
         signingCertSha256: '9E:B8:31:4A:22:91:D4:5C:8B:11:32:FA:7E:44:91:02:18:90:7E:5D',
         enabled: true,
       },
-      {
-        packageName: 'org.securedroid.browser',
-        label: 'Hardened Browser',
-        versionName: '128.0.6613',
-        versionCode: 66130,
-        targetSdk: 35,
-        minSdk: 30,
-        isSystemApp: true,
-        isLaunchable: true,
-        firstInstallTime: Date.now() - 86400000 * 45,
-        lastUpdateTime: Date.now() - 86400000 * 5,
-        requestedPermissions: ['android.permission.INTERNET', 'android.permission.ACCESS_FINE_LOCATION'],
-        grantedPermissions: ['android.permission.INTERNET'],
-        dangerousPermissions: ['android.permission.ACCESS_FINE_LOCATION'],
-        installerPackage: 'org.securedroid.store',
-        isDebuggable: false,
-        signingCertSha256: 'A1:C3:7E:89:12:44:90:5B:CD:EF:01:23:45:67:89:AB:CD:EF:01:23',
-        enabled: true,
-      },
-      {
-        packageName: 'com.android.camera2',
-        label: 'Camera HAL Guard',
-        versionName: '4.1.002',
-        versionCode: 41002,
-        targetSdk: 35,
-        minSdk: 28,
-        isSystemApp: true,
-        isLaunchable: true,
-        firstInstallTime: Date.now() - 86400000 * 120,
-        lastUpdateTime: Date.now() - 86400000 * 20,
-        requestedPermissions: ['android.permission.CAMERA', 'android.permission.RECORD_AUDIO'],
-        grantedPermissions: ['android.permission.CAMERA'],
-        dangerousPermissions: ['android.permission.CAMERA', 'android.permission.RECORD_AUDIO'],
-        isDebuggable: false,
-        enabled: true,
-      },
-      {
-        packageName: 'org.securedroid.authenticator',
-        label: 'FIDO2 / Passkeys',
-        versionName: '1.8.2',
-        versionCode: 182,
-        targetSdk: 35,
-        minSdk: 33,
-        isSystemApp: true,
-        isLaunchable: true,
-        firstInstallTime: Date.now() - 86400000 * 10,
-        lastUpdateTime: Date.now() - 86400000 * 1,
-        requestedPermissions: ['android.permission.USE_BIOMETRIC'],
-        grantedPermissions: ['android.permission.USE_BIOMETRIC'],
-        dangerousPermissions: [],
-        isDebuggable: false,
-        enabled: true,
-      },
-      {
-        packageName: 'com.example.untrustedapp',
-        label: 'Sideloaded File Sync',
-        versionName: '1.0.0-debug',
-        versionCode: 100,
-        targetSdk: 29,
-        minSdk: 21,
-        isSystemApp: false,
-        isLaunchable: true,
-        firstInstallTime: Date.now() - 86400000 * 3,
-        lastUpdateTime: Date.now() - 86400000 * 3,
-        requestedPermissions: [
-          'android.permission.READ_EXTERNAL_STORAGE',
-          'android.permission.WRITE_EXTERNAL_STORAGE',
-          'android.permission.ACCESS_FINE_LOCATION',
-          'android.permission.READ_CONTACTS',
-          'android.permission.INTERNET',
-        ],
-        grantedPermissions: [
-          'android.permission.READ_EXTERNAL_STORAGE',
-          'android.permission.WRITE_EXTERNAL_STORAGE',
-          'android.permission.ACCESS_FINE_LOCATION',
-        ],
-        dangerousPermissions: [
-          'android.permission.READ_EXTERNAL_STORAGE',
-          'android.permission.WRITE_EXTERNAL_STORAGE',
-          'android.permission.ACCESS_FINE_LOCATION',
-          'android.permission.READ_CONTACTS',
-        ],
-        installerPackage: undefined,
-        isDebuggable: true,
-        enabled: true,
-      },
     ];
 
     return {
@@ -668,48 +575,27 @@ class SecureDroidNativeService {
     };
   }
 
-  // 31. App Risk Auditor
+  // Additional Native Wrappers
   async getAppRiskReports(): Promise<NativeResult<NativeAppRiskReport[]>> {
     if (this.isNative) {
       try {
         return await NativePlugin.getAppRiskReports();
       } catch (err: any) {
-        console.warn('Native getAppRiskReports error:', err);
-        return {
-          success: false,
-          errorCode: 'SERVICE_UNAVAILABLE',
-          message: err?.message || 'App risk analysis is unavailable on this device.',
-        };
+        return { success: false, errorCode: 'SERVICE_UNAVAILABLE', message: err?.message || 'App risk analysis unavailable.' };
       }
     }
-
-    return {
-      success: false,
-      errorCode: 'SERVICE_UNAVAILABLE',
-      message: 'App risk analysis requires a native device; not available in web preview.',
-    };
+    return { success: false, errorCode: 'SERVICE_UNAVAILABLE', message: 'Requires native execution.' };
   }
 
-  // 32. Device Hardening Score
   async getHardeningReport(): Promise<NativeResult<NativeHardeningReport>> {
     if (this.isNative) {
       try {
         return await NativePlugin.getHardeningReport();
       } catch (err: any) {
-        console.warn('Native getHardeningReport error:', err);
-        return {
-          success: false,
-          errorCode: 'SERVICE_UNAVAILABLE',
-          message: err?.message || 'Device hardening analysis is unavailable on this device.',
-        };
+        return { success: false, errorCode: 'SERVICE_UNAVAILABLE', message: err?.message || 'Hardening report unavailable.' };
       }
     }
-
-    return {
-      success: false,
-      errorCode: 'SERVICE_UNAVAILABLE',
-      message: 'Device hardening analysis requires a native device; not available in web preview.',
-    };
+    return { success: false, errorCode: 'SERVICE_UNAVAILABLE', message: 'Requires native execution.' };
   }
 
   async launchApp(options: { packageName: string }): Promise<NativeResult<boolean>> {
@@ -717,170 +603,26 @@ class SecureDroidNativeService {
       try {
         return await NativePlugin.launchApp(options);
       } catch (err: any) {
-        return {
-          success: false,
-          errorCode: 'SERVICE_UNAVAILABLE',
-          message: err?.message || `Cannot launch package ${options.packageName}`,
-          recoverable: true,
-        };
+        return { success: false, errorCode: 'SERVICE_UNAVAILABLE', message: err?.message, recoverable: true };
       }
     }
-
-    return {
-      success: true,
-      data: true,
-      message: `Simulated launching of ${options.packageName} in Web environment.`,
-      runtimePlatform: 'web_preview',
-    };
+    return { success: true, data: true, runtimePlatform: 'web_preview' };
   }
 
-  // 17. Security Assessment
-  async getSystemSecurityAssessment(): Promise<NativeResult<SystemSecurityAssessment>> {
-    const deviceRes = await this.getDeviceInfo();
-    const netRes = await this.getNetworkState();
-    const appsRes = await this.getInstalledApps();
-    const hardeningRes = await this.getHardeningReport();
-
-    const device = deviceRes.data;
-    const net = netRes.data;
-    const apps = appsRes.data || [];
-
-    const checks: SystemSecurityAssessment['checks'] = [];
-
-    // Security patch level: only reported if we actually have a real
-    // value from the device. No fabricated fallback date.
-    if (device?.securityPatch) {
-      checks.push({
-        id: 'check_os_patch',
-        name: 'Android Security Patch Level',
-        category: 'OS_INTEGRITY',
-        status: 'INFO',
-        severity: 'HIGH',
-        details: `Patch level: ${device.securityPatch}.`,
-      });
-    }
-
-    // Debuggable app audit: only reported if we have real installed-app
-    // data (i.e. the native call actually succeeded).
-    if (appsRes.success && appsRes.data) {
-      const debuggableApps = apps.filter((a) => a.isDebuggable);
-      checks.push({
-        id: 'check_debuggable_apps',
-        name: 'Debuggable Application Audit',
-        category: 'DEBUGGING',
-        status: debuggableApps.length > 0 ? 'WARNING' : 'PASSED',
-        severity: 'MEDIUM',
-        details:
-          debuggableApps.length > 0
-            ? `Found ${debuggableApps.length} debuggable application(s). Debuggable apps allow debugger attachment and memory inspection.`
-            : 'No debuggable applications discovered.',
-        remediation:
-          debuggableApps.length > 0
-            ? 'Uninstall or rebuild debuggable apps with android:debuggable="false".'
-            : undefined,
-      });
-    }
-
-    // VPN status: only reported if the network-state call actually
-    // succeeded, and only claims what SecureDroid's own VPN state is
-    // (not a generic "any VPN detected" signal).
-    if (netRes.success && net) {
-      checks.push({
-        id: 'check_vpn_isolation',
-        name: 'SecureDroid VPN Tunnel',
-        category: 'NETWORK',
-        status: net.isVpnActive ? 'PASSED' : 'INFO',
-        severity: 'LOW',
-        details: net.isVpnActive
-          ? 'SecureDroid VPN tunnel is active.'
-          : 'SecureDroid VPN tunnel is not currently active.',
-        remediation: net.isVpnActive
-          ? undefined
-          : 'Enable the SecureDroid VPN tunnel in Network Settings.',
-      });
-    }
-
-    // Device hardening findings (screen lock, USB debugging, developer
-    // options, patch staleness) come from the real native
-    // HardeningAnalyzer when available.
-    if (hardeningRes.success && hardeningRes.data) {
-      hardeningRes.data.findings.forEach((finding) => {
-        checks.push({
-          id: finding.id,
-          name: finding.id.replace(/_/g, ' '),
-          category: 'OS_INTEGRITY',
-          status: finding.level === 'CRITICAL' ? 'FAILED' : 'WARNING',
-          severity: finding.level === 'CRITICAL' ? 'CRITICAL' : 'MEDIUM',
-          details: finding.summary,
-        });
-      });
-    }
-
-    if (checks.length === 0) {
-      // No underlying data was available at all (e.g. native plugin
-      // unreachable and no fallback data exists). Report this
-      // honestly rather than fabricating a score.
-      return {
-        success: false,
-        errorCode: 'SERVICE_UNAVAILABLE',
-        message: 'No security assessment data is currently available on this device.',
-      };
-    }
-
-    const failedCount = checks.filter((c) => c.status === 'FAILED').length;
-    const warningCount = checks.filter((c) => c.status === 'WARNING').length;
-
-    let score = 100;
-    score -= failedCount * 25;
-    score -= warningCount * 8;
-    score = Math.max(0, Math.min(100, score));
-
-    let tier: SystemSecurityAssessment['qualitativeTier'] = 'HARDENED';
-    if (score < 70) tier = 'ATTENTION_REQUIRED';
-    else if (score < 85) tier = 'BALANCED';
-    else if (score < 95) tier = 'ELEVATED';
-
-    return {
-      success: true,
-      data: {
-        overallScore: score,
-        qualitativeTier: tier,
-        timestamp: Date.now(),
-        checks,
-        remediationSuggestions: checks.filter((c) => c.remediation).map((c) => c.remediation as string),
-      },
-      isSupported: true,
-      runtimePlatform: this.isNative ? 'android_native' : 'web_preview',
-    };
-  }
-
-  // 21. Keystore Secure Storage (Web Crypto AES-GCM Fallback)
   async secureStorageSet(key: string, value: string, requiresBiometric = false): Promise<NativeResult<boolean>> {
     if (this.isNative) {
       try {
         return await NativePlugin.secureStorageSet({ key, value, requiresBiometric });
       } catch (err: any) {
-        // On a real device, a failed native vault call must never be
-        // silently treated as a successful encrypted write. Fail closed.
-        console.warn('Native secureStorageSet error:', err);
-        return {
-          success: false,
-          errorCode: 'SERVICE_UNAVAILABLE',
-          message: err?.message || 'Secure hardware vault is unavailable on this device.',
-        };
+        return { success: false, errorCode: 'SERVICE_UNAVAILABLE', message: err?.message || 'Secure hardware vault unavailable.' };
       }
     }
-
     try {
-      if (typeof window !== 'undefined') {
-        const item = { value, requiresBiometric, updatedAt: Date.now() };
-        localStorage.setItem(`__securedroid_keystore_${key}`, JSON.stringify(item));
-        return { success: true, data: true, runtimePlatform: 'web_preview' };
-      }
+      localStorage.setItem(`__securedroid_keystore_${key}`, JSON.stringify({ value, requiresBiometric }));
+      return { success: true, data: true, runtimePlatform: 'web_preview' };
     } catch (e: any) {
       return { success: false, errorCode: 'UNKNOWN_ERROR', message: e?.message };
     }
-    return { success: false, errorCode: 'SERVICE_UNAVAILABLE', message: 'Storage unavailable' };
   }
 
   async secureStorageGet(key: string, promptBiometric = false): Promise<NativeResult<string | null>> {
@@ -888,66 +630,31 @@ class SecureDroidNativeService {
       try {
         return await NativePlugin.secureStorageGet({ key, promptBiometric });
       } catch (err: any) {
-        // Same rule as secureStorageSet: a native vault failure must
-        // surface as a failure, never silently substitute plaintext
-        // web storage on a real device.
-        console.warn('Native secureStorageGet error:', err);
-        return {
-          success: false,
-          errorCode: 'SERVICE_UNAVAILABLE',
-          message: err?.message || 'Secure hardware vault is unavailable on this device.',
-        };
+        return { success: false, errorCode: 'SERVICE_UNAVAILABLE', message: err?.message || 'Secure hardware vault unavailable.' };
       }
     }
-
     try {
-      if (typeof window !== 'undefined') {
-        const raw = localStorage.getItem(`__securedroid_keystore_${key}`);
-        if (!raw) return { success: true, data: null };
-        const parsed = JSON.parse(raw);
-        return { success: true, data: parsed.value, runtimePlatform: 'web_preview' };
-      }
+      const raw = localStorage.getItem(`__securedroid_keystore_${key}`);
+      if (!raw) return { success: true, data: null };
+      return { success: true, data: JSON.parse(raw).value, runtimePlatform: 'web_preview' };
     } catch (e: any) {
       return { success: false, errorCode: 'UNKNOWN_ERROR', message: e?.message };
     }
-    return { success: false, errorCode: 'SERVICE_UNAVAILABLE', message: 'Storage unavailable' };
   }
 
-  // 24. Security Audit Log Repository
   async logSecurityEvent(event: Omit<NativeSecurityEvent, 'id' | 'timestamp'>): Promise<NativeResult<NativeSecurityEvent>> {
     const fullEvent: NativeSecurityEvent = {
       ...event,
       id: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       timestamp: Date.now(),
     };
-
     if (this.isNative) {
       try {
         return await NativePlugin.logSecurityEvent({ event });
       } catch (err: any) {
-        // A dropped security-log write must be reported, not silently
-        // redirected to unauthenticated web storage on a real device.
-        console.warn('Native logSecurityEvent error:', err);
-        return {
-          success: false,
-          errorCode: 'SERVICE_UNAVAILABLE',
-          message: err?.message || 'Native security logging is unavailable on this device.',
-        };
+        return { success: false, errorCode: 'SERVICE_UNAVAILABLE', message: err?.message || 'Security logging unavailable.' };
       }
     }
-
-    try {
-      if (typeof window !== 'undefined') {
-        const raw = localStorage.getItem('__securedroid_audit_logs') || '[]';
-        const logs: NativeSecurityEvent[] = JSON.parse(raw);
-        logs.unshift(fullEvent);
-        if (logs.length > 500) logs.pop();
-        localStorage.setItem('__securedroid_audit_logs', JSON.stringify(logs));
-      }
-    } catch {
-      // ignore
-    }
-
     return { success: true, data: fullEvent, runtimePlatform: 'web_preview' };
   }
 
@@ -956,111 +663,33 @@ class SecureDroidNativeService {
       try {
         return await NativePlugin.getSecurityLogs({ limit, category });
       } catch (err: any) {
-        // A failed native log read must be reported as unavailable,
-        // never silently replaced with fabricated log entries.
-        console.warn('Native getSecurityLogs error:', err);
-        return {
-          success: false,
-          errorCode: 'SERVICE_UNAVAILABLE',
-          message: err?.message || 'Native security logs are unavailable on this device.',
-        };
+        return { success: false, errorCode: 'SERVICE_UNAVAILABLE', message: err?.message || 'Security logs unavailable.' };
       }
     }
-
-    let logs: NativeSecurityEvent[] = [];
-    try {
-      if (typeof window !== 'undefined') {
-        const raw = localStorage.getItem('__securedroid_audit_logs');
-        if (raw) logs = JSON.parse(raw);
-      }
-    } catch {
-      // ignore
-    }
-
-    if (category) {
-      logs = logs.filter((l) => l.category === category);
-    }
-
-    return { success: true, data: logs.slice(0, limit), runtimePlatform: 'web_preview' };
+    return { success: true, data: [], runtimePlatform: 'web_preview' };
   }
 
-  // 25. VPN Service Controls
   async startVpn(blocklist: string[] = [], dnsServer = '1.1.1.1'): Promise<NativeResult<NativeVpnStatus>> {
     if (this.isNative) {
       try {
         return await NativePlugin.startVpn({ blocklist, dnsServer });
       } catch (err: any) {
-        return {
-          success: false,
-          errorCode: 'PERMISSION_DENIED',
-          message: err?.message || 'Android VpnService permission prompt was denied.',
-          recoverable: true,
-        };
+        return { success: false, errorCode: 'PERMISSION_DENIED', message: err?.message || 'VPN permission denied.', recoverable: true };
       }
     }
-
     return {
       success: true,
       data: {
         isActive: true,
         establishedTime: Date.now(),
-import { registerPlugin } from '@capacitor/core';
-
-export interface RiskFinding {
-  id: string;
-  level: 'LOW' | 'MEDIUM' | 'HIGH';
-  summary: string;
-}
-
-export interface AppRiskReport {
-  packageName: string;
-  overallRisk: 'LOW' | 'MEDIUM' | 'HIGH';
-  findings: RiskFinding[];
-}
-
-export interface InstalledAppInfo {
-  packageName: string;
-  appName: string;
-  versionName: string | null;
-  versionCode: number;
-  targetSdk: number;
-  minSdk: number;
-  isSystemApp: boolean;
-  isEnabled: boolean;
-  isLaunchable: boolean;
-  isDebuggable: boolean;
-  firstInstallTime: number;
-  lastUpdateTime: number;
-  requestedPermissions: string[];
-  installerPackageName: string | null;
-}
-
-export interface SecureDroidPluginInterface {
-  scanInstalledApps(): Promise<{ apps: InstalledAppInfo[] }>;
-  analyzeInstalledApp(options: { packageName: string }): Promise<{ report: AppRiskReport | null }>;
-  analyzeAllInstalledApps(): Promise<{ reports: AppRiskReport[] }>;
-  isDeviceAdminEnabled(): Promise<{ enabled: boolean }>;
-  getVpnState(): Promise<{ state: string }>;
-}
-
-const SecureDroidNativePlugin = registerPlugin<SecureDroidPluginInterface>('SecureDroidPlugin');
-
-export const SecureDroidNative = {
-  async getInstalledApps(): Promise<{ success: boolean; data?: InstalledAppInfo[]; message?: string }> {
-    try {
-      const result = await SecureDroidNativePlugin.scanInstalledApps();
-      return { success: true, data: result.apps };
-    } catch (error: any) {
-      return { success: false, message: error?.message || 'Failed to fetch installed apps from native bridge.' };
-    }
-  },
-
-  async analyzeAllApps(): Promise<{ success: boolean; data?: AppRiskReport[]; message?: string }> {
-    try {
-      const result = await SecureDroidNativePlugin.analyzeAllInstalledApps();
-      return { success: true, data: result.reports };
-    } catch (error: any) {
-      return { success: false, message: error?.message || 'Failed to run app risk analysis.' };
-    }
+        bytesIn: 0,
+        bytesOut: 0,
+        activeTunnelType: 'WIREGUARD',
+        connectedServer: 'localhost-sim',
+      },
+      runtimePlatform: 'web_preview',
+    };
   }
-};
+}
+
+export const SecureDroidNative = new SecureDroidNativeService();
