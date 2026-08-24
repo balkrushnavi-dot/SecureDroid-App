@@ -425,10 +425,10 @@ class SecureDroidCapacitorPlugin : Plugin() {
     fun authenticateBiometric(call: PluginCall) = call.unimplemented()
 
     @PluginMethod
-    fun checkPermissions(call: PluginCall) = call.unimplemented()
+    override fun checkPermissions(call: PluginCall) = call.unimplemented()
 
     @PluginMethod
-    fun requestPermissions(call: PluginCall) = call.unimplemented()
+    override fun requestPermissions(call: PluginCall) = call.unimplemented()
 
     @PluginMethod
     fun openAppSettings(call: PluginCall) = call.unimplemented()
