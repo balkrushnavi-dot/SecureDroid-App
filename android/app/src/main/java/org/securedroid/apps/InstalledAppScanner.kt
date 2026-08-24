@@ -17,7 +17,8 @@ data class InstalledAppInfo(
     val isLaunchable: Boolean,
     val firstInstallTime: Long,
     val lastUpdateTime: Long,
-    val requestedPermissions: List<String>
+    val requestedPermissions: List<String>,
+    val installerPackageName: String?
 )
 
 class InstalledAppScanner(
@@ -77,10 +78,42 @@ class InstalledAppScanner(
                     requestedPermissions =
                         packageInfo.requestedPermissions
                             ?.toList()
-                            ?: emptyList()
+                            ?: emptyList(),
+                    installerPackageName =
+                        getInstallerPackageName(
+                            packageManager,
+                            packageInfo.packageName
+                        )
                 )
             }
             .sortedBy { it.appName.lowercase() }
+    }
+
+    /**
+     * Returns the package name of the app store/installer that
+     * installed this package, or null if it cannot be determined
+     * (e.g. installed via adb, or the info is unavailable). A null
+     * or unrecognized installer is a real, checkable signal that an
+     * app was sideloaded rather than installed from a known store —
+     * it is reported as-is, not upgraded into a "malicious app"
+     * claim.
+     */
+    private fun getInstallerPackageName(
+        packageManager: android.content.pm.PackageManager,
+        packageName: String
+    ): String? {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                packageManager
+                    .getInstallSourceInfo(packageName)
+                    .installingPackageName
+            } else {
+                @Suppress("DEPRECATION")
+                packageManager.getInstallerPackageName(packageName)
+            }
+        } catch (_: Exception) {
+            null
+        }
     }
 
     fun findPackage(packageName: String): InstalledAppInfo? {
