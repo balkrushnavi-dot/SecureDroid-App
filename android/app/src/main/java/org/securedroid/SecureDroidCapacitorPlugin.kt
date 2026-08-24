@@ -10,6 +10,7 @@ import org.securedroid.admin.SecureDroidDeviceAdmin
 import org.securedroid.apps.AppRiskAnalyzer
 import org.securedroid.apps.InstalledAppScanner
 import org.securedroid.diagnostics.DeviceDiagnostics
+import org.securedroid.diagnostics.HardeningAnalyzer
 import org.securedroid.logging.SecurityEvent
 import org.securedroid.logging.SecurityLogManager
 import org.securedroid.space.SecureSpaceManager
@@ -44,6 +45,10 @@ class SecureDroidCapacitorPlugin : Plugin() {
 
     private val appScanner by lazy {
         InstalledAppScanner(context)
+    }
+
+    private val hardeningAnalyzer by lazy {
+        HardeningAnalyzer(context)
     }
 
     private val deviceAdmin by lazy {
@@ -322,6 +327,28 @@ class SecureDroidCapacitorPlugin : Plugin() {
 
         val result = JSObject()
         result.put("value", array)
+        call.resolve(result)
+    }
+
+    // ---- Device Hardening ----
+
+    @PluginMethod
+    fun getHardeningReport(call: PluginCall) {
+
+        val report = hardeningAnalyzer.analyze()
+
+        val findingsArray = JSArray()
+        report.findings.forEach { finding ->
+            val findingObj = JSObject()
+            findingObj.put("id", finding.id)
+            findingObj.put("level", finding.level.name)
+            findingObj.put("summary", finding.summary)
+            findingsArray.put(findingObj)
+        }
+
+        val result = JSObject()
+        result.put("score", report.score)
+        result.put("findings", findingsArray)
         call.resolve(result)
     }
 
