@@ -12,6 +12,14 @@
     <uses-permission
         android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
+    <!-- Required on Android 13+ (API 33) to actually display the
+         VPN foreground-service notification and any other app
+         notifications to the user. Without this, SecureVpnService
+         still runs, but its "VPN active" notification will not be
+         shown, which is confusing/misleading to the user about
+         VPN status. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application
         android:name=".SecureDroidApplication"
         android:allowBackup="false"
