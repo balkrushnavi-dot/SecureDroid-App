@@ -1,327 +1,634 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
-  Globe,
-  Shield,
-  Lock,
-  Wifi,
-  Server,
-  Layers,
-  CheckCircle2,
+  ShieldAlert,
   AlertTriangle,
-  Radio,
-  Cpu,
-  ArrowRight,
+  CheckCircle2,
+  ChevronRight,
   RefreshCw,
-  Activity
+  XCircle,
 } from 'lucide-react';
-import { SecureDroidNative } from '../services/native/SecureDroidNative';
-import type { NativeVpnStatus, NativeNetworkState } from '../types/native';
 
-interface NetworkControlScreenProps {
-  isInternetOff: boolean;
-  onToggleInternet: () => void;
-  isVpnOnlyActive: boolean;
-  onToggleVpnOnly: () => void;
+import {
+  SecureDroidTopBar,
+  SecureDroidCard,
+  SecureDroidStatusChip,
+  SecureDroidSectionHeader,
+  SecureDroidButton,
+} from '../ui/designSystem';
+
+import {
+  ThreatScenarioItem,
+  ThreatProtectionStatus,
+} from '../../types/securedroid';
+
+import { THREAT_MODEL_SCENARIOS } from '../../data/featurePackData';
+import { SecureDroidNative } from '../../services/native/SecureDroidNative';
+import { ThreatDetectionEngine } from '../../services/security/ThreatDetectionEngine';
+
+import type {
+  ThreatAssessmentReport,
+  NativeErrorCode,
+} from '../../types/native';
+
+interface ThreatModelCenterScreenProps {
+  onBack: () => void;
+  isLight?: boolean;
 }
 
-export function NetworkControlScreen({
-  isInternetOff,
-  onToggleInternet,
-  isVpnOnlyActive,
-  onToggleVpnOnly,
-}: NetworkControlScreenProps) {
-  const [dnsMode, setDnsMode] = useState<'STRICT_DOT' | 'STRICT_DOH' | 'STANDARD_OFF'>('STRICT_DOT');
-  const [customDnsHost, setCustomDnsHost] = useState('dns.quad9.net');
-  const [vpnStatus, setVpnStatus] = useState<NativeVpnStatus | null>(null);
-  const [liveNetwork, setLiveNetwork] = useState<NativeNetworkState | null>(null);
-  const [isTogglingVpn, setIsTogglingVpn] = useState(false);
+interface ScanError {
+  code?: NativeErrorCode;
+  message: string;
+}
 
-  const fetchStatus = async () => {
-    const netRes = await SecureDroidNative.getNetworkState();
-    if (netRes.success && netRes.data) {
-      setLiveNetwork(netRes.data);
-      setVpnStatus({
-        isActive: netRes.data.isVpnActive,
-        bytesReceived: netRes.data.rxBytes,
-        bytesTransmitted: netRes.data.txBytes,
-        blockedDomainsCount: 142,
-        activeDns: netRes.data.dnsServers[0] || '1.1.1.1',
-        filterMode: 'BLOCKLIST',
+export const ThreatModelCenterScreen: React.FC<ThreatModelCenterScreenProps> = ({
+  onBack,
+  isLight = false,
+}) => {
+  const [selectedThreat, setSelectedThreat] =
+    useState<ThreatScenarioItem | null>(null);
+
+  const [report, setReport] =
+    useState<ThreatAssessmentReport | null>(null);
+
+  const [isScanning, setIsScanning] =
+    useState(false);
+
+  const [scanError, setScanError] =
+    useState<ScanError | null>(null);
+
+  const runLiveThreatScan = useCallback(async () => {
+    if (isScanning) return;
+
+    setIsScanning(true);
+    setScanError(null);
+
+    try {
+      const result = await SecureDroidNative.getInstalledApps();
+
+      if (!result.success || !result.data) {
+        setReport(null);
+
+        setScanError({
+          code: result.errorCode,
+          message:
+            result.message ||
+            'Installed-app evidence is unavailable from the native Android bridge.',
+        });
+
+        return;
+      }
+
+      /*
+       * This is the legitimate evidence pipeline:
+       *
+       * Android PackageManager
+       *        ↓
+       * SecureDroidNative.getInstalledApps()
+       *        ↓
+       * ThreatDetectionEngine
+       *        ↓
+       * ThreatAssessmentReport
+       */
+      const assessment =
+        ThreatDetectionEngine.evaluate(result.data);
+
+      setReport(assessment);
+    } catch (error: any) {
+      setReport(null);
+
+      setScanError({
+        message:
+          error?.message ||
+          'Threat scan failed unexpectedly.',
       });
+    } finally {
+      setIsScanning(false);
     }
-  };
+  }, [isScanning]);
 
   useEffect(() => {
-    fetchStatus();
-    const interval = setInterval(fetchStatus, 5000);
-    return () => clearInterval(interval);
+    void runLiveThreatScan();
   }, []);
 
-  const handleToggleVpnService = async () => {
-    setIsTogglingVpn(true);
-    try {
-      if (vpnStatus?.isActive) {
-        const res = await SecureDroidNative.stopVpn();
-        if (res.success && res.data) {
-          setVpnStatus(res.data);
-        }
-      } else {
-        const res = await SecureDroidNative.startVpn(['telemetry.google.com', 'graph.facebook.com'], '1.1.1.1');
-        if (res.success && res.data) {
-          setVpnStatus(res.data);
-        }
-      }
-      await fetchStatus();
-    } finally {
-      setIsTogglingVpn(false);
+  const getStatusBadge = (
+    status: ThreatProtectionStatus
+  ) => {
+    switch (status) {
+      case 'PROTECTED':
+        return {
+          variant: 'SECURE' as const,
+          label: 'PROTECTED',
+        };
+
+      case 'PARTIALLY PROTECTED':
+        return {
+          variant: 'ISOLATED' as const,
+          label: 'PARTIAL',
+        };
+
+      case 'REQUIRES HARDWARE':
+        return {
+          variant: 'UNAVAILABLE' as const,
+          label: 'REQUIRES HARDWARE',
+        };
+
+      case 'REQUIRES SECUREDROID OS':
+        return {
+          variant: 'DEGRADED' as const,
+          label: 'REQUIRES OS',
+        };
+
+      case 'NOT PROTECTED':
+        return {
+          variant: 'UNAVAILABLE' as const,
+          label: 'NOT PROTECTED',
+        };
+
+      case 'UNKNOWN':
+      default:
+        return {
+          variant: 'UNAVAILABLE' as const,
+          label: 'UNKNOWN',
+        };
     }
   };
 
+  const getRiskLabel = (
+    level: ThreatAssessmentReport['overallRiskLevel']
+  ) => {
+    switch (level) {
+      case 'SAFE':
+        return 'SAFE';
+
+      case 'LOW_RISK':
+        return 'LOW RISK';
+
+      case 'MODERATE_RISK':
+        return 'MODERATE RISK';
+
+      case 'HIGH_RISK':
+        return 'HIGH RISK';
+
+      case 'CRITICAL_RISK':
+        return 'CRITICAL RISK';
+
+      default:
+        return 'UNKNOWN';
+    }
+  };
+
+  const riskClass =
+    report?.overallRiskLevel === 'SAFE'
+      ? 'bg-emerald-500/15 text-emerald-400'
+      : report?.overallRiskLevel === 'CRITICAL_RISK'
+        ? 'bg-rose-500/15 text-rose-300'
+        : 'bg-amber-500/15 text-amber-300';
+
   return (
-    <div id="network-control-screen" className="space-y-6 animate-in fade-in duration-200">
-      {/* Header Banner */}
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-sm">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3.5">
-            <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800 text-cyan-400">
-              <Globe className="w-6 h-6" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl font-bold text-white tracking-tight">System Network Policy & Firewall</h1>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-cyan-950 border border-cyan-800 text-cyan-300">
-                  REAL ANDROID SERVICE
-                </span>
-              </div>
-              <p className="text-xs text-slate-400">
-                Full-stack network isolation, encrypted DNS transport, and strict VPN lockdown
-              </p>
-            </div>
-          </div>
+    <div
+      className={`min-h-full p-4 pb-24 transition-colors ${
+        isLight
+          ? 'bg-zinc-50 text-zinc-900'
+          : 'bg-zinc-950 text-zinc-100'
+      }`}
+    >
+      <SecureDroidTopBar
+        title="Threat Model Center"
+        subtitle="Live Package Evidence + Threat Model Reference"
+        onBack={onBack}
+        isLight={isLight}
+      />
 
-          <div className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-left">
-            <div className="text-[10px] text-slate-500 font-mono">ACTIVE INTERFACE</div>
-            <div className="text-xs font-mono font-bold text-cyan-300">
-              {liveNetwork ? `${liveNetwork.connectionType} (${liveNetwork.ipAddress || '0.0.0.0'})` : 'Loading...'}
-            </div>
-          </div>
-        </div>
-      </div>
+      <div className="pt-4 space-y-4">
 
-      {/* Real Android VpnService Card */}
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-sm space-y-4">
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-3.5">
-            <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800 text-indigo-400">
-              <Shield className="w-6 h-6" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-base font-bold text-white">Local Loopback VpnService</h2>
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold ${
-                  vpnStatus?.isActive
-                    ? 'bg-emerald-950 border border-emerald-800 text-emerald-300'
-                    : 'bg-slate-950 border border-slate-800 text-slate-400'
-                }`}>
-                  {vpnStatus?.isActive ? 'ACTIVE (tun0)' : 'STOPPED'}
-                </span>
-              </div>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Native Android VpnService creating an encrypted local loopback to inspect DNS and block telemetry.
-              </p>
-            </div>
-          </div>
+        {/* ============================================================
+            LIVE EVIDENCE
+           ============================================================ */}
 
-          <button
-            onClick={handleToggleVpnService}
-            disabled={isTogglingVpn}
-            className={`px-4 py-2 rounded-xl text-xs font-mono font-bold transition cursor-pointer disabled:opacity-50 ${
-              vpnStatus?.isActive
-                ? 'bg-rose-600 hover:bg-rose-500 text-white'
-                : 'bg-indigo-600 hover:bg-indigo-500 text-white'
-            }`}
-          >
-            {isTogglingVpn ? 'Processing...' : vpnStatus?.isActive ? 'Stop VpnService' : 'Start VpnService'}
-          </button>
-        </div>
-
-        {vpnStatus?.isActive && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-slate-800 text-xs font-mono">
-            <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800/80">
-              <span className="text-slate-500 text-[10px] block">Blocked Trackers</span>
-              <span className="text-emerald-400 font-bold text-sm">{vpnStatus.blockedDomainsCount}</span>
-            </div>
-            <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800/80">
-              <span className="text-slate-500 text-[10px] block">Bytes Processed</span>
-              <span className="text-sky-300 font-bold text-sm">{vpnStatus.bytesReceived + vpnStatus.bytesTransmitted}</span>
-            </div>
-            <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800/80">
-              <span className="text-slate-500 text-[10px] block">Interface</span>
-              <span className="text-indigo-300 font-bold text-sm">tun0 (Direct)</span>
-            </div>
-            <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800/80">
-              <span className="text-slate-500 text-[10px] block">DNS Encrypted</span>
-              <span className="text-amber-300 font-bold text-sm">{vpnStatus.activeDns}</span>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Network Core Policies */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Global Internet Master Killswitch */}
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 flex flex-col justify-between space-y-4 shadow-sm">
-          <div className="flex items-start justify-between">
-            <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800 text-cyan-400">
-              <Radio className="w-6 h-6" />
-            </div>
-            <span
-              className={`px-3 py-1 rounded-full text-xs font-mono font-bold ${
-                isInternetOff
-                  ? 'bg-rose-950 text-rose-300 border border-rose-800'
-                  : 'bg-emerald-950 text-emerald-300 border border-emerald-800'
-              }`}
-            >
-              {isInternetOff ? 'NETWORK ISOLATED' : 'ONLINE'}
-            </span>
-          </div>
-
-          <div>
-            <h2 className="text-base font-bold text-white">Global Internet Disconnect</h2>
-            <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-              Instantly severs all outgoing and incoming IPv4 and IPv6 network traffic across Wi-Fi, cellular radio, and tethered interfaces.
-            </p>
-          </div>
-
-          <div className="bg-slate-950 rounded-2xl p-3.5 border border-slate-800/80 text-xs font-mono text-slate-400 space-y-1">
-            <div className="text-[10px] text-slate-500">eBPF / IPTABLES COMMAND</div>
-            <code className="text-sky-300 text-[11px] block">
-              {isInternetOff ? 'iptables -P OUTPUT DROP && ip6tables -P OUTPUT DROP' : 'iptables -P OUTPUT ACCEPT (Per-App rules active)'}
-            </code>
-          </div>
-
-          <button
-            id="btn-toggle-global-internet"
-            onClick={onToggleInternet}
-            className={`w-full py-3 px-4 rounded-2xl text-xs font-bold font-mono transition-all cursor-pointer ${
-              isInternetOff
-                ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm'
-                : 'bg-rose-600 hover:bg-rose-500 text-white shadow-sm'
-            }`}
-          >
-            {isInternetOff ? 'RESTORE INTERNET ACCESS' : 'ENGAGE FULL NETWORK KILL'}
-          </button>
-        </div>
-
-        {/* Strict VPN-Only Lockdown Mode */}
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 flex flex-col justify-between space-y-4 shadow-sm">
-          <div className="flex items-start justify-between">
-            <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800 text-indigo-400">
-              <Lock className="w-6 h-6" />
-            </div>
-            <span
-              className={`px-3 py-1 rounded-full text-xs font-mono font-bold ${
-                isVpnOnlyActive
-                  ? 'bg-indigo-950 text-indigo-300 border border-indigo-800'
-                  : 'bg-slate-950 text-slate-400 border border-slate-800'
-              }`}
-            >
-              {isVpnOnlyActive ? 'STRICT LOCKDOWN' : 'OPTIONAL'}
-            </span>
-          </div>
-
-          <div>
-            <h2 className="text-base font-bold text-white">VPN-Only Lockdown (Kill-Switch)</h2>
-            <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-              Blocks all non-tun0 packet emissions. If the VPN disconnects for any reason, no packets can leak over raw Wi-Fi or cellular interfaces.
-            </p>
-          </div>
-
-          <div className="bg-slate-950 rounded-2xl p-3.5 border border-slate-800/80 text-xs font-mono text-slate-400 space-y-1">
-            <div className="text-[10px] text-slate-500">SYSTEM POLICY SPEC</div>
-            <code className="text-indigo-300 text-[11px] block">
-              {isVpnOnlyActive ? 'ConnectivityManager.setVpnLockdownRule(STRICT_ENFORCE)' : 'Standard routing (bypass allowed for local network)'}
-            </code>
-          </div>
-
-          <button
-            id="btn-toggle-vpn-lockdown"
-            onClick={onToggleVpnOnly}
-            className={`w-full py-3 px-4 rounded-2xl text-xs font-bold font-mono transition-all cursor-pointer ${
-              isVpnOnlyActive
-                ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm'
-                : 'bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-300'
-            }`}
-          >
-            {isVpnOnlyActive ? 'DISABLE VPN-ONLY LOCKDOWN' : 'ENFORCE STRICT VPN-ONLY LOCKDOWN'}
-          </button>
-        </div>
-      </div>
-
-      {/* Private DNS & DoT / DoH Configuration */}
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-sm space-y-5">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-sm font-bold text-white uppercase tracking-wider">
-              Private DNS & Cryptographic Transport
-            </h2>
-            <p className="text-xs text-slate-400">
-              Guarantees zero plain-text UDP port 53 leakage to ISP or local rogue Wi-Fi gateways
-            </p>
-          </div>
-          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-sky-400">
-            SYSTEM PRIVILEGE
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {[
-            { id: 'STRICT_DOT', name: 'DNS-over-TLS (DoT)', sub: 'Port 853 Strict TLS 1.3 with SPKI Pinning' },
-            { id: 'STRICT_DOH', name: 'DNS-over-HTTPS (DoH)', sub: 'HTTP/3 Encrypted payload over Port 443' },
-            { id: 'STANDARD_OFF', name: 'Standard (Opportunistic)', sub: 'Falls back to plain-text UDP if server unreachable' },
-          ].map(opt => {
-            const isSelected = dnsMode === opt.id;
-            return (
-              <button
-                key={opt.id}
-                onClick={() => setDnsMode(opt.id as any)}
-                className={`p-4 rounded-2xl border text-left flex flex-col justify-between transition-all cursor-pointer ${
-                  isSelected
-                    ? 'bg-cyan-950/40 border-cyan-500 text-white shadow-sm'
-                    : 'bg-slate-950/70 border-slate-800 text-slate-400 hover:text-slate-200'
+        <SecureDroidCard
+          isLight={isLight}
+          highlight
+          className="p-4 space-y-3"
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div
+                className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                  isLight
+                    ? 'bg-zinc-100 text-zinc-800'
+                    : 'bg-zinc-800 text-zinc-200'
                 }`}
               >
+                <ShieldAlert className="w-5 h-5 text-amber-400" />
+              </div>
+
+              <div>
+                <h3 className="font-medium text-sm">
+                  Live Installed-App Threat Assessment
+                </h3>
+
+                <p
+                  className={`text-xs mt-0.5 ${
+                    isLight
+                      ? 'text-zinc-500'
+                      : 'text-zinc-400'
+                  }`}
+                >
+                  Evidence comes from the Android installed-package
+                  scanner and is evaluated locally by the threat engine.
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={() => void runLiveThreatScan()}
+              disabled={isScanning}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-mono text-slate-200 border border-slate-700 disabled:opacity-50"
+            >
+              <RefreshCw
+                className={`w-3.5 h-3.5 ${
+                  isScanning ? 'animate-spin' : ''
+                }`}
+              />
+
+              <span>
+                {isScanning ? 'Scanning...' : 'Scan Now'}
+              </span>
+            </button>
+          </div>
+
+          {scanError && (
+            <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20">
+              <div className="flex items-start gap-2">
+                <XCircle className="w-4 h-4 text-rose-400 mt-0.5 shrink-0" />
+
                 <div>
-                  <div className="text-xs font-bold flex items-center justify-between">
-                    <span>{opt.name}</span>
-                    {isSelected && <CheckCircle2 className="w-4 h-4 text-cyan-400" />}
-                  </div>
-                  <div className="text-[11px] text-slate-400 mt-1">{opt.sub}</div>
+                  <p className="text-xs font-semibold text-rose-300">
+                    Live scan unavailable
+                  </p>
+
+                  <p className="text-[11px] text-rose-200/70 mt-1">
+                    {scanError.message}
+                  </p>
+
+                  {scanError.code && (
+                    <p className="text-[10px] font-mono text-rose-300/60 mt-1">
+                      {scanError.code}
+                    </p>
+                  )}
                 </div>
-              </button>
+              </div>
+            </div>
+          )}
+
+          {report && (
+            <div className="pt-2 border-t border-zinc-800/20 space-y-3">
+
+              <div className="grid grid-cols-2 gap-2">
+                <div
+                  className={`p-3 rounded-xl ${
+                    isLight
+                      ? 'bg-zinc-100'
+                      : 'bg-zinc-900'
+                  }`}
+                >
+                  <span className="block text-[10px] text-zinc-500 font-mono">
+                    SCANNED PACKAGES
+                  </span>
+
+                  <strong className="text-lg">
+                    {report.scannedAppsCount}
+                  </strong>
+                </div>
+
+                <div
+                  className={`p-3 rounded-xl ${
+                    isLight
+                      ? 'bg-zinc-100'
+                      : 'bg-zinc-900'
+                  }`}
+                >
+                  <span className="block text-[10px] text-zinc-500 font-mono">
+                    OVERALL RESULT
+                  </span>
+
+                  <span
+                    className={`inline-block mt-1 px-2 py-0.5 rounded text-xs font-bold ${riskClass}`}
+                  >
+                    {getRiskLabel(report.overallRiskLevel)}
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <Metric
+                  label="DEBUGGABLE"
+                  value={report.integrityIndicators.debuggableAppsFound}
+                  isLight={isLight}
+                />
+
+                <Metric
+                  label="SIDELOADED"
+                  value={report.integrityIndicators.sideloadedAppsFound}
+                  isLight={isLight}
+                />
+
+                <Metric
+                  label="BROAD PERMS"
+                  value={report.integrityIndicators.excessivePermissionAppsFound}
+                  isLight={isLight}
+                />
+
+                <Metric
+                  label="LEGACY SDK"
+                  value={report.integrityIndicators.outdatedTargetSdkAppsFound}
+                  isLight={isLight}
+                />
+              </div>
+
+              {report.findings.length > 0 ? (
+                <div className="space-y-1.5 pt-1">
+                  {report.findings.map((finding) => (
+                    <div
+                      key={finding.id}
+                      className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-xs space-y-1"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-semibold text-white flex items-center gap-1.5">
+                          <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                          {finding.title}
+                        </span>
+
+                        <span className="text-[10px] font-mono text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded">
+                          {finding.severity}
+                        </span>
+                      </div>
+
+                      <p className="text-slate-400 text-[11px]">
+                        {finding.description}
+                      </p>
+
+                      {finding.affectedPackage && (
+                        <p className="text-slate-500 text-[10px] font-mono">
+                          Package: {finding.affectedPackage}
+                        </p>
+                      )}
+
+                      <p className="text-emerald-400 text-[11px]">
+                        Recommendation: {finding.recommendation}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+
+                  <span>
+                    No findings were generated by the current ruleset.
+                  </span>
+                </div>
+              )}
+
+              <p className="text-[10px] text-zinc-500 font-mono">
+                Scan timestamp:{' '}
+                {new Date(report.timestamp).toLocaleString()}
+              </p>
+            </div>
+          )}
+        </SecureDroidCard>
+
+        {/* ============================================================
+            STATIC THREAT MODEL
+           ============================================================ */}
+
+        <SecureDroidSectionHeader
+          title="Threat Model Reference"
+          isLight={isLight}
+        />
+
+        <div
+          className={`p-3 rounded-xl border text-xs ${
+            isLight
+              ? 'bg-zinc-100 border-zinc-200 text-zinc-600'
+              : 'bg-zinc-900 border-zinc-800 text-zinc-400'
+          }`}
+        >
+          These scenarios describe SecureDroid's intended security
+          controls. Their status is architectural/reference data and
+          must not be interpreted as proof that the current device
+          possesses the required hardware or OS enforcement.
+        </div>
+
+        <div className="space-y-3">
+          {THREAT_MODEL_SCENARIOS.map((threat) => {
+            const badge = getStatusBadge(threat.status);
+
+            return (
+              <SecureDroidCard
+                key={threat.id}
+                isLight={isLight}
+                className="p-4 cursor-pointer hover:border-zinc-700 transition-colors"
+                onClick={() => setSelectedThreat(threat)}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h4 className="font-medium text-sm">
+                        {threat.title}
+                      </h4>
+
+                      <SecureDroidStatusChip
+                        status={badge.variant}
+                        label={badge.label}
+                        isLight={isLight}
+                      />
+                    </div>
+
+                    <p
+                      className={`text-xs mt-1.5 leading-relaxed ${
+                        isLight
+                          ? 'text-zinc-600'
+                          : 'text-zinc-400'
+                      }`}
+                    >
+                      {threat.scenario}
+                    </p>
+
+                    <p
+                      className={`text-xs mt-2 font-medium ${
+                        isLight
+                          ? 'text-zinc-800'
+                          : 'text-zinc-200'
+                      }`}
+                    >
+                      {threat.why}
+                    </p>
+                  </div>
+
+                  <ChevronRight className="w-4 h-4 text-zinc-500 shrink-0 mt-1" />
+                </div>
+
+                <div className="flex flex-wrap gap-1 mt-3">
+                  {threat.mitigatingControls.map((control, index) => (
+                    <span
+                      key={`${threat.id}-control-${index}`}
+                      className={`text-[10px] font-mono px-2 py-0.5 rounded ${
+                        isLight
+                          ? 'bg-zinc-100 text-zinc-700'
+                          : 'bg-zinc-900 text-zinc-300'
+                      }`}
+                    >
+                      {control}
+                    </span>
+                  ))}
+                </div>
+              </SecureDroidCard>
             );
           })}
         </div>
+      </div>
 
-        <div className="bg-slate-950 rounded-2xl p-4 border border-slate-800/80 space-y-3">
-          <label className="text-xs font-bold text-slate-300 block">
-            Configured Strict DNS Provider Hostname
-          </label>
-          <div className="flex items-center gap-3">
-            <input
-              type="text"
-              value={customDnsHost}
-              onChange={e => setCustomDnsHost(e.target.value)}
-              className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-4 py-2 text-xs font-mono text-white focus:outline-none focus:border-cyan-500"
-              placeholder="e.g. dns.quad9.net or dns.mullvad.net"
-            />
-            <span className="text-[11px] font-mono text-emerald-400 flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              TLS 1.3 Verified
-            </span>
+      {/* ==============================================================
+          DETAIL MODAL
+         ============================================================== */}
+
+      {selectedThreat && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div
+            className={`max-w-md w-full max-h-[90vh] overflow-y-auto rounded-2xl p-5 shadow-2xl border ${
+              isLight
+                ? 'bg-white border-zinc-200 text-zinc-900'
+                : 'bg-zinc-900 border-zinc-800 text-zinc-100'
+            }`}
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-800/20">
+              <h3 className="font-semibold text-sm">
+                {selectedThreat.title}
+              </h3>
+
+              <button
+                onClick={() => setSelectedThreat(null)}
+                className={`text-xs px-2.5 py-1 rounded-lg ${
+                  isLight
+                    ? 'bg-zinc-100 hover:bg-zinc-200'
+                    : 'bg-zinc-800 hover:bg-zinc-700'
+                }`}
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-3 text-xs">
+              <Detail
+                label="Adversary Attack Scenario"
+                value={selectedThreat.scenario}
+                isLight={isLight}
+              />
+
+              <Detail
+                label="Defense & Rationale"
+                value={selectedThreat.why}
+                isLight={isLight}
+              />
+
+              <Detail
+                label="Technical Evidence"
+                value={selectedThreat.evidence}
+                isLight={isLight}
+                mono
+              />
+
+              <Detail
+                label="Threat Limitation"
+                value={selectedThreat.limitation}
+                isLight={isLight}
+                mono
+                warning
+              />
+
+              <Detail
+                label="Enforcement Requirement"
+                value={selectedThreat.requirement}
+                isLight={isLight}
+                mono
+              />
+            </div>
+
+            <div className="mt-5 pt-3 border-t border-zinc-800/20 flex justify-end">
+              <SecureDroidButton
+                variant="primary"
+                onClick={() => setSelectedThreat(null)}
+                isLight={isLight}
+              >
+                Done
+              </SecureDroidButton>
+            </div>
           </div>
         </div>
-      </div>
+      )}
+    </div>
+  );
+};
+
+function Metric({
+  label,
+  value,
+  isLight,
+}: {
+  label: string;
+  value: number;
+  isLight: boolean;
+}) {
+  return (
+    <div
+      className={`p-2.5 rounded-xl ${
+        isLight ? 'bg-zinc-100' : 'bg-zinc-900'
+      }`}
+    >
+      <span className="block text-[9px] text-zinc-500 font-mono">
+        {label}
+      </span>
+
+      <span className="text-sm font-bold">
+        {value}
+      </span>
     </div>
   );
 }
+
+function Detail({
+  label,
+  value,
+  isLight,
+  mono = false,
+  warning = false,
+}: {
+  label: string;
+  value: string;
+  isLight: boolean;
+  mono?: boolean;
+  warning?: boolean;
+}) {
+  return (
+    <div>
+      <span className="font-semibold text-zinc-400 block mb-0.5">
+        {label}
+      </span>
+
+      <p
+        className={`p-2 rounded-lg ${
+          mono ? 'font-mono text-[11px]' : ''
+        } ${
+          warning
+            ? 'bg-zinc-950 text-amber-400'
+            : isLight
+              ? 'bg-zinc-100 text-zinc-800'
+              : 'bg-zinc-950 text-zinc-300'
+        }`}
+      >
+        {value}
+      </p>
+    </div>
+  );
+};
