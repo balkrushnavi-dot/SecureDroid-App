@@ -1,294 +1,474 @@
-import React, { useEffect, useState } from 'react';
-import { DeviceProfile, SecurityScoreFormula } from '../types/securedroid';
-import { DEVICE_PROFILES } from '../data/deviceProfiles';
-import { SecureDroidNative } from '../services/native/SecureDroidNative';
-import type { NativeDeviceInfo } from '../types/native';
+import React, { useCallback, useEffect, useState } from 'react';
+
 import {
   Smartphone,
-  Cpu,
-  HardDrive,
-  Shield,
   Layers,
   CheckCircle2,
   XCircle,
   AlertTriangle,
-  Info,
   RefreshCw,
+  Shield,
+  Cpu,
+  HardDrive,
+  Info,
 } from 'lucide-react';
+
+import { DeviceProfile } from '../types/securedroid';
+import { DEVICE_PROFILES } from '../data/deviceProfiles';
+
+import { SecureDroidNative } from '../services/native/SecureDroidNative';
+
+import type { NativeDeviceInfo } from '../types/native';
 
 interface DeviceProfileScreenProps {
   currentProfile: DeviceProfile;
   setProfile: (profile: DeviceProfile) => void;
-  securityScore: SecurityScoreFormula;
+  securityScore: any;
 }
 
 export function DeviceProfileScreen({
   currentProfile,
   setProfile,
-  securityScore,
 }: DeviceProfileScreenProps) {
-  const [liveInfo, setLiveInfo] = useState<NativeDeviceInfo | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [runtimePlatform, setRuntimePlatform] = useState<string>('web_preview');
+  const [liveInfo, setLiveInfo] =
+    useState<NativeDeviceInfo | null>(null);
 
-  const fetchLiveInfo = async () => {
+  const [isLoading, setIsLoading] =
+    useState(false);
+
+  const [error, setError] =
+    useState<string | null>(null);
+
+  const [runtimePlatform, setRuntimePlatform] =
+    useState<string>('unknown');
+
+  const fetchLiveInfo = useCallback(async () => {
     setIsLoading(true);
+    setError(null);
+
     try {
-      const res = await SecureDroidNative.getDeviceInfo();
-      if (res.success && res.data) {
-        setLiveInfo(res.data);
-        if (res.runtimePlatform) {
-          setRuntimePlatform(res.runtimePlatform);
-        }
+      const result =
+        await SecureDroidNative.getDeviceInfo();
+
+      if (!result.success || !result.data) {
+        setLiveInfo(null);
+
+        setRuntimePlatform(
+          result.runtimePlatform || 'unknown'
+        );
+
+        setError(
+          result.message ||
+            'Native device information is unavailable.'
+        );
+
+        return;
       }
+
+      setLiveInfo(result.data);
+
+      setRuntimePlatform(
+        result.runtimePlatform || 'unknown'
+      );
+    } catch (err: any) {
+      setLiveInfo(null);
+
+      setError(
+        err?.message ||
+          'Unable to obtain device information.'
+      );
     } finally {
       setIsLoading(false);
     }
-  };
-
-  useEffect(() => {
-    fetchLiveInfo();
   }, []);
 
+  useEffect(() => {
+    void fetchLiveInfo();
+  }, [fetchLiveInfo]);
+
+  const isNative =
+    runtimePlatform === 'android_native';
+
+  const selectedReference =
+    DEVICE_PROFILES.find(
+      (profile) => profile.id === currentProfile.id
+    );
+
   return (
-    <div id="device-profile-screen-container" className="space-y-6 pb-12">
-      {/* Top Header */}
+    <div
+      id="device-profile-screen-container"
+      className="space-y-6 pb-12"
+    >
+      {/* ============================================================
+          HEADER
+         ============================================================ */}
+
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <div className="text-xs font-mono uppercase tracking-wider text-slate-400 flex items-center gap-2">
               <Smartphone className="w-4 h-4 text-sky-400" />
+
               HARDWARE & ARCHITECTURE DIAGNOSTICS
             </div>
-            <h2 className="text-2xl font-black text-white tracking-tight">Device Profile</h2>
-            <div className="flex items-center gap-2 mt-1">
-              <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${
-                runtimePlatform === 'android_native'
-                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
-                  : 'bg-sky-500/10 border-sky-500/30 text-sky-400'
-              }`}>
-                {runtimePlatform === 'android_native' ? '● NATIVE ANDROID ENVIRONMENT' : '● WEB / SANDBOX RUNTIME'}
-              </span>
-              <span className="text-xs text-slate-400">
-                {liveInfo ? `${liveInfo.manufacturer} ${liveInfo.model}` : currentProfile.name}
-              </span>
-            </div>
-          </div>
 
-          <div className="flex items-center gap-3">
-            <button
-              onClick={fetchLiveInfo}
-              disabled={isLoading}
-              className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 text-xs font-mono rounded-xl border border-slate-700 transition"
-              title="Refresh live hardware state"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-              <span>Refresh</span>
-            </button>
+            <h2 className="text-2xl font-black text-white tracking-tight">
+              Device Profile
+            </h2>
 
-            {/* Diagnostic Target Switcher */}
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-400 font-mono hidden sm:inline">Target:</span>
-              <select
-                id="active-target-device-select"
-                value={currentProfile.id}
-                onChange={(e) => {
-                  const target = DEVICE_PROFILES.find((p) => p.id === e.target.value);
-                  if (target) setProfile(target);
-                }}
-                className="bg-slate-950 text-slate-200 border border-slate-700 text-xs font-mono rounded-xl px-3 py-2 focus:outline-none focus:border-sky-500"
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
+              <span
+                className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${
+                  isNative
+                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                    : 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+                }`}
               >
-                {DEVICE_PROFILES.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} {p.isReferenceDevice ? '(Reference)' : ''}
-                  </option>
-                ))}
-              </select>
+                {isNative
+                  ? '● NATIVE ANDROID EVIDENCE'
+                  : '● LIVE DEVICE EVIDENCE UNAVAILABLE'}
+              </span>
+
+              {liveInfo && (
+                <span className="text-xs text-slate-400">
+                  {liveInfo.manufacturer}{' '}
+                  {liveInfo.model}
+                </span>
+              )}
+            </div>
+          </div>
+
+          <button
+            onClick={() => void fetchLiveInfo()}
+            disabled={isLoading}
+            className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 text-xs font-mono rounded-xl border border-slate-700 transition disabled:opacity-50"
+          >
+            <RefreshCw
+              className={`w-3.5 h-3.5 ${
+                isLoading ? 'animate-spin' : ''
+              }`}
+            />
+
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      {/* ============================================================
+          ERROR
+         ============================================================ */}
+
+      {error && (
+        <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/20">
+          <div className="flex items-start gap-2">
+            <XCircle className="w-4 h-4 text-rose-400 mt-0.5 shrink-0" />
+
+            <div>
+              <p className="text-xs font-semibold text-rose-300">
+                Live device evidence unavailable
+              </p>
+
+              <p className="text-[11px] text-rose-200/70 mt-1">
+                {error}
+              </p>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* Current Device Hardware Breakdown */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-xs">
-        <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl space-y-1.5 shadow-sm">
-          <span className="text-slate-500 font-mono text-[10px] uppercase">DEVICE IDENTITY</span>
-          <div className="text-sm font-bold text-white">
-            {liveInfo ? `${liveInfo.brand} • ${liveInfo.model}` : `${currentProfile.manufacturer} • ${currentProfile.model}`}
+      {/* ============================================================
+          LIVE DEVICE
+         ============================================================ */}
+
+      {liveInfo ? (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-xs">
+
+            <DiagnosticCard
+              label="DEVICE IDENTITY"
+              value={`${liveInfo.brand} • ${liveInfo.model}`}
+              detail={`Manufacturer: ${liveInfo.manufacturer}`}
+              icon={<Smartphone className="w-4 h-4" />}
+            />
+
+            <DiagnosticCard
+              label="CPU ARCHITECTURE"
+              value={liveInfo.cpuArchitecture}
+              detail={
+                liveInfo.supportedAbis.length
+                  ? liveInfo.supportedAbis.join(', ')
+                  : 'ABI information unavailable'
+              }
+              icon={<Cpu className="w-4 h-4" />}
+            />
+
+            <DiagnosticCard
+              label="ANDROID"
+              value={`Android ${liveInfo.androidVersion}`}
+              detail={`API ${liveInfo.sdkVersion}`}
+              icon={<Shield className="w-4 h-4" />}
+            />
+
+            <DiagnosticCard
+              label="SECURITY PATCH"
+              value={liveInfo.securityPatch}
+              detail="Reported by native device layer"
+              icon={<Shield className="w-4 h-4" />}
+            />
+
+            <DiagnosticCard
+              label="MEMORY"
+              value={`${(
+                liveInfo.totalRamMb / 1024
+              ).toFixed(1)} GB total`}
+              detail={`${(
+                liveInfo.availableRamMb / 1024
+              ).toFixed(1)} GB available`}
+              icon={<Cpu className="w-4 h-4" />}
+            />
+
+            <DiagnosticCard
+              label="STORAGE"
+              value={`${(
+                liveInfo.totalStorageBytes /
+                1024 ** 3
+              ).toFixed(1)} GB total`}
+              detail={`${(
+                liveInfo.availableStorageBytes /
+                1024 ** 3
+              ).toFixed(1)} GB available`}
+              icon={<HardDrive className="w-4 h-4" />}
+            />
           </div>
-          <p className="text-slate-400 text-[11px] font-mono">
-            {liveInfo ? `Product: ${liveInfo.product}` : currentProfile.name}
-          </p>
-        </div>
 
-        <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl space-y-1.5 shadow-sm">
-          <span className="text-slate-500 font-mono text-[10px] uppercase">SOC & CPU ARCHITECTURE</span>
-          <div className="text-sm font-bold text-slate-200">
-            {liveInfo ? `${liveInfo.cpuArchitecture} (${liveInfo.supportedAbis.join(', ')})` : currentProfile.chipset}
+          {/* Security-sensitive capabilities */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+            <div className="flex items-center gap-2">
+              <Shield className="w-5 h-5 text-cyan-400" />
+
+              <div>
+                <h3 className="text-lg font-bold text-white">
+                  Security Evidence
+                </h3>
+
+                <p className="text-xs text-slate-400">
+                  Only values exposed by the native bridge are shown.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <EvidenceRow
+                label="Bootloader Locked"
+                value={
+                  liveInfo.bootloaderLocked === undefined
+                    ? 'NOT REPORTED'
+                    : liveInfo.bootloaderLocked
+                      ? 'YES'
+                      : 'NO'
+                }
+                supported={
+                  liveInfo.bootloaderLocked !== undefined
+                }
+              />
+
+              <EvidenceRow
+                label="KVM Virtualization"
+                value={
+                  liveInfo.kvmVirtualizationSupported === undefined
+                    ? 'NOT REPORTED'
+                    : liveInfo.kvmVirtualizationSupported
+                      ? 'SUPPORTED'
+                      : 'NOT SUPPORTED'
+                }
+                supported={
+                  liveInfo.kvmVirtualizationSupported !==
+                  undefined
+                }
+              />
+
+              <EvidenceRow
+                label="Emulator"
+                value={
+                  liveInfo.isEmulator
+                    ? 'YES'
+                    : 'NO'
+                }
+                supported
+              />
+
+              <EvidenceRow
+                label="Build Fingerprint"
+                value={
+                  liveInfo.buildFingerprint ||
+                  'NOT REPORTED'
+                }
+                supported={
+                  Boolean(liveInfo.buildFingerprint)
+                }
+              />
+            </div>
           </div>
-          <p className="text-slate-400 text-[11px] font-mono">
-            Uptime: {liveInfo ? `${Math.round(liveInfo.uptimeSeconds / 60)} min` : 'Active'}
-          </p>
-        </div>
+        </>
+      ) : (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
 
-        <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl space-y-1.5 shadow-sm">
-          <span className="text-slate-500 font-mono text-[10px] uppercase">OS & PATCH LEVEL</span>
-          <div className="text-sm font-bold text-slate-200">
-            {liveInfo ? `Android ${liveInfo.androidVersion} (API ${liveInfo.sdkVersion})` : currentProfile.androidVersion}
+            <div>
+              <h3 className="text-sm font-bold text-white">
+                No live device profile
+              </h3>
+
+              <p className="text-xs text-slate-400 mt-1">
+                Reference profiles are deliberately not displayed as
+                current-device facts.
+              </p>
+            </div>
           </div>
-          <p className="text-slate-400 text-[11px] font-mono truncate">
-            {liveInfo ? `Patch: ${liveInfo.securityPatch}` : currentProfile.kernelVersion}
-          </p>
         </div>
+      )}
 
-        <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl space-y-1.5 shadow-sm">
-          <span className="text-slate-500 font-mono text-[10px] uppercase">MEMORY (RAM)</span>
-          <div className="text-sm font-bold text-slate-200">
-            {liveInfo ? `${(liveInfo.totalRamMb / 1024).toFixed(1)} GB Total (${(liveInfo.availableRamMb / 1024).toFixed(1)} GB Free)` : `${currentProfile.totalRamGb} GB LPDDR4X / LPDDR5`}
-          </div>
-          <p className="text-slate-400 text-[11px]">Hardware-backed allocation floor</p>
-        </div>
+      {/* ============================================================
+          REFERENCE PROFILES
+         ============================================================ */}
 
-        <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl space-y-1.5 shadow-sm">
-          <span className="text-slate-500 font-mono text-[10px] uppercase">HOST STORAGE HEADROOM</span>
-          <div className="text-sm font-bold text-slate-200">
-            {liveInfo
-              ? `${(liveInfo.availableStorageBytes / (1024 ** 3)).toFixed(1)} GB Free / ${(liveInfo.totalStorageBytes / (1024 ** 3)).toFixed(1)} GB Total`
-              : `${currentProfile.availableStorageGb.toFixed(1)} GB Free / ${currentProfile.totalStorageGb} GB Total`}
-          </div>
-          <p className="text-emerald-400 text-[11px]">
-            Safety reserve: 20 GB enforced
-          </p>
-        </div>
-
-        <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl space-y-1.5 shadow-sm">
-          <span className="text-slate-500 font-mono text-[10px] uppercase">VIRTUALIZATION / HYPERVISOR</span>
-          <div className="text-sm font-bold text-slate-200">
-            {liveInfo?.kvmVirtualizationSupported ? 'Hardware /dev/kvm Ready' : 'User-Space pKVM Sandbox'}
-          </div>
-          <p className="text-slate-400 text-[11px]">
-            {liveInfo?.kvmVirtualizationSupported ? 'Kernel hardware virtualization exposed' : 'Protected sandbox mode active'}
-          </p>
-        </div>
-      </div>
-
-      {/* Side-by-Side Comparison: Current Device vs Reference Device (Pixel 8) */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <div className="text-xs font-mono uppercase tracking-wider text-indigo-400 flex items-center gap-1.5">
               <Layers className="w-4 h-4" />
-              CAPABILITY BENCHMARK
+              REFERENCE DATA
             </div>
+
             <h3 className="text-lg font-bold text-white">
-              Current Device vs Reference Device
+              Architecture Reference Profiles
             </h3>
+
+            <p className="text-xs text-slate-400 mt-1">
+              These profiles are simulations/reference material only.
+              They do not describe the current Android device.
+            </p>
           </div>
 
-          <div className="px-3 py-1 bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-xs font-mono rounded-lg">
-            Reference device capabilities NEVER alter current device scores.
+          <div className="flex items-center gap-2">
+            <Info className="w-4 h-4 text-indigo-400" />
+
+            <span className="text-[10px] text-indigo-300 font-mono">
+              NEVER USED AS LIVE EVIDENCE
+            </span>
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead>
-              <tr className="border-b border-slate-800 text-slate-400 font-mono uppercase text-[10px]">
-                <th className="py-3 px-3">Capability Vector</th>
-                <th className="py-3 px-3 bg-slate-950/40 text-slate-200">
-                  Current Target ({currentProfile.model})
-                </th>
-                <th className="py-3 px-3 text-indigo-300">
-                  Reference Device (Pixel 8 / Titan M2)
-                </th>
-                <th className="py-3 px-3">Architectural Difference</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800/60 font-mono text-slate-300">
-              {/* Row 1: Protected VM */}
-              <tr>
-                <td className="py-3 px-3 font-semibold text-white">Protected VM (pKVM)</td>
-                <td className="py-3 px-3 bg-slate-950/40">
-                  {currentProfile.protectedVmSupported ? (
-                    <span className="text-emerald-400 flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> SUPPORTED</span>
-                  ) : (
-                    <span className="text-rose-400 flex items-center gap-1"><XCircle className="w-3.5 h-3.5" /> UNAVAILABLE</span>
-                  )}
-                </td>
-                <td className="py-3 px-3 text-emerald-400 flex items-center gap-1">
-                  <CheckCircle2 className="w-3.5 h-3.5" /> SUPPORTED (EL2)
-                </td>
-                <td className="py-3 px-3 text-slate-400 font-sans text-[11px]">
-                  Pixel 8 configures ARM EL2 pKVM hypervisor at boot; stock POCO stock kernel disables it.
-                </td>
-              </tr>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {DEVICE_PROFILES.map((profile) => (
+            <button
+              key={profile.id}
+              type="button"
+              onClick={() => setProfile(profile)}
+              className={`text-left p-4 rounded-xl border transition ${
+                selectedReference?.id === profile.id
+                  ? 'bg-indigo-500/10 border-indigo-700'
+                  : 'bg-slate-950 border-slate-800 hover:border-slate-700'
+              }`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-bold text-white">
+                  {profile.name}
+                </span>
 
-              {/* Row 2: AVF Framework */}
-              <tr>
-                <td className="py-3 px-3 font-semibold text-white">AVF APEX Framework</td>
-                <td className="py-3 px-3 bg-slate-950/40">
-                  {currentProfile.avfPackagePresent ? (
-                    <span className="text-emerald-400 flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> INSTALLED</span>
-                  ) : (
-                    <span className="text-rose-400 flex items-center gap-1"><XCircle className="w-3.5 h-3.5" /> NOT INCLUDED</span>
-                  )}
-                </td>
-                <td className="py-3 px-3 text-emerald-400 flex items-center gap-1">
-                  <CheckCircle2 className="w-3.5 h-3.5" /> COM.ANDROID.VIRT
-                </td>
-                <td className="py-3 px-3 text-slate-400 font-sans text-[11px]">
-                  Google GKI builds bundle AVF by default; Xiaomi omits the virtualization APEX.
-                </td>
-              </tr>
+                <span className="text-[9px] font-mono text-indigo-300 border border-indigo-800 rounded px-1.5 py-0.5">
+                  REFERENCE
+                </span>
+              </div>
 
-              {/* Row 3: KeyMint Tier */}
-              <tr>
-                <td className="py-3 px-3 font-semibold text-white">KeyMint Hardware Tier</td>
-                <td className="py-3 px-3 bg-slate-950/40">
-                  <span className="text-sky-400">{currentProfile.keyMintSecurityLevel}</span>
-                </td>
-                <td className="py-3 px-3 text-indigo-400">
-                  HARDWARE_STRONGBOX
-                </td>
-                <td className="py-3 px-3 text-slate-400 font-sans text-[11px]">
-                  Pixel 8 uses discrete Titan M2 chip; POCO uses integrated Qualcomm Snapdragon TEE.
-                </td>
-              </tr>
+              <p className="text-[11px] text-slate-400 mt-2">
+                {profile.manufacturer} {profile.model}
+              </p>
 
-              {/* Row 4: Verified Boot */}
-              <tr>
-                <td className="py-3 px-3 font-semibold text-white">Verified Boot (AVB 2.0)</td>
-                <td className="py-3 px-3 bg-slate-950/40">
-                  <span className={currentProfile.verifiedBootState === 'GREEN' ? 'text-emerald-400' : 'text-amber-400'}>
-                    {currentProfile.verifiedBootState}
-                  </span>
-                </td>
-                <td className="py-3 px-3 text-emerald-400">
-                  GREEN
-                </td>
-                <td className="py-3 px-3 text-slate-400 font-sans text-[11px]">
-                  Both enforce cryptographic bootloader image signature verification on stock firmware.
-                </td>
-              </tr>
-
-              {/* Row 5: SELinux */}
-              <tr>
-                <td className="py-3 px-3 font-semibold text-white">SELinux Policy</td>
-                <td className="py-3 px-3 bg-slate-950/40">
-                  <span className={currentProfile.selinuxMode === 'ENFORCING' ? 'text-emerald-400' : 'text-rose-400'}>
-                    {currentProfile.selinuxMode}
-                  </span>
-                </td>
-                <td className="py-3 px-3 text-emerald-400">
-                  ENFORCING
-                </td>
-                <td className="py-3 px-3 text-slate-400 font-sans text-[11px]">
-                  Mandatory Access Control active on both devices.
-                </td>
-              </tr>
-            </tbody>
-          </table>
+              <p className="text-[10px] text-slate-500 font-mono mt-1">
+                {profile.androidVersion}
+              </p>
+            </button>
+          ))}
         </div>
+      </div>
+
+      {/* Explicit warning */}
+      <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20">
+        <div className="flex items-start gap-2">
+          <AlertTriangle className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
+
+          <p className="text-[11px] text-amber-200/80">
+            A reference profile can explain what a platform may support,
+            but it cannot prove that this device has that capability.
+            SecureDroid therefore keeps reference data separate from
+            live Android evidence.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DiagnosticCard({
+  label,
+  value,
+  detail,
+  icon,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  icon: React.ReactNode;
+}) {
+  return (
+    <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl space-y-1.5 shadow-sm">
+      <span className="text-slate-500 font-mono text-[10px] uppercase flex items-center gap-1.5">
+        {icon}
+        {label}
+      </span>
+
+      <div className="text-sm font-bold text-white break-words">
+        {value}
+      </div>
+
+      <p className="text-slate-400 text-[11px] font-mono break-words">
+        {detail}
+      </p>
+    </div>
+  );
+}
+
+function EvidenceRow({
+  label,
+  value,
+  supported,
+}: {
+  label: string;
+  value: string;
+  supported: boolean;
+}) {
+  return (
+    <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
+      <div className="text-[10px] text-slate-500 font-mono">
+        {label}
+      </div>
+
+      <div
+        className={`text-xs font-bold mt-1 flex items-center gap-1.5 ${
+          supported
+            ? 'text-emerald-400'
+            : 'text-amber-400'
+        }`}
+      >
+        {supported ? (
+          <CheckCircle2 className="w-3.5 h-3.5" />
+        ) : (
+          <AlertTriangle className="w-3.5 h-3.5" />
+        )}
+
+        {value}
       </div>
     </div>
   );
