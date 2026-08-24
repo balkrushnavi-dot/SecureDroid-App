@@ -1004,67 +1004,63 @@ class SecureDroidNativeService {
       data: {
         isActive: true,
         establishedTime: Date.now(),
-        bytesReceived: 1048576,
-        bytesTransmitted: 524288,
-        blockedDomainsCount: blocklist.length,
-        activeDns: dnsServer,
-        filterMode: 'BLOCKLIST',
-      },
-      isSupported: true,
-      runtimePlatform: 'web_preview',
-      message: 'SecureDroid Local Loopback Firewall started (Simulated Web Environment).',
-    };
-  }
+import { registerPlugin } from '@capacitor/core';
 
-  async stopVpn(): Promise<NativeResult<NativeVpnStatus>> {
-    if (this.isNative) {
-      try {
-        return await NativePlugin.stopVpn();
-      } catch (err: any) {
-        return { success: false, errorCode: 'UNKNOWN_ERROR', message: err?.message };
-      }
-    }
-
-    return {
-      success: true,
-      data: {
-        isActive: false,
-        bytesReceived: 0,
-        bytesTransmitted: 0,
-        blockedDomainsCount: 0,
-        activeDns: 'System Default',
-        filterMode: 'DISABLED',
-      },
-      isSupported: true,
-      runtimePlatform: 'web_preview',
-    };
-  }
-
-  // 30. Honest VM Capability Detection
-  async getVmHardwareCapability(): Promise<NativeResult<VmHardwareCapability>> {
-    if (this.isNative) {
-      try {
-        return await NativePlugin.getVmHardwareCapability();
-      } catch (err: any) {
-        console.warn('Native getVmHardwareCapability error:', err);
-      }
-    }
-
-    return {
-      success: true,
-      data: {
-        isSupported: false,
-        backendType: 'RESTRICTED_SANDBOX',
-        kvmNodeAccessible: false,
-        supportedGuestArchitectures: ['aarch64', 'x86_64'],
-        limitationNotice:
-          'Hardware-accelerated hypervisors (/dev/kvm or ARM pKVM) are only accessible on Android 13+ with protected virtualization enabled and kernel hypervisor driver support. Web sandbox runs in isolated process memory.',
-      },
-      isSupported: true,
-      runtimePlatform: 'web_preview',
-    };
-  }
+export interface RiskFinding {
+  id: string;
+  level: 'LOW' | 'MEDIUM' | 'HIGH';
+  summary: string;
 }
 
-export const SecureDroidNative = new SecureDroidNativeService();
-export default SecureDroidNative;
+export interface AppRiskReport {
+  packageName: string;
+  overallRisk: 'LOW' | 'MEDIUM' | 'HIGH';
+  findings: RiskFinding[];
+}
+
+export interface InstalledAppInfo {
+  packageName: string;
+  appName: string;
+  versionName: string | null;
+  versionCode: number;
+  targetSdk: number;
+  minSdk: number;
+  isSystemApp: boolean;
+  isEnabled: boolean;
+  isLaunchable: boolean;
+  isDebuggable: boolean;
+  firstInstallTime: number;
+  lastUpdateTime: number;
+  requestedPermissions: string[];
+  installerPackageName: string | null;
+}
+
+export interface SecureDroidPluginInterface {
+  scanInstalledApps(): Promise<{ apps: InstalledAppInfo[] }>;
+  analyzeInstalledApp(options: { packageName: string }): Promise<{ report: AppRiskReport | null }>;
+  analyzeAllInstalledApps(): Promise<{ reports: AppRiskReport[] }>;
+  isDeviceAdminEnabled(): Promise<{ enabled: boolean }>;
+  getVpnState(): Promise<{ state: string }>;
+}
+
+const SecureDroidNativePlugin = registerPlugin<SecureDroidPluginInterface>('SecureDroidPlugin');
+
+export const SecureDroidNative = {
+  async getInstalledApps(): Promise<{ success: boolean; data?: InstalledAppInfo[]; message?: string }> {
+    try {
+      const result = await SecureDroidNativePlugin.scanInstalledApps();
+      return { success: true, data: result.apps };
+    } catch (error: any) {
+      return { success: false, message: error?.message || 'Failed to fetch installed apps from native bridge.' };
+    }
+  },
+
+  async analyzeAllApps(): Promise<{ success: boolean; data?: AppRiskReport[]; message?: string }> {
+    try {
+      const result = await SecureDroidNativePlugin.analyzeAllInstalledApps();
+      return { success: true, data: result.reports };
+    } catch (error: any) {
+      return { success: false, message: error?.message || 'Failed to run app risk analysis.' };
+    }
+  }
+};
