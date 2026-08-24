@@ -344,3 +344,29 @@ export interface VmHardwareCapability {
   supportedGuestArchitectures: string[];
   limitationNotice: string;
 }
+
+// 31. App Risk Auditor
+export interface NativeAppRiskFinding {
+  id: string;
+  level: 'LOW' | 'MEDIUM' | 'HIGH';
+  summary: string;
+}
+
+export interface NativeAppRiskReport {
+  packageName: string;
+  label: string;
+  overallRisk: 'LOW' | 'MEDIUM' | 'HIGH';
+  findings: NativeAppRiskFinding[];
+}
+
+// 32. Device Hardening Score
+export interface NativeHardeningFinding {
+  id: string;
+  level: 'GOOD' | 'WARNING' | 'CRITICAL';
+  summary: string;
+}
+
+export interface NativeHardeningReport {
+  score: number;
+  findings: NativeHardeningFinding[];
+}
