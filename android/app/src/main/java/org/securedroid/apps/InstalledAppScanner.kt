@@ -15,6 +15,7 @@ data class InstalledAppInfo(
     val isSystemApp: Boolean,
     val isEnabled: Boolean,
     val isLaunchable: Boolean,
+    val isDebuggable: Boolean,
     val firstInstallTime: Long,
     val lastUpdateTime: Long,
     val requestedPermissions: List<String>,
@@ -73,6 +74,8 @@ class InstalledAppScanner(
                         packageManager.getLaunchIntentForPackage(
                             packageInfo.packageName
                         ) != null,
+                    isDebuggable =
+                        (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0,
                     firstInstallTime = packageInfo.firstInstallTime,
                     lastUpdateTime = packageInfo.lastUpdateTime,
                     requestedPermissions =
