@@ -6,9 +6,12 @@ import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
+import org.securedroid.admin.SecureDroidDeviceAdmin
 import org.securedroid.apps.InstalledAppScanner
+import org.securedroid.diagnostics.DeviceDiagnostics
 import org.securedroid.logging.SecurityEvent
 import org.securedroid.logging.SecurityLogManager
+import org.securedroid.space.SecureSpaceManager
 import org.securedroid.vault.VaultStorage
 import org.securedroid.vpn.SecureVpnManager
 import org.securedroid.vpn.VpnState
@@ -40,6 +43,18 @@ class SecureDroidCapacitorPlugin : Plugin() {
 
     private val appScanner by lazy {
         InstalledAppScanner(context)
+    }
+
+    private val deviceAdmin by lazy {
+        SecureDroidDeviceAdmin(context)
+    }
+
+    private val secureSpace by lazy {
+        SecureSpaceManager(context)
+    }
+
+    private val diagnostics by lazy {
+        DeviceDiagnostics(context)
     }
 
     // ---- VPN ----
@@ -273,6 +288,101 @@ class SecureDroidCapacitorPlugin : Plugin() {
 
         val result = JSObject()
         result.put("value", array)
+        call.resolve(result)
+    }
+
+    // ---- Device Admin ----
+
+    @PluginMethod
+    fun isDeviceAdminEnabled(call: PluginCall) {
+        val result = JSObject()
+        result.put("value", deviceAdmin.isEnabled())
+        call.resolve(result)
+    }
+
+    @PluginMethod
+    fun isCameraDisabled(call: PluginCall) {
+        val result = JSObject()
+        result.put("value", deviceAdmin.isCameraDisabled())
+        call.resolve(result)
+    }
+
+    @PluginMethod
+    fun setCameraDisabled(call: PluginCall) {
+
+        val disabled = call.getBoolean("disabled")
+
+        if (disabled == null) {
+            call.reject(
+                "Missing required 'disabled'",
+                "INVALID_ARGUMENT"
+            )
+            return
+        }
+
+        val success = deviceAdmin.setCameraDisabled(disabled)
+
+        if (!success) {
+            call.reject(
+                "Device Admin is not active; cannot change camera policy",
+                "PERMISSION_DENIED"
+            )
+            return
+        }
+
+        val result = JSObject()
+        result.put("value", true)
+        call.resolve(result)
+    }
+
+    // ---- Secure Space ----
+    // NOTE: this currently reflects a plain on/off preference with no
+    // isolation, encryption, or sandboxing behind it. It must not be
+    // presented to users as equivalent to a real protected profile
+    // until genuine isolation is implemented.
+
+    @PluginMethod
+    fun isSecureSpaceEnabled(call: PluginCall) {
+        val result = JSObject()
+        result.put("value", secureSpace.isEnabled())
+        call.resolve(result)
+    }
+
+    @PluginMethod
+    fun enableSecureSpace(call: PluginCall) {
+        val result = JSObject()
+        result.put("value", secureSpace.enable())
+        call.resolve(result)
+    }
+
+    @PluginMethod
+    fun disableSecureSpace(call: PluginCall) {
+        val result = JSObject()
+        result.put("value", secureSpace.disable())
+        call.resolve(result)
+    }
+
+    // ---- Diagnostics ----
+
+    @PluginMethod
+    fun runDiagnostics(call: PluginCall) {
+
+        val diagnosticsResult = diagnostics.run()
+
+        val result = JSObject()
+        result.put("androidVersion", diagnosticsResult.androidVersion)
+        result.put("sdkVersion", diagnosticsResult.sdkVersion)
+        result.put("deviceModel", diagnosticsResult.deviceModel)
+        result.put("manufacturer", diagnosticsResult.manufacturer)
+        result.put("isNetworkAvailable", diagnosticsResult.isNetworkAvailable)
+        result.put("isSystemVpnDetected", diagnosticsResult.isSystemVpnDetected)
+        result.put(
+            "secureDroidVpnState",
+            diagnosticsResult.secureDroidVpnState.name
+        )
+        result.put("isScreenLocked", diagnosticsResult.isScreenLocked)
+        result.put("isPowerSaveMode", diagnosticsResult.isPowerSaveMode)
+
         call.resolve(result)
     }
 
