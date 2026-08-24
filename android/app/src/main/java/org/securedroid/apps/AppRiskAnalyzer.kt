@@ -35,7 +35,10 @@ object AppRiskAnalyzer {
     // permissions that grant broad capability (reading messages,
     // drawing over other apps, installing packages, accessibility
     // access), not every permission an app might request.
-    private val SENSITIVE_PERMISSIONS = mapOf(
+    // Exposed (not private) so other analyzers/bridges can reuse the
+    // same definition instead of maintaining a second, possibly
+    // inconsistent list.
+    val SENSITIVE_PERMISSIONS = mapOf(
         "android.permission.READ_SMS" to "Can read text messages",
         "android.permission.RECEIVE_SMS" to "Can intercept incoming text messages",
         "android.permission.READ_CALL_LOG" to "Can read call history",
