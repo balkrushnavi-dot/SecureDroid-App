@@ -282,12 +282,20 @@ class SecureDroidCapacitorPlugin : Plugin() {
             obj.put("minSdk", app.minSdk)
             obj.put("isSystemApp", app.isSystemApp)
             obj.put("isLaunchable", app.isLaunchable)
+            obj.put("isDebuggable", app.isDebuggable)
             obj.put("firstInstallTime", app.firstInstallTime)
             obj.put("lastUpdateTime", app.lastUpdateTime)
+            obj.put("installerPackage", app.installerPackageName)
 
             val permissionsArray = JSArray()
             app.requestedPermissions.forEach { permissionsArray.put(it) }
             obj.put("requestedPermissions", permissionsArray)
+
+            val dangerousArray = JSArray()
+            app.requestedPermissions
+                .filter { it in AppRiskAnalyzer.SENSITIVE_PERMISSIONS }
+                .forEach { dangerousArray.put(it) }
+            obj.put("dangerousPermissions", dangerousArray)
 
             array.put(obj)
         }
