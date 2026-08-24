@@ -66,7 +66,7 @@ Designed for Snapdragon 778G (POCO X5 Pro 5G) & Reference ARM64 Targets.
       const url = URL.createObjectURL(content);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'SecureDroidVM-Milestone1-Project.zip';
+      a.download = 'SecureDroid-Architecture-Example-ILLUSTRATIVE.zip';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -98,12 +98,19 @@ Designed for Snapdragon 778G (POCO X5 Pro 5G) & Reference ARM64 Targets.
   return (
     <div className="space-y-4">
       {/* Top Banner with Zip Exporter */}
+      <div className="bg-amber-950/40 border border-amber-700/50 rounded-xl p-3 text-xs text-amber-200">
+        <strong>Illustrative reference only.</strong> The files below are example
+        architecture, not the current live source of this app's Android build.
+        They may not compile, may not match the app you are running, and should
+        not be treated as documentation of this app's actual security implementation.
+      </div>
+
       <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <div className="text-xs font-mono text-cyan-400 mb-1">MILESTONE 1 KOTLIN & GRADLE CODEBASE</div>
-          <h2 className="text-xl font-bold text-slate-100">Clean Architecture Source Tree</h2>
+          <div className="text-xs font-mono text-cyan-400 mb-1">ARCHITECTURE REFERENCE EXAMPLE</div>
+          <h2 className="text-xl font-bold text-slate-100">Illustrative Architecture Reference</h2>
           <p className="text-sm text-slate-400 mt-1 font-sans">
-            {MILESTONE_1_FILES.length} production files generated strictly conforming to Milestone 1 specifications.
+            {MILESTONE_1_FILES.length} example files shown for architectural reference. Not the app's live source.
           </p>
         </div>
 
@@ -113,7 +120,7 @@ Designed for Snapdragon 778G (POCO X5 Pro 5G) & Reference ARM64 Targets.
           className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs shadow-md transition-all disabled:opacity-50"
         >
           <Download className="w-4 h-4" />
-          {isExporting ? 'Packaging Project...' : 'Export Complete Android Studio Project (.zip)'}
+          {isExporting ? 'Packaging Example...' : 'Download Illustrative Example (.zip)'}
         </button>
       </div>
 
