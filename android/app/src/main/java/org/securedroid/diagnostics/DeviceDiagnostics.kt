@@ -6,6 +6,8 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.PowerManager
+import org.securedroid.vpn.VpnState
+import org.securedroid.vpn.VpnStateStore
 
 data class DeviceDiagnosticsResult(
     val androidVersion: String,
@@ -13,7 +15,8 @@ data class DeviceDiagnosticsResult(
     val deviceModel: String,
     val manufacturer: String,
     val isNetworkAvailable: Boolean,
-    val isVpnActive: Boolean,
+    val isSystemVpnDetected: Boolean,
+    val secureDroidVpnState: VpnState,
     val isScreenLocked: Boolean,
     val isPowerSaveMode: Boolean
 )
@@ -52,7 +55,7 @@ class DeviceDiagnostics(
                 NetworkCapabilities.NET_CAPABILITY_INTERNET
             ) == true
 
-        val vpnActive =
+        val vpnDetectedBySystem =
             capabilities?.hasTransport(
                 NetworkCapabilities.TRANSPORT_VPN
             ) == true
@@ -84,8 +87,11 @@ class DeviceDiagnostics(
             isNetworkAvailable =
                 networkAvailable,
 
-            isVpnActive =
-                vpnActive,
+            isSystemVpnDetected =
+                vpnDetectedBySystem,
+
+            secureDroidVpnState =
+                VpnStateStore.get(),
 
             isScreenLocked =
                 screenLocked,
