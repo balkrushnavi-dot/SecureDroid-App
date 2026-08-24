@@ -7,6 +7,7 @@ import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
 import org.securedroid.admin.SecureDroidDeviceAdmin
+import org.securedroid.apps.AppRiskAnalyzer
 import org.securedroid.apps.InstalledAppScanner
 import org.securedroid.diagnostics.DeviceDiagnostics
 import org.securedroid.logging.SecurityEvent
@@ -282,6 +283,39 @@ class SecureDroidCapacitorPlugin : Plugin() {
             val permissionsArray = JSArray()
             app.requestedPermissions.forEach { permissionsArray.put(it) }
             obj.put("requestedPermissions", permissionsArray)
+
+            array.put(obj)
+        }
+
+        val result = JSObject()
+        result.put("value", array)
+        call.resolve(result)
+    }
+
+    @PluginMethod
+    fun getAppRiskReports(call: PluginCall) {
+
+        val apps = appScanner.scan()
+
+        val array = JSArray()
+
+        apps.forEach { app ->
+            val report = AppRiskAnalyzer.analyze(app)
+
+            val obj = JSObject()
+            obj.put("packageName", report.packageName)
+            obj.put("label", app.appName)
+            obj.put("overallRisk", report.overallRisk.name)
+
+            val findingsArray = JSArray()
+            report.findings.forEach { finding ->
+                val findingObj = JSObject()
+                findingObj.put("id", finding.id)
+                findingObj.put("level", finding.level.name)
+                findingObj.put("summary", finding.summary)
+                findingsArray.put(findingObj)
+            }
+            obj.put("findings", findingsArray)
 
             array.put(obj)
         }
