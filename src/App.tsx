@@ -3,12 +3,11 @@ import { ShieldCheck, ScrollText, LayoutGrid, Settings as SettingsIcon, ChevronR
 
 import { ThreatModelCenterScreen } from './components/security/ThreatModelCenterScreen';
 import { SecurityAuditLogScreen } from './components/security/SecurityAuditLogScreen';
-import { AppSecurityAuditorScreen } from './components/security/AppSecurityAuditorScreen';
 
 import {
   SecureDroidTopBar,
   SecureDroidCard,
-  SecureDroidSectionHeader,
+  SecureDroidSectionHeader
 } from './components/ui/designSystem';
 
 type Screen = 'home' | 'threat_model' | 'app_auditor' | 'security_log' | 'settings';
