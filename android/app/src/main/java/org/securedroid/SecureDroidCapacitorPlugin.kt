@@ -268,7 +268,16 @@ class SecureDroidCapacitorPlugin : Plugin() {
     @PluginMethod
     fun getInstalledApps(call: PluginCall) {
 
-        val apps = appScanner.scan()
+        val apps = try {
+            appScanner.scan()
+        } catch (e: Exception) {
+            call.reject(
+                "App scan failed: ${e.message}",
+                "SCAN_FAILED",
+                e
+            )
+            return
+        }
 
         val array = JSArray()
 
@@ -308,7 +317,16 @@ class SecureDroidCapacitorPlugin : Plugin() {
     @PluginMethod
     fun getAppRiskReports(call: PluginCall) {
 
-        val apps = appScanner.scan()
+        val apps = try {
+            appScanner.scan()
+        } catch (e: Exception) {
+            call.reject(
+                "App scan failed: ${e.message}",
+                "SCAN_FAILED",
+                e
+            )
+            return
+        }
 
         val array = JSArray()
 
