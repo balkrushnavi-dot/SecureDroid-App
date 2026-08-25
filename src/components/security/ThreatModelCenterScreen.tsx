@@ -21,7 +21,7 @@ import {
   ThreatProtectionStatus,
 } from '../../types/securedroid';
 
-import { THREAT_MODEL_SCENARIOS } from '../../data/featurePackData';
+import { THREAT_MODEL_SCENARIOS } from '../../data/threatModelReference';
 import { SecureDroidNative } from '../../services/native/SecureDroidNative';
 import { ThreatDetectionEngine } from '../../services/security/ThreatDetectionEngine';
 
