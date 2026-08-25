@@ -1,24 +1,22 @@
 package org.securedroid
 
-import android.content.Context
 import android.content.Intent
-import com.facebook.react.bridge.Promise
-import com.facebook.react.bridge.ReactApplicationContext
-import com.facebook.react.bridge.ReactContextBaseJavaModule
-import com.facebook.react.bridge.ReactMethod
+import com.getcapacitor.JSObject
+import com.getcapacitor.Plugin
+import com.getcapacitor.PluginCall
+import com.getcapacitor.PluginMethod
+import com.getcapacitor.annotation.CapacitorPlugin
 import org.json.JSONArray
 import org.json.JSONObject
 import org.securedroid.vpn.SecureVpnService
 
-class SecureDroidModule(reactContext: ReactApplicationContext) :
-    ReactContextBaseJavaModule(reactContext) {
+@CapacitorPlugin(name = "SecureDroid")
+class SecureDroidModule : Plugin() {
 
-    private val appScanner = AppScanner(reactContext)
+    private val appScanner by lazy { AppScanner(context) }
 
-    override fun getName() = "SecureDroidModule"
-
-    @ReactMethod
-    fun getInstalledApps(promise: Promise) {
+    @PluginMethod
+    fun getInstalledApps(call: PluginCall) {
         try {
             val apps = appScanner.getInstalledApps()
             val jsonArray = JSONArray()
@@ -56,76 +54,74 @@ class SecureDroidModule(reactContext: ReactApplicationContext) :
                 jsonArray.put(appJson)
             }
 
-            val result = JSONObject().apply {
-                put("apps", jsonArray)
-                put("success", true)
-            }
-
-            promise.resolve(result.toString())
+            val result = JSObject()
+            result.put("apps", jsonArray)
+            result.put("success", true)
+            call.resolve(result)
 
         } catch (e: Exception) {
-            promise.reject("ERROR", "Failed to get installed apps: ${e.message}")
+            call.reject("Failed to get installed apps: ${e.message}")
         }
     }
 
-    @ReactMethod
-    fun startVpn(promise: Promise) {
+    @PluginMethod
+    fun startVpn(call: PluginCall) {
         try {
-            val intent = Intent(reactContext, SecureVpnService::class.java)
+            val intent = Intent(context, SecureVpnService::class.java)
             intent.action = "START"
-            reactContext.startService(intent)
+            context.startService(intent)
             
-            val result = JSONObject().apply {
-                put("success", true)
-                put("message", "VPN started successfully")
-            }
-            promise.resolve(result.toString())
+            val result = JSObject()
+            result.put("success", true)
+            result.put("message", "VPN started successfully")
+            call.resolve(result)
 
         } catch (e: Exception) {
-            promise.reject("VPN_ERROR", "Failed to start VPN: ${e.message}")
+            call.reject("Failed to start VPN: ${e.message}")
         }
     }
 
-    @ReactMethod
-    fun stopVpn(promise: Promise) {
+    @PluginMethod
+    fun stopVpn(call: PluginCall) {
         try {
-            val intent = Intent(reactContext, SecureVpnService::class.java)
+            val intent = Intent(context, SecureVpnService::class.java)
             intent.action = "STOP"
-            reactContext.stopService(intent)
+            context.stopService(intent)
 
-            val result = JSONObject().apply {
-                put("success", true)
-                put("message", "VPN stopped successfully")
-            }
-            promise.resolve(result.toString())
+            val result = JSObject()
+            result.put("success", true)
+            result.put("message", "VPN stopped successfully")
+            call.resolve(result)
 
         } catch (e: Exception) {
-            promise.reject("VPN_ERROR", "Failed to stop VPN: ${e.message}")
+            call.reject("Failed to stop VPN: ${e.message}")
         }
     }
 
-    @ReactMethod
-    fun scanForRisks(promise: Promise) {
+    @PluginMethod
+    fun scanForRisks(call: PluginCall) {
         try {
             val riskyApps = appScanner.getRiskyApps()
-            val result = JSONObject().apply {
-                put("totalRiskyApps", riskyApps.size)
-                put("riskDetails", JSONArray().apply {
-                    riskyApps.forEach { app ->
-                        put(JSONObject().apply {
-                            put("appName", app.appName)
-                            put("packageName", app.packageName)
-                            put("riskLevel", getRiskLevel(app))
-                            put("reason", getRiskReason(app))
-                        })
+            val result = JSObject()
+            result.put("totalRiskyApps", riskyApps.size)
+            
+            val riskDetails = JSONArray()
+            riskyApps.forEach { app ->
+                riskDetails.put(
+                    JSONObject().apply {
+                        put("appName", app.appName)
+                        put("packageName", app.packageName)
+                        put("riskLevel", getRiskLevel(app))
+                        put("reason", getRiskReason(app))
                     }
-                })
-                put("success", true)
+                )
             }
-            promise.resolve(result.toString())
+            result.put("riskDetails", riskDetails)
+            result.put("success", true)
+            call.resolve(result)
 
         } catch (e: Exception) {
-            promise.reject("SCAN_ERROR", "Failed to scan for risks: ${e.message}")
+            call.reject("Failed to scan for risks: ${e.message}")
         }
     }
 
