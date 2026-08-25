@@ -273,8 +273,7 @@ class SecureDroidCapacitorPlugin : Plugin() {
         } catch (e: Exception) {
             call.reject(
                 "App scan failed: ${e.message}",
-                "SCAN_FAILED",
-                e
+                "SCAN_FAILED"
             )
             return
         }
@@ -322,8 +321,7 @@ class SecureDroidCapacitorPlugin : Plugin() {
         } catch (e: Exception) {
             call.reject(
                 "App scan failed: ${e.message}",
-                "SCAN_FAILED",
-                e
+                "SCAN_FAILED"
             )
             return
         }
