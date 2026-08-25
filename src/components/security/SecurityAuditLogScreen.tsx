@@ -21,7 +21,6 @@ import {
   SecureDroidButton
 } from '../ui/designSystem';
 import { SecurityAuditEvent, SecurityEventSeverity } from '../../types/securedroid';
-import { SAMPLE_SECURITY_AUDIT_EVENTS } from '../../data/featurePackData';
 import { SecureDroidNative } from '../../services/native/SecureDroidNative';
 
 interface SecurityAuditLogScreenProps {
@@ -33,16 +32,17 @@ export const SecurityAuditLogScreen: React.FC<SecurityAuditLogScreenProps> = ({
   onBack,
   isLight = false,
 }) => {
-  const [events, setEvents] = useState<SecurityAuditEvent[]>(SAMPLE_SECURITY_AUDIT_EVENTS);
+  const [events, setEvents] = useState<SecurityAuditEvent[]>([]);
   const [activeCategory, setActiveCategory] = useState<string>('All');
   const [timeRange, setTimeRange] = useState<'Today' | '7 Days' | '30 Days'>('Today');
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const fetchLiveLogs = async () => {
     setIsRefreshing(true);
     try {
       const res = await SecureDroidNative.getSecurityLogs(50);
-      if (res.success && res.data && res.data.length > 0) {
+      if (res.success && res.data) {
         const mapped: SecurityAuditEvent[] = res.data.map((l: any, i: number) => ({
           id: l.id || `live_log_${i}`,
           timestamp: new Date(l.timestamp || Date.now()).toLocaleTimeString(),
@@ -54,7 +54,13 @@ export const SecurityAuditLogScreen: React.FC<SecurityAuditLogScreenProps> = ({
           evidence: `Source: ${l.source || 'Android Kernel / Service'}`,
           source: 'REAL EVENT',
         }));
-        setEvents([...mapped, ...SAMPLE_SECURITY_AUDIT_EVENTS]);
+        setEvents(mapped);
+        setLoadError(null);
+      } else {
+        // A failed or empty native call must be reported honestly,
+        // not silently backfilled with fabricated sample events.
+        setEvents([]);
+        setLoadError(res.message || 'Security logs are unavailable on this device.');
       }
     } finally {
       setIsRefreshing(false);
@@ -151,6 +157,18 @@ export const SecurityAuditLogScreen: React.FC<SecurityAuditLogScreenProps> = ({
         </div>
 
         {/* Event List */}
+        {loadError && filteredEvents.length === 0 && (
+          <SecureDroidCard isLight={isLight} className="p-4 mb-3 text-sm text-amber-400">
+            {loadError}
+          </SecureDroidCard>
+        )}
+
+        {!loadError && !isRefreshing && filteredEvents.length === 0 && (
+          <SecureDroidCard isLight={isLight} className="p-6 text-center text-sm text-slate-400">
+            No security events recorded yet.
+          </SecureDroidCard>
+        )}
+
         <div className="space-y-3">
           {filteredEvents.map((evt) => {
             const badge = getSeverityBadge(evt.severity);
