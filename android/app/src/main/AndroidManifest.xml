@@ -20,6 +20,16 @@
          VPN status. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Required on Android 11+ (API 30+) for the App Security
+         Auditor / Threat Model Center to see the full installed-app
+         list via PackageManager.getInstalledPackages(). Without this,
+         the OS returns a heavily filtered, near-empty package list
+         and the native bridge appears to have "no data" even though
+         it is functioning correctly. This is a genuine security-tool
+         use case (Google Play allows QUERY_ALL_PACKAGES for apps
+         whose core function is reviewing installed apps). -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+
     <application
         android:name=".SecureDroidApplication"
         android:allowBackup="false"
