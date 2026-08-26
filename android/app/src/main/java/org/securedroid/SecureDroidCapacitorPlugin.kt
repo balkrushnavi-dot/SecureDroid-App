@@ -1,8 +1,7 @@
 // android/app/src/main/java/org/securedroid/SecureDroidCapacitorPlugin.kt
 package org.securedroid
 
-import android.content.pm.ApplicationInfo
-import android.content.pm.PackageManager
+import android.util.Log
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
@@ -11,20 +10,26 @@ import com.getcapacitor.annotation.CapacitorPlugin
 import org.json.JSONArray
 import org.json.JSONObject
 
-// ✅ This annotation MUST be present
 @CapacitorPlugin(name = "SecureDroid")
 class SecureDroidCapacitorPlugin : Plugin() {
 
+    init {
+        Log.d("SecureDroid", "✅ Plugin class loaded!")
+    }
+
     @PluginMethod
     fun checkConnection(call: PluginCall) {
+        Log.d("SecureDroid", "📡 checkConnection called!")
         val result = JSObject()
         result.put("connected", true)
-        result.put("message", "SecureDroid plugin is working on Android!")
+        result.put("message", "✅ SecureDroid is working!")
+        result.put("timestamp", System.currentTimeMillis())
         call.resolve(result)
     }
 
     @PluginMethod
     fun getInstalledApps(call: PluginCall) {
+        Log.d("SecureDroid", "📱 getInstalledApps called!")
         try {
             val context = bridge?.context ?: run {
                 call.reject("Context is null")
@@ -32,28 +37,18 @@ class SecureDroidCapacitorPlugin : Plugin() {
             }
 
             val pm = context.packageManager
-            val packages = pm.getInstalledPackages(
-                PackageManager.GET_PERMISSIONS or 
-                PackageManager.GET_META_DATA
-            )
+            val packages = pm.getInstalledPackages(android.content.pm.PackageManager.GET_PERMISSIONS)
             val apps = JSONArray()
 
             packages.forEach { pkg ->
                 val appInfo = pkg.applicationInfo
                 appInfo?.let { info ->
-                    val isSystem = (info.flags and ApplicationInfo.FLAG_SYSTEM) != 0
-                    val installer = pm.getInstallerPackageName(pkg.packageName)
-                    
                     val appJson = JSONObject().apply {
                         put("packageName", pkg.packageName)
                         put("appName", info.loadLabel(pm).toString())
                         put("versionName", pkg.versionName ?: "Unknown")
                         put("versionCode", pkg.versionCode)
-                        put("isSystemApp", isSystem)
-                        put("installTime", pkg.firstInstallTime)
-                        put("updateTime", pkg.lastUpdateTime)
-                        put("installSource", installer ?: "Unknown")
-                        put("isSideloaded", !isSystem && installer != "com.android.vending")
+                        put("isSystemApp", (info.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0)
                         
                         val permissions = JSONArray()
                         pkg.requestedPermissions?.forEach { perm ->
@@ -70,14 +65,17 @@ class SecureDroidCapacitorPlugin : Plugin() {
             result.put("count", apps.length())
             result.put("success", true)
             call.resolve(result)
+            Log.d("SecureDroid", "✅ getInstalledApps returned ${apps.length()} apps")
 
         } catch (e: Exception) {
+            Log.e("SecureDroid", "❌ getInstalledApps error", e)
             call.reject("Error: ${e.message}")
         }
     }
 
     @PluginMethod
     fun scanForRisks(call: PluginCall) {
+        Log.d("SecureDroid", "🔍 scanForRisks called!")
         try {
             val context = bridge?.context ?: run {
                 call.reject("Context is null")
@@ -85,42 +83,22 @@ class SecureDroidCapacitorPlugin : Plugin() {
             }
 
             val pm = context.packageManager
-            val packages = pm.getInstalledPackages(
-                PackageManager.GET_PERMISSIONS or 
-                PackageManager.GET_META_DATA
-            )
+            val packages = pm.getInstalledPackages(android.content.pm.PackageManager.GET_PERMISSIONS)
             val riskDetails = JSONArray()
 
             packages.forEach { pkg ->
                 val appInfo = pkg.applicationInfo
                 appInfo?.let { info ->
-                    val isSystem = (info.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+                    val isSystem = (info.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
                     val installer = pm.getInstallerPackageName(pkg.packageName)
                     val isSideloaded = !isSystem && installer != "com.android.vending"
-                    
-                    val dangerousPerms = mutableListOf<String>()
-                    pkg.requestedPermissions?.forEach { perm ->
-                        if (perm.contains("LOCATION") || 
-                            perm.contains("CAMERA") || 
-                            perm.contains("RECORD_AUDIO") ||
-                            perm.contains("CONTACTS") ||
-                            perm.contains("SMS")) {
-                            dangerousPerms.add(perm)
-                        }
-                    }
 
-                    if (isSideloaded || dangerousPerms.size > 2) {
-                        val reasons = mutableListOf<String>()
-                        if (isSideloaded) reasons.add("Sideloaded app")
-                        if (dangerousPerms.size > 2) {
-                            reasons.add("${dangerousPerms.size} dangerous permissions")
-                        }
-                        
+                    if (isSideloaded) {
                         val riskJson = JSONObject().apply {
                             put("appName", info.loadLabel(pm).toString())
                             put("packageName", pkg.packageName)
-                            put("riskLevel", if (isSideloaded) "HIGH" else "MEDIUM")
-                            put("reason", reasons.joinToString(", "))
+                            put("riskLevel", "HIGH")
+                            put("reason", "Sideloaded app")
                             put("installSource", installer ?: "Unknown")
                         }
                         riskDetails.put(riskJson)
@@ -133,24 +111,26 @@ class SecureDroidCapacitorPlugin : Plugin() {
             result.put("totalRiskyApps", riskDetails.length())
             result.put("success", true)
             call.resolve(result)
+            Log.d("SecureDroid", "✅ scanForRisks returned ${riskDetails.length()} risks")
 
         } catch (e: Exception) {
+            Log.e("SecureDroid", "❌ scanForRisks error", e)
             call.reject("Error: ${e.message}")
         }
     }
 
     @PluginMethod
     fun getAppRiskReports(call: PluginCall) {
-        // Forward to scanForRisks for now
+        Log.d("SecureDroid", "📊 getAppRiskReports called!")
         scanForRisks(call)
     }
 
     @PluginMethod
     fun getHardeningReport(call: PluginCall) {
+        Log.d("SecureDroid", "🔒 getHardeningReport called!")
         val result = JSObject()
         result.put("screenLock", false)
         result.put("encryption", false)
-        result.put("securityPatch", "2026-08-01")
         result.put("usbDebugging", false)
         result.put("developerOptions", false)
         result.put("unknownSources", false)
@@ -161,6 +141,7 @@ class SecureDroidCapacitorPlugin : Plugin() {
 
     @PluginMethod
     fun startVpn(call: PluginCall) {
+        Log.d("SecureDroid", "🔐 startVpn called!")
         val result = JSObject()
         result.put("success", true)
         result.put("message", "VPN started")
@@ -169,19 +150,10 @@ class SecureDroidCapacitorPlugin : Plugin() {
 
     @PluginMethod
     fun stopVpn(call: PluginCall) {
+        Log.d("SecureDroid", "🔐 stopVpn called!")
         val result = JSObject()
         result.put("success", true)
         result.put("message", "VPN stopped")
-        call.resolve(result)
-    }
-
-    @PluginMethod
-    fun getVpnStatus(call: PluginCall) {
-        val result = JSObject()
-        result.put("isActive", false)
-        result.put("establishedTime", 0)
-        result.put("bytesIn", 0)
-        result.put("bytesOut", 0)
         call.resolve(result)
     }
 }
