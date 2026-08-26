@@ -1,7 +1,7 @@
 // src/capacitor/secureDroid.ts
 import { Capacitor } from '@capacitor/core';
 
-// This MUST match the @CapacitorPlugin(name = "SecureDroid")
+// Make sure the plugin name matches exactly
 const SecureDroid = Capacitor.Plugins.SecureDroid;
 
 export interface AppInfo {
@@ -28,12 +28,12 @@ export interface RiskInfo {
 export const secureDroid = {
     checkConnection: async () => {
         try {
-            console.log('🔌 Checking plugin connection...');
+            console.log('🔌 Checking connection...');
             const result = await SecureDroid.checkConnection();
-            console.log('✅ Plugin connected:', result);
+            console.log('✅ Connection result:', result);
             return result as { connected: boolean; message: string };
         } catch (error) {
-            console.error('❌ Plugin NOT connected:', error);
+            console.error('❌ Connection failed:', error);
             return { connected: false, message: 'Plugin not available' };
         }
     },
@@ -42,9 +42,8 @@ export const secureDroid = {
         try {
             console.log('📱 Getting installed apps...');
             const result = await SecureDroid.getInstalledApps();
-            const apps = (result as any).apps || [];
-            console.log(`✅ Found ${apps.length} apps`);
-            return apps;
+            console.log('✅ Apps result:', result);
+            return (result as any).apps || [];
         } catch (error) {
             console.error('❌ Failed to get apps:', error);
             return [];
@@ -55,34 +54,23 @@ export const secureDroid = {
         try {
             console.log('🔍 Scanning for risks...');
             const result = await SecureDroid.scanForRisks();
-            const risks = (result as any).riskDetails || [];
-            console.log(`✅ Found ${risks.length} risky apps`);
-            return risks;
+            console.log('✅ Risk result:', result);
+            return (result as any).riskDetails || [];
         } catch (error) {
             console.error('❌ Failed to scan:', error);
             return [];
         }
     },
 
-    startVpn: async (): Promise<boolean> => {
+    getAppRiskReports: async (): Promise<any> => {
         try {
-            await SecureDroid.startVpn();
-            console.log('✅ VPN started');
-            return true;
+            console.log('📊 Getting risk reports...');
+            const result = await SecureDroid.getAppRiskReports();
+            console.log('✅ Reports result:', result);
+            return result;
         } catch (error) {
-            console.error('❌ Failed to start VPN:', error);
-            return false;
-        }
-    },
-
-    stopVpn: async (): Promise<boolean> => {
-        try {
-            await SecureDroid.stopVpn();
-            console.log('✅ VPN stopped');
-            return true;
-        } catch (error) {
-            console.error('❌ Failed to stop VPN:', error);
-            return false;
+            console.error('❌ Failed to get reports:', error);
+            return { success: false, message: 'Failed to get reports' };
         }
     },
 
@@ -93,6 +81,26 @@ export const secureDroid = {
         } catch (error) {
             console.error('❌ Failed to get hardening report:', error);
             return {};
+        }
+    },
+
+    startVpn: async (): Promise<boolean> => {
+        try {
+            await SecureDroid.startVpn();
+            return true;
+        } catch (error) {
+            console.error('❌ Failed to start VPN:', error);
+            return false;
+        }
+    },
+
+    stopVpn: async (): Promise<boolean> => {
+        try {
+            await SecureDroid.stopVpn();
+            return true;
+        } catch (error) {
+            console.error('❌ Failed to stop VPN:', error);
+            return false;
         }
     }
 };
