@@ -3,15 +3,13 @@ package org.securedroid
 import android.app.Activity
 import android.net.VpnService
 import android.util.Log
-import androidx.activity.result.ActivityResult
-
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.ActivityCallback
 import com.getcapacitor.annotation.CapacitorPlugin
-
+import com.getcapacitor.ActivityResult
 import org.json.JSONArray
 import org.securedroid.apps.AppSecurityAnalyzer
 import org.securedroid.apps.InstalledAppScanner
@@ -37,7 +35,7 @@ class SecureDroidCapacitorPlugin : Plugin() {
         hardeningAnalyzer = HardeningAnalyzer(context)
         vpnManager = SecureVpnManager(context)
 
-        Log.d("SecureDroid", "SecureDroid plugin loaded")
+        Log.d("SecureDroid", "SecureDroid native plugin loaded")
     }
 
     // =========================================================
@@ -50,26 +48,17 @@ class SecureDroidCapacitorPlugin : Plugin() {
             val result = JSObject()
 
             result.put("connected", true)
-            result.put(
-                "message",
-                "SecureDroid native security bridge available"
-            )
-            result.put(
-                "timestamp",
-                System.currentTimeMillis()
-            )
+            result.put("plugin", "SecureDroid")
+            result.put("platform", "android")
+            result.put("message", "SecureDroid native security bridge available")
+            result.put("timestamp", System.currentTimeMillis())
 
             call.resolve(result)
 
         } catch (e: Exception) {
-            Log.e(
-                "SecureDroid",
-                "checkConnection failed",
-                e
-            )
-
+            Log.e("SecureDroid", "checkConnection failed", e)
             call.reject(
-                "Native security bridge unavailable",
+                "Native security bridge unavailable: ${e.message}",
                 e
             )
         }
@@ -95,22 +84,11 @@ class SecureDroidCapacitorPlugin : Plugin() {
 
                 val installer = app.installerPackageName
 
-                /*
-                 * A null installer does NOT prove sideloading.
-                 *
-                 * It only means that the installer could not be
-                 * positively identified.
-                 */
-                val installSource =
-                    installer ?: "UNKNOWN"
+                val installSource = installer ?: "UNKNOWN"
 
                 val isKnownPlayInstall =
                     installer == "com.android.vending"
 
-                /*
-                 * Only identify an app as sideloaded when we have
-                 * positive installer evidence.
-                 */
                 val isSideloaded =
                     !app.isSystemApp &&
                     installer != null &&
@@ -184,13 +162,13 @@ class SecureDroidCapacitorPlugin : Plugin() {
                 )
 
                 json.put(
-                    "isSideloaded",
-                    isSideloaded
+                    "installerKnown",
+                    installer != null
                 )
 
                 json.put(
-                    "installerKnown",
-                    installer != null
+                    "isSideloaded",
+                    isSideloaded
                 )
 
                 json.put(
@@ -256,11 +234,6 @@ class SecureDroidCapacitorPlugin : Plugin() {
                 val assessment =
                     appAnalyzer.analyze(app)
 
-                /*
-                 * Only return applications with actual findings.
-                 *
-                 * No fake risk entries.
-                 */
                 if (assessment.findings.isEmpty()) {
                     return@forEach
                 }
@@ -422,6 +395,11 @@ class SecureDroidCapacitorPlugin : Plugin() {
             val vpnState =
                 vpnManager.getState()
 
+            val findingIds =
+                report.findings
+                    .map { it.id }
+                    .toSet()
+
             val result = JSObject()
 
             result.put(
@@ -429,9 +407,6 @@ class SecureDroidCapacitorPlugin : Plugin() {
                 true
             )
 
-            /*
-             * Score is produced by the existing HardeningAnalyzer.
-             */
             result.put(
                 "score",
                 report.score
@@ -442,10 +417,6 @@ class SecureDroidCapacitorPlugin : Plugin() {
                 findings
             )
 
-            /*
-             * VPN state is directly obtained from the actual
-             * SecureVpnManager.
-             */
             result.put(
                 "vpnStatus",
                 vpnState == VpnState.CONNECTED
@@ -455,11 +426,6 @@ class SecureDroidCapacitorPlugin : Plugin() {
                 "vpnState",
                 vpnState.name
             )
-
-            val findingIds =
-                report.findings
-                    .map { it.id }
-                    .toSet()
 
             // -------------------------------------------------
             // SCREEN LOCK
@@ -494,17 +460,6 @@ class SecureDroidCapacitorPlugin : Plugin() {
                 "USB_DEBUGGING_ENABLED" in findingIds
             )
 
-            result.put(
-                "usbDebuggingStatus",
-                when {
-                    "USB_DEBUGGING_ENABLED" in findingIds ->
-                        "WARNING"
-
-                    else ->
-                        "PASS"
-                }
-            )
-
             // -------------------------------------------------
             // DEVELOPER OPTIONS
             // -------------------------------------------------
@@ -512,17 +467,6 @@ class SecureDroidCapacitorPlugin : Plugin() {
             result.put(
                 "developerOptions",
                 "DEVELOPER_OPTIONS_ENABLED" in findingIds
-            )
-
-            result.put(
-                "developerOptionsStatus",
-                when {
-                    "DEVELOPER_OPTIONS_ENABLED" in findingIds ->
-                        "WARNING"
-
-                    else ->
-                        "PASS"
-                }
             )
 
             // -------------------------------------------------
@@ -547,12 +491,6 @@ class SecureDroidCapacitorPlugin : Plugin() {
             // UNKNOWN SOURCES
             // -------------------------------------------------
 
-            /*
-             * Android does not expose a universal global
-             * "unknown sources" switch on modern Android.
-             *
-             * Therefore UNKNOWN is the safe default.
-             */
             result.put(
                 "unknownSources",
                 "UNKNOWN_SOURCES_ENABLED" in findingIds
@@ -642,9 +580,7 @@ class SecureDroidCapacitorPlugin : Plugin() {
             }
 
             /*
-             * Android system VPN consent dialog.
-             *
-             * The actual result is handled by vpnPermissionResult().
+             * Android must display the VPN consent screen.
              */
             startActivityForResult(
                 call,
@@ -673,14 +609,6 @@ class SecureDroidCapacitorPlugin : Plugin() {
         result: ActivityResult
     ) {
         try {
-
-            if (call == null) {
-                Log.w(
-                    "SecureDroid",
-                    "VPN permission callback received without PluginCall"
-                )
-                return
-            }
 
             val granted =
                 result.resultCode == Activity.RESULT_OK
@@ -718,11 +646,6 @@ class SecureDroidCapacitorPlugin : Plugin() {
 
             call.resolve(response)
 
-            Log.d(
-                "SecureDroid",
-                "VPN permission result: granted=$granted"
-            )
-
         } catch (e: Exception) {
 
             Log.e(
@@ -733,6 +656,107 @@ class SecureDroidCapacitorPlugin : Plugin() {
 
             call.reject(
                 "Unable to process VPN permission result: ${e.message}",
+                e
+            )
+        }
+    }
+
+    // =========================================================
+    // VPN START
+    // =========================================================
+
+    @PluginMethod
+    fun startVpn(call: PluginCall) {
+        try {
+
+            val context = bridge.context
+
+            val prepareIntent =
+                VpnService.prepare(context)
+
+            /*
+             * Permission has not been granted.
+             */
+            if (prepareIntent != null) {
+
+                val result = JSObject()
+
+                result.put(
+                    "success",
+                    false
+                )
+
+                result.put(
+                    "permissionRequired",
+                    true
+                )
+
+                result.put(
+                    "state",
+                    vpnManager.getState().name
+                )
+
+                result.put(
+                    "message",
+                    "VPN permission is required"
+                )
+
+                call.resolve(result)
+                return
+            }
+
+            /*
+             * Permission exists.
+             */
+            val started =
+                vpnManager.start()
+
+            val state =
+                vpnManager.getState()
+
+            val result = JSObject()
+
+            result.put(
+                "success",
+                started
+            )
+
+            result.put(
+                "permissionRequired",
+                false
+            )
+
+            result.put(
+                "state",
+                state.name
+            )
+
+            result.put(
+                "isConnected",
+                state == VpnState.CONNECTED
+            )
+
+            result.put(
+                "message",
+                if (started) {
+                    "VPN start requested; waiting for connection"
+                } else {
+                    "VPN could not be started"
+                }
+            )
+
+            call.resolve(result)
+
+        } catch (e: Exception) {
+
+            Log.e(
+                "SecureDroid",
+                "startVpn failed",
+                e
+            )
+
+            call.reject(
+                "Unable to start VPN: ${e.message}",
                 e
             )
         }
@@ -761,10 +785,6 @@ class SecureDroidCapacitorPlugin : Plugin() {
                 state.name
             )
 
-            /*
-             * CONNECTED is the only state that means actual
-             * VPN protection is active.
-             */
             result.put(
                 "isConnected",
                 state == VpnState.CONNECTED
@@ -772,11 +792,6 @@ class SecureDroidCapacitorPlugin : Plugin() {
 
             result.put(
                 "isActive",
-                state == VpnState.CONNECTED
-            )
-
-            result.put(
-                "protected",
                 state == VpnState.CONNECTED
             )
 
@@ -819,125 +834,6 @@ class SecureDroidCapacitorPlugin : Plugin() {
     }
 
     // =========================================================
-    // VPN START
-    // =========================================================
-
-    @PluginMethod
-    fun startVpn(call: PluginCall) {
-        try {
-
-            val context = bridge.context
-
-            /*
-             * Android requires user consent before the application
-             * can establish its VPN interface.
-             */
-            val prepareIntent =
-                VpnService.prepare(context)
-
-            if (prepareIntent != null) {
-
-                val result = JSObject()
-
-                result.put(
-                    "success",
-                    false
-                )
-
-                result.put(
-                    "permissionRequired",
-                    true
-                )
-
-                result.put(
-                    "state",
-                    vpnManager.getState().name
-                )
-
-                result.put(
-                    "message",
-                    "VPN permission is required"
-                )
-
-                call.resolve(result)
-                return
-            }
-
-            /*
-             * Permission exists.
-             *
-             * SecureVpnManager.start() is responsible for requesting
-             * the actual VPN connection.
-             */
-            val started =
-                vpnManager.start()
-
-            val state =
-                vpnManager.getState()
-
-            val result = JSObject()
-
-            result.put(
-                "success",
-                started
-            )
-
-            result.put(
-                "permissionRequired",
-                false
-            )
-
-            result.put(
-                "state",
-                state.name
-            )
-
-            /*
-             * Do NOT call the VPN protected until the actual state
-             * becomes CONNECTED.
-             */
-            result.put(
-                "protected",
-                state == VpnState.CONNECTED
-            )
-
-            result.put(
-                "message",
-                when {
-                    state == VpnState.CONNECTED ->
-                        "VPN protection is active"
-
-                    started ->
-                        "VPN start requested; waiting for connection"
-
-                    else ->
-                        "VPN could not be started"
-                }
-            )
-
-            call.resolve(result)
-
-            Log.d(
-                "SecureDroid",
-                "VPN start requested: started=$started state=${state.name}"
-            )
-
-        } catch (e: Exception) {
-
-            Log.e(
-                "SecureDroid",
-                "startVpn failed",
-                e
-            )
-
-            call.reject(
-                "Unable to start VPN: ${e.message}",
-                e
-            )
-        }
-    }
-
-    // =========================================================
     // VPN STOP
     // =========================================================
 
@@ -963,25 +859,16 @@ class SecureDroidCapacitorPlugin : Plugin() {
             )
 
             result.put(
-                "protected",
+                "isConnected",
                 state == VpnState.CONNECTED
             )
 
             result.put(
                 "message",
-                if (state == VpnState.CONNECTED) {
-                    "VPN stop requested; protection may still be shutting down"
-                } else {
-                    "VPN protection stopped"
-                }
+                "VPN stop requested"
             )
 
             call.resolve(result)
-
-            Log.d(
-                "SecureDroid",
-                "VPN stop requested: state=${state.name}"
-            )
 
         } catch (e: Exception) {
 
