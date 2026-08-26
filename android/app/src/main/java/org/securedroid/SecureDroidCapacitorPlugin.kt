@@ -13,6 +13,10 @@ import org.securedroid.apps.InstalledAppScanner
 import org.securedroid.diagnostics.HardeningAnalyzer
 import org.securedroid.vpn.SecureVpnManager
 import org.securedroid.vpn.VpnState
+import android.content.Intent
+import android.net.VpnService
+import com.getcapacitor.ActivityResult
+import com.getcapacitor.annotation.ActivityCallback
 
 @CapacitorPlugin(name = "SecureDroid")
 class SecureDroidCapacitorPlugin : Plugin() {
@@ -39,6 +43,142 @@ class SecureDroidCapacitorPlugin : Plugin() {
     // CONNECTION
     // ---------------------------------------------------------
 
+    
+    
+    @PluginMethod
+fun startVpn(call: PluginCall) {
+    try {
+        val context = bridge.context
+
+        val prepareIntent = VpnService.prepare(context)
+
+        if (prepareIntent != null) {
+            val result = JSObject()
+
+            result.put("success", false)
+            result.put("permissionRequired", true)
+            result.put("state", vpnManager.getState().name)
+            result.put(
+                "message",
+                "VPN permission is required"
+            )
+
+            call.resolve(result)
+            return
+        }
+
+        val started = vpnManager.start()
+
+        val result = JSObject()
+
+        result.put("success", started)
+        result.put("permissionRequired", false)
+        result.put(
+            "state",
+            vpnManager.getState().name
+        )
+
+        result.put(
+            "message",
+            if (started) {
+                "VPN connection requested"
+            } else {
+                "VPN could not be started"
+            }
+        )
+
+        call.resolve(result)
+
+    } catch (e: Exception) {
+        Log.e(
+            "SecureDroid",
+            "startVpn failed",
+            e
+        )
+
+        call.reject(
+            "Unable to start VPN: ${e.message}",
+            e
+        )
+    }
+}
+    @PluginMethod
+fun requestVpnPermission(call: PluginCall) {
+    try {
+        val context = bridge.context
+
+        val prepareIntent = VpnService.prepare(context)
+
+        // VPN permission has already been granted.
+        if (prepareIntent == null) {
+            val result = JSObject()
+
+            result.put("success", true)
+            result.put("granted", true)
+            result.put("state", vpnManager.getState().name)
+
+            call.resolve(result)
+            return
+        }
+
+        // Ask Android to display the system VPN consent dialog.
+        startActivityForResult(
+            call,
+            prepareIntent,
+            "vpnPermissionResult"
+        )
+
+    } catch (e: Exception) {
+        Log.e("SecureDroid", "VPN permission request failed", e)
+        call.reject(
+            "Unable to request VPN permission: ${e.message}",
+            e
+        )
+    }
+}
+
+@ActivityCallback
+private fun vpnPermissionResult(
+    call: PluginCall,
+    result: ActivityResult
+) {
+    try {
+        val granted = result.resultCode == android.app.Activity.RESULT_OK
+
+        val response = JSObject()
+
+        response.put("success", true)
+        response.put("granted", granted)
+
+        response.put(
+            "state",
+            vpnManager.getState().name
+        )
+
+        response.put(
+            "message",
+            if (granted) {
+                "VPN permission granted"
+            } else {
+                "VPN permission denied"
+            }
+        )
+
+        call.resolve(response)
+
+    } catch (e: Exception) {
+        Log.e(
+            "SecureDroid",
+            "VPN permission callback failed",
+            e
+        )
+
+        call.reject(
+            "Unable to process VPN permission result: ${e.message}",
+            e
+        )
+    }
+}
     @PluginMethod
     fun checkConnection(call: PluginCall) {
         try {
