@@ -1,21 +1,23 @@
 package org.securedroid
 
+import android.app.Activity
+import android.net.VpnService
 import android.util.Log
+
+import com.getcapacitor.ActivityResult
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
+import com.getcapacitor.annotation.ActivityCallback
 import com.getcapacitor.annotation.CapacitorPlugin
+
 import org.json.JSONArray
 import org.securedroid.apps.AppSecurityAnalyzer
 import org.securedroid.apps.InstalledAppScanner
 import org.securedroid.diagnostics.HardeningAnalyzer
 import org.securedroid.vpn.SecureVpnManager
 import org.securedroid.vpn.VpnState
-import android.content.Intent
-import android.net.VpnService
-import com.getcapacitor.ActivityResult
-import com.getcapacitor.annotation.ActivityCallback
 
 @CapacitorPlugin(name = "SecureDroid")
 class SecureDroidCapacitorPlugin : Plugin() {
@@ -35,173 +37,61 @@ class SecureDroidCapacitorPlugin : Plugin() {
         hardeningAnalyzer = HardeningAnalyzer(context)
         vpnManager = SecureVpnManager(context)
 
-        Log.d("SecureDroid", "SecureDroid plugin loaded")
+        Log.d(
+            "SecureDroid",
+            "SecureDroid plugin loaded"
+        )
     }
 
-    // ---------------------------------------------------------
+    // =========================================================
     // CONNECTION
-    // ---------------------------------------------------------
+    // =========================================================
 
-    
-    
-    @PluginMethod
-fun startVpn(call: PluginCall) {
-    try {
-        val context = bridge.context
-
-        val prepareIntent = VpnService.prepare(context)
-
-        if (prepareIntent != null) {
-            val result = JSObject()
-
-            result.put("success", false)
-            result.put("permissionRequired", true)
-            result.put("state", vpnManager.getState().name)
-            result.put(
-                "message",
-                "VPN permission is required"
-            )
-
-            call.resolve(result)
-            return
-        }
-
-        val started = vpnManager.start()
-
-        val result = JSObject()
-
-        result.put("success", started)
-        result.put("permissionRequired", false)
-        result.put(
-            "state",
-            vpnManager.getState().name
-        )
-
-        result.put(
-            "message",
-            if (started) {
-                "VPN connection requested"
-            } else {
-                "VPN could not be started"
-            }
-        )
-
-        call.resolve(result)
-
-    } catch (e: Exception) {
-        Log.e(
-            "SecureDroid",
-            "startVpn failed",
-            e
-        )
-
-        call.reject(
-            "Unable to start VPN: ${e.message}",
-            e
-        )
-    }
-}
-    @PluginMethod
-fun requestVpnPermission(call: PluginCall) {
-    try {
-        val context = bridge.context
-
-        val prepareIntent = VpnService.prepare(context)
-
-        // VPN permission has already been granted.
-        if (prepareIntent == null) {
-            val result = JSObject()
-
-            result.put("success", true)
-            result.put("granted", true)
-            result.put("state", vpnManager.getState().name)
-
-            call.resolve(result)
-            return
-        }
-
-        // Ask Android to display the system VPN consent dialog.
-        startActivityForResult(
-            call,
-            prepareIntent,
-            "vpnPermissionResult"
-        )
-
-    } catch (e: Exception) {
-        Log.e("SecureDroid", "VPN permission request failed", e)
-        call.reject(
-            "Unable to request VPN permission: ${e.message}",
-            e
-        )
-    }
-}
-
-@ActivityCallback
-private fun vpnPermissionResult(
-    call: PluginCall,
-    result: ActivityResult
-) {
-    try {
-        val granted = result.resultCode == android.app.Activity.RESULT_OK
-
-        val response = JSObject()
-
-        response.put("success", true)
-        response.put("granted", granted)
-
-        response.put(
-            "state",
-            vpnManager.getState().name
-        )
-
-        response.put(
-            "message",
-            if (granted) {
-                "VPN permission granted"
-            } else {
-                "VPN permission denied"
-            }
-        )
-
-        call.resolve(response)
-
-    } catch (e: Exception) {
-        Log.e(
-            "SecureDroid",
-            "VPN permission callback failed",
-            e
-        )
-
-        call.reject(
-            "Unable to process VPN permission result: ${e.message}",
-            e
-        )
-    }
-}
     @PluginMethod
     fun checkConnection(call: PluginCall) {
         try {
             val result = JSObject()
 
-            result.put("connected", true)
-            result.put("message", "SecureDroid native security bridge available")
-            result.put("timestamp", System.currentTimeMillis())
+            result.put(
+                "connected",
+                true
+            )
+
+            result.put(
+                "message",
+                "SecureDroid native security bridge available"
+            )
+
+            result.put(
+                "timestamp",
+                System.currentTimeMillis()
+            )
 
             call.resolve(result)
 
         } catch (e: Exception) {
-            Log.e("SecureDroid", "checkConnection failed", e)
-            call.reject("Native security bridge unavailable", e)
+
+            Log.e(
+                "SecureDroid",
+                "checkConnection failed",
+                e
+            )
+
+            call.reject(
+                "Native security bridge unavailable",
+                e
+            )
         }
     }
 
-    // ---------------------------------------------------------
+    // =========================================================
     // INSTALLED APPLICATION INVENTORY
-    // ---------------------------------------------------------
+    // =========================================================
 
     @PluginMethod
     fun getInstalledApps(call: PluginCall) {
         try {
+
             val apps = appScanner.scan()
             val jsonApps = JSONArray()
 
@@ -209,19 +99,17 @@ private fun vpnPermissionResult(
 
                 val permissions = JSONArray()
 
-                app.requestedPermissions.forEach {
-                    permissions.put(it)
+                app.requestedPermissions.forEach { permission ->
+                    permissions.put(permission)
                 }
 
-                val installer = app.installerPackageName
+                val installer =
+                    app.installerPackageName
 
                 /*
-                 * IMPORTANT:
+                 * A null installer does NOT prove sideloading.
                  *
-                 * null installer does NOT automatically mean malicious.
-                 * It means the installer could not be positively identified.
-                 *
-                 * Google Play is only one known installer.
+                 * It means Android did not provide a known installer.
                  */
 
                 val installSource =
@@ -230,6 +118,10 @@ private fun vpnPermissionResult(
                 val isKnownPlayInstall =
                     installer == "com.android.vending"
 
+                /*
+                 * Only identify an application as sideloaded
+                 * when a non-Play installer is actually known.
+                 */
                 val isSideloaded =
                     !app.isSystemApp &&
                     installer != null &&
@@ -237,45 +129,105 @@ private fun vpnPermissionResult(
 
                 val json = JSObject()
 
-                json.put("packageName", app.packageName)
-                json.put("appName", app.appName)
-                json.put("versionName", app.versionName ?: "Unknown")
-                json.put("versionCode", app.versionCode)
+                json.put(
+                    "packageName",
+                    app.packageName
+                )
 
-                json.put("targetSdk", app.targetSdk)
-                json.put("minSdk", app.minSdk)
+                json.put(
+                    "appName",
+                    app.appName
+                )
 
-                json.put("isSystemApp", app.isSystemApp)
-                json.put("isEnabled", app.isEnabled)
-                json.put("isLaunchable", app.isLaunchable)
-                json.put("isDebuggable", app.isDebuggable)
+                json.put(
+                    "versionName",
+                    app.versionName ?: "Unknown"
+                )
 
-                json.put("installTime", app.firstInstallTime)
-                json.put("updateTime", app.lastUpdateTime)
+                json.put(
+                    "versionCode",
+                    app.versionCode
+                )
 
-                json.put("installSource", installSource)
+                json.put(
+                    "targetSdk",
+                    app.targetSdk
+                )
 
-                /*
-                 * Only mark true when an actual non-Play installer
-                 * has been identified.
-                 *
-                 * UNKNOWN installer remains false because the app
-                 * cannot prove that it was sideloaded.
-                 */
-                json.put("isSideloaded", isSideloaded)
+                json.put(
+                    "minSdk",
+                    app.minSdk
+                )
 
-                json.put("installerKnown", installer != null)
+                json.put(
+                    "isSystemApp",
+                    app.isSystemApp
+                )
 
-                json.put("permissions", permissions)
+                json.put(
+                    "isEnabled",
+                    app.isEnabled
+                )
+
+                json.put(
+                    "isLaunchable",
+                    app.isLaunchable
+                )
+
+                json.put(
+                    "isDebuggable",
+                    app.isDebuggable
+                )
+
+                json.put(
+                    "installTime",
+                    app.firstInstallTime
+                )
+
+                json.put(
+                    "updateTime",
+                    app.lastUpdateTime
+                )
+
+                json.put(
+                    "installSource",
+                    installSource
+                )
+
+                json.put(
+                    "isSideloaded",
+                    isSideloaded
+                )
+
+                json.put(
+                    "installerKnown",
+                    installer != null
+                )
+
+                json.put(
+                    "permissions",
+                    permissions
+                )
 
                 jsonApps.put(json)
             }
 
             val result = JSObject()
 
-            result.put("success", true)
-            result.put("apps", jsonApps)
-            result.put("count", jsonApps.length())
+            result.put(
+                "success",
+                true
+            )
+
+            result.put(
+                "apps",
+                jsonApps
+            )
+
+            result.put(
+                "count",
+                jsonApps.length()
+            )
 
             call.resolve(result)
 
@@ -299,9 +251,9 @@ private fun vpnPermissionResult(
         }
     }
 
-    // ---------------------------------------------------------
+    // =========================================================
     // APPLICATION SECURITY ANALYSIS
-    // ---------------------------------------------------------
+    // =========================================================
 
     @PluginMethod
     fun scanForRisks(call: PluginCall) {
@@ -316,12 +268,9 @@ private fun vpnPermissionResult(
                     appAnalyzer.analyze(app)
 
                 /*
-                 * Do not report every application as risky.
-                 *
-                 * Only applications with actual findings are
-                 * returned here.
+                 * Only return applications where the analyzer
+                 * produced an actual finding.
                  */
-
                 if (assessment.findings.isEmpty()) {
                     return@forEach
                 }
@@ -357,7 +306,9 @@ private fun vpnPermissionResult(
                         finding.points
                     )
 
-                    findings.put(findingJson)
+                    findings.put(
+                        findingJson
+                    )
                 }
 
                 val json = JSObject()
@@ -397,10 +348,25 @@ private fun vpnPermissionResult(
 
             val result = JSObject()
 
-            result.put("success", true)
-            result.put("riskDetails", riskDetails)
-            result.put("totalRiskyApps", riskDetails.length())
-            result.put("totalApps", apps.size)
+            result.put(
+                "success",
+                true
+            )
+
+            result.put(
+                "riskDetails",
+                riskDetails
+            )
+
+            result.put(
+                "totalRiskyApps",
+                riskDetails.length()
+            )
+
+            result.put(
+                "totalApps",
+                apps.size
+            )
 
             call.resolve(result)
 
@@ -430,9 +396,9 @@ private fun vpnPermissionResult(
         scanForRisks(call)
     }
 
-    // ---------------------------------------------------------
+    // =========================================================
     // DEVICE HARDENING
-    // ---------------------------------------------------------
+    // =========================================================
 
     @PluginMethod
     fun getHardeningReport(call: PluginCall) {
@@ -468,12 +434,20 @@ private fun vpnPermissionResult(
             val vpnState =
                 vpnManager.getState()
 
+            val findingIds =
+                report.findings
+                    .map { it.id }
+                    .toSet()
+
             val result = JSObject()
 
-            result.put("success", true)
+            result.put(
+                "success",
+                true
+            )
 
             /*
-             * This score comes from the actual HardeningAnalyzer.
+             * Score comes directly from HardeningAnalyzer.
              */
             result.put(
                 "score",
@@ -486,7 +460,7 @@ private fun vpnPermissionResult(
             )
 
             /*
-             * These are explicit facts, not fabricated values.
+             * VPN status is derived from the actual VPN state.
              */
             result.put(
                 "vpnStatus",
@@ -498,16 +472,9 @@ private fun vpnPermissionResult(
                 vpnState.name
             )
 
-            /*
-             * Compatibility fields.
-             *
-             * These are derived only from findings that the analyzer
-             * actually checks.
-             */
-            val findingIds =
-                report.findings
-                    .map { it.id }
-                    .toSet()
+            // -------------------------------------------------
+            // SCREEN LOCK
+            // -------------------------------------------------
 
             result.put(
                 "screenLock",
@@ -529,15 +496,49 @@ private fun vpnPermissionResult(
                 }
             )
 
+            // -------------------------------------------------
+            // USB DEBUGGING
+            // -------------------------------------------------
+
             result.put(
                 "usbDebugging",
                 "USB_DEBUGGING_ENABLED" in findingIds
             )
 
             result.put(
+                "usbDebuggingStatus",
+                when {
+                    "USB_DEBUGGING_ENABLED" in findingIds ->
+                        "WARNING"
+
+                    else ->
+                        "PASS"
+                }
+            )
+
+            // -------------------------------------------------
+            // DEVELOPER OPTIONS
+            // -------------------------------------------------
+
+            result.put(
                 "developerOptions",
                 "DEVELOPER_OPTIONS_ENABLED" in findingIds
             )
+
+            result.put(
+                "developerOptionsStatus",
+                when {
+                    "DEVELOPER_OPTIONS_ENABLED" in findingIds ->
+                        "WARNING"
+
+                    else ->
+                        "PASS"
+                }
+            )
+
+            // -------------------------------------------------
+            // SECURITY PATCH
+            // -------------------------------------------------
 
             result.put(
                 "securityPatchStatus",
@@ -553,10 +554,19 @@ private fun vpnPermissionResult(
                 }
             )
 
+            // -------------------------------------------------
+            // UNKNOWN APP SOURCES
+            // -------------------------------------------------
+
             /*
-             * Android 8+ does not expose one global "unknown sources"
-             * switch. Therefore we deliberately return UNKNOWN there.
+             * There is no universal global "unknown sources"
+             * switch exposed to normal third-party applications
+             * on modern Android.
+             *
+             * Therefore this is UNKNOWN unless the analyzer
+             * has a genuine finding.
              */
+
             result.put(
                 "unknownSources",
                 "UNKNOWN_SOURCES_ENABLED" in findingIds
@@ -596,9 +606,154 @@ private fun vpnPermissionResult(
         }
     }
 
-    // ---------------------------------------------------------
+    // =========================================================
+    // VPN PERMISSION
+    // =========================================================
+
+    @PluginMethod
+    fun requestVpnPermission(call: PluginCall) {
+        try {
+
+            val context =
+                bridge.context
+
+            val prepareIntent =
+                VpnService.prepare(context)
+
+            /*
+             * Android already granted VPN permission.
+             */
+            if (prepareIntent == null) {
+
+                val result = JSObject()
+
+                result.put(
+                    "success",
+                    true
+                )
+
+                result.put(
+                    "granted",
+                    true
+                )
+
+                result.put(
+                    "permissionRequired",
+                    false
+                )
+
+                result.put(
+                    "state",
+                    vpnManager.getState().name
+                )
+
+                result.put(
+                    "message",
+                    "VPN permission already granted"
+                )
+
+                call.resolve(result)
+                return
+            }
+
+            /*
+             * Launch the Android system VPN consent dialog.
+             */
+            startActivityForResult(
+                call,
+                prepareIntent,
+                "vpnPermissionResult"
+            )
+
+        } catch (e: Exception) {
+
+            Log.e(
+                "SecureDroid",
+                "VPN permission request failed",
+                e
+            )
+
+            call.reject(
+                "Unable to request VPN permission: ${e.message}",
+                e
+            )
+        }
+    }
+
+    @ActivityCallback
+    private fun vpnPermissionResult(
+        call: PluginCall,
+        result: ActivityResult
+    ) {
+        try {
+
+            val granted =
+                result.resultCode == Activity.RESULT_OK
+
+            /*
+             * Verify the actual Android VPN authorization state
+             * instead of trusting only RESULT_OK.
+             */
+            val permissionStillRequired =
+                VpnService.prepare(
+                    bridge.context
+                ) != null
+
+            val actuallyGranted =
+                granted && !permissionStillRequired
+
+            val response =
+                JSObject()
+
+            response.put(
+                "success",
+                true
+            )
+
+            response.put(
+                "granted",
+                actuallyGranted
+            )
+
+            response.put(
+                "permissionRequired",
+                !actuallyGranted
+            )
+
+            response.put(
+                "state",
+                vpnManager.getState().name
+            )
+
+            response.put(
+                "message",
+                if (actuallyGranted) {
+                    "VPN permission granted"
+                } else {
+                    "VPN permission denied"
+                }
+            )
+
+            call.resolve(response)
+
+        } catch (e: Exception) {
+
+            Log.e(
+                "SecureDroid",
+                "VPN permission callback failed",
+                e
+            )
+
+            call.reject(
+                "Unable to process VPN permission result: ${e.message}",
+                e
+            )
+        }
+    }
+
+    // =========================================================
     // VPN STATUS
-    // ---------------------------------------------------------
+    // =========================================================
 
     @PluginMethod
     fun getVpnStatus(call: PluginCall) {
@@ -607,7 +762,8 @@ private fun vpnPermissionResult(
             val state =
                 vpnManager.getState()
 
-            val result = JSObject()
+            val result =
+                JSObject()
 
             result.put(
                 "success",
@@ -619,6 +775,10 @@ private fun vpnPermissionResult(
                 state.name
             )
 
+            /*
+             * CONNECTED is the only state that means
+             * VPN protection is actually active.
+             */
             result.put(
                 "isConnected",
                 state == VpnState.CONNECTED
@@ -632,6 +792,7 @@ private fun vpnPermissionResult(
             result.put(
                 "message",
                 when (state) {
+
                     VpnState.CONNECTED ->
                         "VPN protection is active"
 
@@ -666,29 +827,28 @@ private fun vpnPermissionResult(
         }
     }
 
-    // ---------------------------------------------------------
+    // =========================================================
     // VPN START
-    // ---------------------------------------------------------
+    // =========================================================
 
     @PluginMethod
     fun startVpn(call: PluginCall) {
-
         try {
 
-            val context = bridge.context
+            val context =
+                bridge.context
 
             /*
-             * Android requires explicit user authorization before
-             * an application can establish its VPN interface.
-             *
-             * Never report success before this permission exists.
+             * Android requires user authorization before
+             * a VPN service can establish a VPN interface.
              */
             val prepareIntent =
                 VpnService.prepare(context)
 
             if (prepareIntent != null) {
 
-                val result = JSObject()
+                val result =
+                    JSObject()
 
                 result.put(
                     "success",
@@ -711,23 +871,26 @@ private fun vpnPermissionResult(
                 )
 
                 /*
-                 * Do not claim that the VPN has started.
-                 *
-                 * The UI must send the user through the Android
-                 * VPN permission flow first.
+                 * Do NOT start the VPN and do NOT claim protection.
                  */
                 call.resolve(result)
                 return
-
             }
 
+            /*
+             * Permission exists.
+             *
+             * SecureVpnManager is responsible for requesting
+             * the actual VPN service start.
+             */
             val started =
                 vpnManager.start()
 
             val state =
                 vpnManager.getState()
 
-            val result = JSObject()
+            val result =
+                JSObject()
 
             result.put(
                 "success",
@@ -744,12 +907,34 @@ private fun vpnPermissionResult(
                 state.name
             )
 
+            /*
+             * Important:
+             *
+             * started == true does NOT necessarily mean
+             * CONNECTED.
+             *
+             * The service may still be CONNECTING.
+             */
+            result.put(
+                "connected",
+                state == VpnState.CONNECTED
+            )
+
             result.put(
                 "message",
-                if (started) {
-                    "VPN start requested; waiting for connection"
-                } else {
-                    "VPN could not be started"
+                when {
+
+                    state == VpnState.CONNECTED ->
+                        "VPN protection is active"
+
+                    state == VpnState.CONNECTING ->
+                        "VPN connection requested; connecting"
+
+                    started ->
+                        "VPN start requested; waiting for connection"
+
+                    else ->
+                        "VPN could not be started"
                 }
             )
 
@@ -770,18 +955,21 @@ private fun vpnPermissionResult(
         }
     }
 
-    // ---------------------------------------------------------
+    // =========================================================
     // VPN STOP
-    // ---------------------------------------------------------
+    // =========================================================
 
     @PluginMethod
     fun stopVpn(call: PluginCall) {
-
         try {
 
             vpnManager.stop()
 
-            val result = JSObject()
+            val state =
+                vpnManager.getState()
+
+            val result =
+                JSObject()
 
             result.put(
                 "success",
@@ -790,12 +978,27 @@ private fun vpnPermissionResult(
 
             result.put(
                 "state",
-                vpnManager.getState().name
+                state.name
+            )
+
+            result.put(
+                "connected",
+                state == VpnState.CONNECTED
             )
 
             result.put(
                 "message",
-                "VPN stop requested"
+                when (state) {
+
+                    VpnState.DISCONNECTED ->
+                        "VPN protection is disconnected"
+
+                    VpnState.DISCONNECTING ->
+                        "VPN stop requested; disconnecting"
+
+                    else ->
+                        "VPN stop requested"
+                }
             )
 
             call.resolve(result)
