@@ -581,7 +581,30 @@ class SecureDroidNativeService {
       try {
         return await NativePlugin.getAppRiskReports();
       } catch (err: any) {
-        return { success: false, errorCode: 'SERVICE_UNAVAILABLE', message: err?.message || 'App risk analysis unavailable.' };
+        const debugDump = JSON.stringify(
+          {
+            message: err?.message,
+            code: err?.code,
+            name: err?.name,
+            errorMessage: err?.errorMessage,
+            stack: typeof err?.stack === 'string' ? err.stack.slice(0, 300) : undefined,
+            keys: err && typeof err === 'object' ? Object.keys(err) : undefined,
+            raw: (() => {
+              try {
+                return JSON.stringify(err);
+              } catch {
+                return String(err);
+              }
+            })(),
+          },
+          null,
+          2
+        );
+        return {
+          success: false,
+          errorCode: 'SERVICE_UNAVAILABLE',
+          message: `DEBUG: ${debugDump}`,
+        };
       }
     }
     return { success: false, errorCode: 'SERVICE_UNAVAILABLE', message: 'Requires native execution.' };
