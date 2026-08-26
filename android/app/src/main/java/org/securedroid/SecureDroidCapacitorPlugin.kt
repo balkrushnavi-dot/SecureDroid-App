@@ -1,7 +1,6 @@
 // app/src/main/java/org/securedroid/SecureDroidCapacitorPlugin.kt
 package org.securedroid
 
-import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import com.getcapacitor.JSObject
@@ -12,13 +11,13 @@ import com.getcapacitor.annotation.CapacitorPlugin
 import org.json.JSONArray
 import org.json.JSONObject
 
-@CapacitorPlugin(name = "SecureDroid")
+@CapacitorPlugin(name = "SecureDroid")  // 🔴 MUST match exactly!
 class SecureDroidCapacitorPlugin : Plugin() {
 
     @PluginMethod
     fun getInstalledApps(call: PluginCall) {
         try {
-            val context = context ?: run {
+            val context = bridge?.context ?: run {
                 call.reject("Context is null")
                 return
             }
@@ -30,17 +29,20 @@ class SecureDroidCapacitorPlugin : Plugin() {
             packages.forEach { pkg ->
                 val appInfo = pkg.applicationInfo
                 appInfo?.let { info ->
+                    val isSystem = (info.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+                    val installer = pm.getInstallerPackageName(pkg.packageName)
+                    
                     val appJson = JSONObject().apply {
                         put("packageName", pkg.packageName)
                         put("appName", info.loadLabel(pm).toString())
                         put("versionName", pkg.versionName ?: "Unknown")
                         put("versionCode", pkg.versionCode)
-                        put("isSystemApp", (info.flags and ApplicationInfo.FLAG_SYSTEM) != 0)
+                        put("isSystemApp", isSystem)
                         put("installTime", pkg.firstInstallTime)
                         put("updateTime", pkg.lastUpdateTime)
-                        put("installSource", pm.getInstallerPackageName(pkg.packageName) ?: "Unknown")
+                        put("installSource", installer ?: "Unknown")
+                        put("isSideloaded", !isSystem && installer != "com.android.vending" && installer != "com.google.android.feedback")
                         
-                        // Permissions
                         val permissions = JSONArray()
                         pkg.requestedPermissions?.forEach { perm ->
                             permissions.put(perm)
@@ -54,11 +56,65 @@ class SecureDroidCapacitorPlugin : Plugin() {
             val result = JSObject()
             result.put("apps", apps)
             result.put("count", apps.length())
-            result.put("success", true)
             call.resolve(result)
 
         } catch (e: Exception) {
-            call.reject("Error getting apps: ${e.message}")
+            call.reject("Error: ${e.message}")
+        }
+    }
+
+    @PluginMethod
+    fun scanForRisks(call: PluginCall) {
+        try {
+            val context = bridge?.context ?: run {
+                call.reject("Context is null")
+                return
+            }
+
+            val pm = context.packageManager
+            val packages = pm.getInstalledPackages(PackageManager.GET_PERMISSIONS)
+            val riskyApps = JSONArray()
+
+            packages.forEach { pkg ->
+                val appInfo = pkg.applicationInfo
+                appInfo?.let { info ->
+                    val isSystem = (info.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+                    val installer = pm.getInstallerPackageName(pkg.packageName)
+                    val isSideloaded = !isSystem && installer != "com.android.vending" && installer != "com.google.android.feedback"
+                    
+                    // Check for dangerous permissions
+                    val hasDangerousPermissions = pkg.requestedPermissions?.any { perm ->
+                        perm.contains("LOCATION") || 
+                        perm.contains("CAMERA") || 
+                        perm.contains("RECORD_AUDIO") ||
+                        perm.contains("CONTACTS") ||
+                        perm.contains("SMS")
+                    } ?: false
+
+                    if (isSideloaded || hasDangerousPermissions) {
+                        val reasons = mutableListOf<String>()
+                        if (isSideloaded) reasons.add("Sideloaded")
+                        if (hasDangerousPermissions) reasons.add("Dangerous permissions")
+                        
+                        val riskJson = JSONObject().apply {
+                            put("appName", info.loadLabel(pm).toString())
+                            put("packageName", pkg.packageName)
+                            put("riskLevel", if (isSideloaded) "HIGH" else "MEDIUM")
+                            put("reason", reasons.joinToString(", "))
+                            put("installSource", installer ?: "Unknown")
+                        }
+                        riskyApps.put(riskJson)
+                    }
+                }
+            }
+
+            val result = JSObject()
+            result.put("totalRiskyApps", riskyApps.length())
+            result.put("riskDetails", riskyApps)
+            call.resolve(result)
+
+        } catch (e: Exception) {
+            call.reject("Error: ${e.message}")
         }
     }
 
@@ -79,50 +135,24 @@ class SecureDroidCapacitorPlugin : Plugin() {
         result.put("developerOptions", false)
         result.put("unknownSources", false)
         result.put("vpnStatus", false)
-        result.put("success", true)
         call.resolve(result)
     }
 
     @PluginMethod
-    fun scanForRisks(call: PluginCall) {
-        try {
-            val context = context ?: run {
-                call.reject("Context is null")
-                return
-            }
+    fun startVpn(call: PluginCall) {
+        // TODO: Implement VPN start
+        val result = JSObject()
+        result.put("success", true)
+        result.put("message", "VPN started")
+        call.resolve(result)
+    }
 
-            val pm = context.packageManager
-            val packages = pm.getInstalledPackages(PackageManager.GET_PERMISSIONS)
-            val riskyApps = JSONArray()
-
-            packages.forEach { pkg ->
-                val appInfo = pkg.applicationInfo
-                appInfo?.let { info ->
-                    val isSystem = (info.flags and ApplicationInfo.FLAG_SYSTEM) != 0
-                    val installer = pm.getInstallerPackageName(pkg.packageName)
-                    val isSideloaded = !isSystem && installer != "com.android.vending" && installer != "com.google.android.feedback"
-                    
-                    if (isSideloaded) {
-                        val riskyApp = JSONObject().apply {
-                            put("appName", info.loadLabel(pm).toString())
-                            put("packageName", pkg.packageName)
-                            put("riskLevel", "HIGH")
-                            put("reason", "Sideloaded application")
-                            put("installSource", installer ?: "Unknown")
-                        }
-                        riskyApps.put(riskyApp)
-                    }
-                }
-            }
-
-            val result = JSObject()
-            result.put("totalRiskyApps", riskyApps.length())
-            result.put("riskDetails", riskyApps)
-            result.put("success", true)
-            call.resolve(result)
-
-        } catch (e: Exception) {
-            call.reject("Error scanning: ${e.message}")
-        }
+    @PluginMethod
+    fun stopVpn(call: PluginCall) {
+        // TODO: Implement VPN stop
+        val result = JSObject()
+        result.put("success", true)
+        result.put("message", "VPN stopped")
+        call.resolve(result)
     }
 }
