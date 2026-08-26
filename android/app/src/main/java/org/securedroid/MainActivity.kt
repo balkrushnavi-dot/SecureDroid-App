@@ -8,7 +8,7 @@ class MainActivity : BridgeActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // Register the plugin
+        // 🔴 CRITICAL FIX: Register the plugin BEFORE super.onCreate()
         registerPlugin(SecureDroidCapacitorPlugin::class.java)
     }
 }
