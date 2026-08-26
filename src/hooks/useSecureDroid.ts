@@ -1,5 +1,31 @@
+// src/hooks/useSecureDroid.ts
 import { useState, useEffect, useCallback } from 'react';
-import { secureDroid, AppInfo, RiskInfo } from '../capacitor/secureDroid';
+import { Capacitor } from '@capacitor/core';
+
+// Get the plugin
+const SecureDroid = Capacitor.Plugins.SecureDroid;
+
+// Types
+export interface AppInfo {
+    packageName: string;
+    appName: string;
+    versionName: string;
+    versionCode: number;
+    isSystemApp: boolean;
+    installTime: number;
+    updateTime: number;
+    installSource: string;
+    isSideloaded: boolean;
+    permissions: string[];
+}
+
+export interface RiskInfo {
+    appName: string;
+    packageName: string;
+    riskLevel: string;
+    reason: string;
+    installSource: string;
+}
 
 export const useSecureDroid = () => {
     const [apps, setApps] = useState<AppInfo[]>([]);
@@ -14,32 +40,74 @@ export const useSecureDroid = () => {
         setError(null);
 
         try {
-            // Check connection
-            const connection = await secureDroid.checkConnection();
-            console.log('Plugin connection:', connection);
-            setConnected(connection.connected);
+            console.log('🔍 useSecureDroid: Starting load...');
 
-            if (!connection.connected) {
-                setError('Plugin not connected. Please ensure you are running on Android.');
+            // Check if plugin exists
+            if (!SecureDroid) {
+                setConnected(false);
+                setError('SecureDroid plugin not found');
                 setLoading(false);
                 return;
             }
 
-            // Load apps
-            const installedApps = await secureDroid.getInstalledApps();
-            setApps(installedApps);
+            // Try to check connection
+            try {
+                const connectionResult = await SecureDroid.checkConnection();
+                console.log('📡 Connection result:', connectionResult);
+                const isConnected = connectionResult && (connectionResult as any).connected === true;
+                setConnected(isConnected);
 
-            // Scan risks
-            const riskyApps = await secureDroid.scanForRisks();
-            setRisks(riskyApps);
+                if (!isConnected) {
+                    setError('Plugin not connected');
+                    setLoading(false);
+                    return;
+                }
+            } catch (connErr) {
+                console.warn('Connection check failed:', connErr);
+                setConnected(false);
+                setError('Failed to connect to plugin');
+                setLoading(false);
+                return;
+            }
+
+            // Get installed apps
+            try {
+                const appsResult = await SecureDroid.getInstalledApps();
+                console.log('📱 Apps result:', appsResult);
+                
+                if (appsResult && (appsResult as any).apps) {
+                    const appList = (appsResult as any).apps;
+                    setApps(appList);
+                }
+            } catch (appsErr) {
+                console.error('Failed to get apps:', appsErr);
+                // Continue - maybe we can still get risks
+            }
+
+            // Get risk scan
+            try {
+                const riskResult = await SecureDroid.scanForRisks();
+                console.log('⚠️ Risk result:', riskResult);
+                
+                if (riskResult && (riskResult as any).riskDetails) {
+                    const riskList = (riskResult as any).riskDetails;
+                    setRisks(riskList);
+                }
+            } catch (riskErr) {
+                console.error('Failed to get risks:', riskErr);
+            }
 
             // Calculate score
-            const newScore = Math.max(0, 100 - (riskyApps.length * 3));
+            const riskCount = risks.length || 0;
+            const newScore = Math.max(0, 100 - (riskCount * 3));
             setScore(newScore);
 
+            setConnected(true);
+            setError(null);
+
         } catch (err) {
-            console.error('Failed to load data:', err);
-            setError('Failed to load security data');
+            console.error('❌ useSecureDroid error:', err);
+            setError(err instanceof Error ? err.message : 'Unknown error');
         } finally {
             setLoading(false);
         }
