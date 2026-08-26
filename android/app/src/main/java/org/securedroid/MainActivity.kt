@@ -6,7 +6,9 @@ import com.getcapacitor.BridgeActivity
 class MainActivity : BridgeActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        registerPlugin(SecureDroidCapacitorPlugin::class.java)
         super.onCreate(savedInstanceState)
+        
+        // Register the plugin
+        registerPlugin(SecureDroidCapacitorPlugin::class.java)
     }
 }
