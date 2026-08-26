@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ShieldCheck, ScrollText, LayoutGrid, Settings as SettingsIcon, ChevronRight, Info } from 'lucide-react';
-
+// At the top of your App.tsx
+import { useSecureDroid } from './hooks/useSecureDroid';
 import { ThreatModelCenterScreen } from './components/security/ThreatModelCenterScreen';
 import { SecurityAuditLogScreen } from './components/security/SecurityAuditLogScreen';
 import { AppSecurityAuditorScreen } from './components/security/AppSecurityAuditorScreen';
