@@ -116,7 +116,7 @@ export const AppSecurityAuditorScreen: React.FC<
           {!isLoading && loadError && (
             <SecureDroidCard
               isLight={isLight}
-              className="p-4 text-sm text-amber-400"
+              className="p-4 text-xs text-amber-400 whitespace-pre-wrap break-words font-mono"
             >
               {loadError}
             </SecureDroidCard>
