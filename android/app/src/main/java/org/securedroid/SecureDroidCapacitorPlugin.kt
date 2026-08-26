@@ -1,6 +1,5 @@
 package org.securedroid
 
-import android.net.VpnService
 import android.util.Log
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
