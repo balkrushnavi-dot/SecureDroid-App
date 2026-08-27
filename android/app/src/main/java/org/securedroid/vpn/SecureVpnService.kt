@@ -24,9 +24,14 @@ class SecureVpnService : VpnService() {
         const val ACTION_STOP = "org.securedroid.action.STOP_VPN"
 
         const val EXTRA_DNS_SERVER = "dns_server"
+        const val EXTRA_ERROR = "error"
 
         const val NOTIFICATION_CHANNEL_ID = "securedroid_vpn"
         const val NOTIFICATION_ID = 1001
+
+        // Broadcast intent for error reporting
+        const val ACTION_VPN_ERROR = "org.securedroid.action.VPN_ERROR"
+        const val EXTRA_ERROR_MESSAGE = "error_message"
     }
 
     private var vpnInterface: ParcelFileDescriptor? = null
@@ -103,12 +108,10 @@ class SecureVpnService : VpnService() {
                 .addDnsServer(dnsServer)
                 .setConfigureIntent(pendingIntent)
 
-            // Required on Android 14+ (API 34) - use constants directly with API check
-            // NetworkCapabilities.NETWORK_FAMILY_IPV4 = 1, NETWORK_FAMILY_IPV6 = 2
+            // Try to add allowFamily for Android 14+ (API 34)
             if (Build.VERSION.SDK_INT >= 34) {
                 Log.d(TAG, "Adding allowFamily for Android 14+")
                 try {
-                    // Use reflection or direct method call with integer constants
                     val allowFamilyMethod = Builder::class.java.getMethod(
                         "allowFamily",
                         Int::class.java
@@ -117,6 +120,7 @@ class SecureVpnService : VpnService() {
                     allowFamilyMethod.invoke(builder, 1)
                     // NetworkCapabilities.NETWORK_FAMILY_IPV6 = 2
                     allowFamilyMethod.invoke(builder, 2)
+                    Log.d(TAG, "allowFamily invoked successfully")
                 } catch (e: Exception) {
                     Log.w(TAG, "allowFamily not available, continuing without it", e)
                 }
@@ -141,14 +145,18 @@ class SecureVpnService : VpnService() {
                 isRunning = false
                 isEstablishing = false
                 VpnStateStore.set(VpnState.ERROR)
-                Log.e(TAG, "VPN establishment returned null interface")
+                val errorMsg = "VPN establishment returned null interface"
+                Log.e(TAG, errorMsg)
+                sendErrorBroadcast(errorMsg)
             }
 
         } catch (e: SecurityException) {
+            val errorMsg = "Security exception: ${e.message}"
             Log.e(TAG, "VPN establishment failed: SecurityException", e)
             isRunning = false
             isEstablishing = false
             VpnStateStore.set(VpnState.ERROR)
+            sendErrorBroadcast(errorMsg)
 
             try {
                 vpnInterface?.close()
@@ -156,10 +164,12 @@ class SecureVpnService : VpnService() {
             vpnInterface = null
 
         } catch (e: IOException) {
+            val errorMsg = "IO exception: ${e.message}"
             Log.e(TAG, "VPN establishment failed: IOException", e)
             isRunning = false
             isEstablishing = false
             VpnStateStore.set(VpnState.ERROR)
+            sendErrorBroadcast(errorMsg)
 
             try {
                 vpnInterface?.close()
@@ -167,15 +177,29 @@ class SecureVpnService : VpnService() {
             vpnInterface = null
 
         } catch (e: Exception) {
+            val errorMsg = "${e.javaClass.simpleName}: ${e.message}"
             Log.e(TAG, "VPN establishment failed: ${e.javaClass.simpleName} - ${e.message}", e)
             isRunning = false
             isEstablishing = false
             VpnStateStore.set(VpnState.ERROR)
+            sendErrorBroadcast(errorMsg)
 
             try {
                 vpnInterface?.close()
             } catch (_: Exception) {}
             vpnInterface = null
+        }
+    }
+
+    private fun sendErrorBroadcast(errorMessage: String) {
+        try {
+            val intent = Intent(ACTION_VPN_ERROR).apply {
+                putExtra(EXTRA_ERROR_MESSAGE, errorMessage)
+            }
+            sendBroadcast(intent)
+            Log.d(TAG, "Error broadcast sent: $errorMessage")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to send error broadcast", e)
         }
     }
 
