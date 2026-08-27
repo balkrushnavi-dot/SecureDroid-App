@@ -147,7 +147,7 @@ export const AppDetailScreen: React.FC<AppDetailScreenProps> = ({
                     <p className="text-slate-400">App not found</p>
                     <SecureDroidButton onClick={onBack} className="mt-4">
                         Go Back
-                    </SafeDroidButton>
+                    </SecureDroidButton>
                 </div>
             </div>
         );
