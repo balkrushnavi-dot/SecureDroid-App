@@ -1,15 +1,5 @@
 package org.securedroid.apps
 
-/**
- * Produces a factual risk assessment for an installed app based on
- * real, checkable signals. This deliberately does NOT claim malware
- * detection, virus scanning, or any capability this app does not
- * actually have. Every finding here corresponds to a real Android
- * API fact about the app (its declared permissions, install source,
- * and target SDK) — nothing is inferred about the app's actual
- * behavior, which this app has no way to observe.
- */
-
 enum class RiskLevel {
     LOW,
     MEDIUM,
@@ -30,14 +20,6 @@ data class AppRiskReport(
 
 object AppRiskAnalyzer {
 
-    // Permissions with real, well-documented potential for abuse if
-    // misused. This list is intentionally conservative: it flags
-    // permissions that grant broad capability (reading messages,
-    // drawing over other apps, installing packages, accessibility
-    // access), not every permission an app might request.
-    // Exposed (not private) so other analyzers/bridges can reuse the
-    // same definition instead of maintaining a second, possibly
-    // inconsistent list.
     val SENSITIVE_PERMISSIONS = mapOf(
         "android.permission.READ_SMS" to "Can read text messages",
         "android.permission.RECEIVE_SMS" to "Can intercept incoming text messages",
@@ -53,28 +35,24 @@ object AppRiskAnalyzer {
         "android.permission.ACCESS_FINE_LOCATION" to "Can access precise location"
     )
 
-    // Google Play requires apps to target a recent API level; an app
-    // meaningfully behind that bar is a real, checkable signal that
-    // it may not benefit from newer platform security defaults.
-    private const val STALE_TARGET_SDK_THRESHOLD = 29 // Android 10
+    private const val STALE_TARGET_SDK_THRESHOLD = 29
 
     private val KNOWN_APP_STORES = setOf(
-        "com.android.vending",                    // Google Play
-        "com.google.android.packageinstaller",    // Android Package Installer
-        "com.android.packageinstaller",           // Legacy Package Installer
-        "com.amazon.venezia",                     // Amazon Appstore
-        "com.sec.android.app.samsungapps",        // Galaxy Store
-        "com.xiaomi.mipicks",                     // Xiaomi GetApps
-        "com.xiaomi.market",                      // Xiaomi Market
-        "com.huawei.appmarket"                    // Huawei AppGallery
+        "com.android.vending",
+        "com.google.android.packageinstaller",
+        "com.android.packageinstaller",
+        "com.amazon.venezia",
+        "com.sec.android.app.samsungapps",
+        "com.xiaomi.mipicks",
+        "com.xiaomi.market",
+        "com.huawei.appmarket"
     )
 
     fun analyze(app: InstalledAppInfo): AppRiskReport {
 
         val findings = mutableListOf<RiskFinding>()
 
-        // System apps are pre-installed by the device manufacturer
-        // and are not evaluated for sideload/store-source risk.
+        // System apps are not evaluated for sideload/store-source risk
         if (!app.isSystemApp) {
 
             val installer = app.installerPackageName
@@ -84,8 +62,7 @@ object AppRiskAnalyzer {
                     RiskFinding(
                         id = "SIDELOADED",
                         level = RiskLevel.MEDIUM,
-                        summary = "No installer recorded — likely sideloaded " +
-                            "(installed outside a known app store)"
+                        summary = "No installer recorded — likely sideloaded (installed outside a known app store)"
                     )
                 )
             } else if (installer !in KNOWN_APP_STORES) {
@@ -99,12 +76,7 @@ object AppRiskAnalyzer {
             }
         }
 
-        /*
-         * IMPORTANT: System apps (Bluetooth, Phone Services, Google Play Services,
-         * System UI, etc.) legitimately require many sensitive permissions to function.
-         * They should NOT be flagged as HIGH risk for having permissions
-         * that are expected for their system role.
-         */
+        // System apps are not evaluated for sensitive permissions
         if (!app.isSystemApp) {
 
             val sensitiveGranted =
@@ -126,8 +98,7 @@ object AppRiskAnalyzer {
                     RiskFinding(
                         id = "SENSITIVE_PERMISSIONS",
                         level = level,
-                        summary = "Requests ${sensitiveGranted.size} sensitive " +
-                            "permission(s): " +
+                        summary = "Requests ${sensitiveGranted.size} sensitive permission(s): " +
                             sensitiveGranted.mapNotNull {
                                 SENSITIVE_PERMISSIONS[it]
                             }.joinToString(", ")
@@ -141,9 +112,7 @@ object AppRiskAnalyzer {
                 RiskFinding(
                     id = "STALE_TARGET_SDK",
                     level = RiskLevel.LOW,
-                    summary = "Targets an old Android API level " +
-                        "(${app.targetSdk}); may not benefit from " +
-                        "current platform security defaults"
+                    summary = "Targets an old Android API level (${app.targetSdk}); may not benefit from current platform security defaults"
                 )
             )
         }
