@@ -30,6 +30,38 @@
          whose core function is reviewing installed apps). -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
 
+<?xml version="1.0" encoding="utf-8"?>
+
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Internet access for Secure VPN -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Foreground service -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+
+    <!-- Android 14+ special-use foreground service -->
+    <uses-permission
+        android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+
+    <!-- Required on Android 13+ (API 33) to actually display the
+         VPN foreground-service notification and any other app
+         notifications to the user. Without this, SecureVpnService
+         still runs, but its "VPN active" notification will not be
+         shown, which is confusing/misleading to the user about
+         VPN status. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Required on Android 11+ (API 30+) for the App Security
+         Auditor / Threat Model Center to see the full installed-app
+         list via PackageManager.getInstalledPackages(). Without this,
+         the OS returns a heavily filtered, near-empty package list
+         and the native bridge appears to have "no data" even though
+         it is functioning correctly. This is a genuine security-tool
+         use case (Google Play allows QUERY_ALL_PACKAGES for apps
+         whose core function is reviewing installed apps). -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+
     <application
         android:name=".SecureDroidApplication"
         android:allowBackup="false"
@@ -68,28 +100,22 @@
 
         </receiver>
 
-        <!-- Secure VPN -->
-<service
-    android:name=".vpn.SecureVpnService"
-    android:exported="false"
-    android:foregroundServiceType="specialUse"
-    android:permission="android.permission.BIND_VPN_SERVICE">
-    <intent-filter>
-        <action android:name="android.net.VpnService" />
-    </intent-filter>
-    <meta-data
-        android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-        android:value="secure_vpn" />
-</service>
-    <intent-filter>
-        <action android:name="android.net.VpnService" />
-    </intent-filter>
+        <!-- Secure VPN Service -->
+        <service
+            android:name=".vpn.SecureVpnService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse"
+            android:permission="android.permission.BIND_VPN_SERVICE">
 
-    <meta-data
-        android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-        android:value="secure_vpn" />
+            <intent-filter>
+                <action android:name="android.net.VpnService" />
+            </intent-filter>
 
-     </service>
+            <meta-data
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="secure_vpn" />
+
+        </service>
 
     </application>
 
