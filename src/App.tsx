@@ -44,7 +44,6 @@ import { SecurityReportScreen } from './components/SecurityReportScreen';
 import { AppDetailScreen } from './components/AppDetailScreen';
 import { AiAssistantScreen } from './components/AiAssistantScreen';
 import { FamilyScreen } from './components/FamilyScreen';
-import { AppDetailScreen } from './components/AppDetailScreen';
 import {
     SecureDroidTopBar,
     SecureDroidCard,
@@ -240,7 +239,6 @@ function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
                             key={action.id}
                             onClick={() => {
                                 if (action.id === 'scan') {
-                                    // Trigger scan
                                     reload();
                                 } else {
                                     onNavigate(action.id as Screen);
