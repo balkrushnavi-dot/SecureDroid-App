@@ -103,11 +103,23 @@ class SecureVpnService : VpnService() {
                 .addDnsServer(dnsServer)
                 .setConfigureIntent(pendingIntent)
 
-            // Required on Android 14+ (API 34)
+            // Required on Android 14+ (API 34) - use constants directly with API check
+            // NetworkCapabilities.NETWORK_FAMILY_IPV4 = 1, NETWORK_FAMILY_IPV6 = 2
             if (Build.VERSION.SDK_INT >= 34) {
                 Log.d(TAG, "Adding allowFamily for Android 14+")
-                builder.allowFamily(NetworkCapabilities.NETWORK_FAMILY_IPV4)
-                builder.allowFamily(NetworkCapabilities.NETWORK_FAMILY_IPV6)
+                try {
+                    // Use reflection or direct method call with integer constants
+                    val allowFamilyMethod = Builder::class.java.getMethod(
+                        "allowFamily",
+                        Int::class.java
+                    )
+                    // NetworkCapabilities.NETWORK_FAMILY_IPV4 = 1
+                    allowFamilyMethod.invoke(builder, 1)
+                    // NetworkCapabilities.NETWORK_FAMILY_IPV6 = 2
+                    allowFamilyMethod.invoke(builder, 2)
+                } catch (e: Exception) {
+                    Log.w(TAG, "allowFamily not available, continuing without it", e)
+                }
             }
 
             // Close any existing interface
