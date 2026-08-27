@@ -32,10 +32,11 @@ interface RiskInfo {
     riskLevel: string;
     reason: string;
     installSource: string;
+    isSystemApp?: boolean;
 }
 
 export const HomeScreen: React.FC = () => {
-    const [score, setScore] = useState(0);
+    const [score, setScore] = useState(100);
     const [apps, setApps] = useState<AppInfo[]>([]);
     const [riskyApps, setRiskyApps] = useState<RiskInfo[]>([]);
     const [vpnActive, setVpnActive] = useState(false);
@@ -73,7 +74,6 @@ export const HomeScreen: React.FC = () => {
             if (result && (result as any).apps) {
                 const appList = (result as any).apps;
                 setApps(appList);
-                calculateScore(appList);
             }
 
             // Get risk scan
@@ -81,7 +81,43 @@ export const HomeScreen: React.FC = () => {
             console.log('Risk result:', riskResult);
             
             if (riskResult && (riskResult as any).riskDetails) {
-                setRiskyApps((riskResult as any).riskDetails);
+                const allRiskDetails = (riskResult as any).riskDetails;
+                
+                // Filter out system apps from risks
+                // Cross-reference with apps list to check isSystemApp
+                const userAppPackageNames = new Set(
+                    apps
+                        .filter(app => !app.isSystemApp)
+                        .map(app => app.packageName)
+                );
+                
+                const userAppRisks = allRiskDetails.filter((risk: RiskInfo) => {
+                    // If the risk data has an isSystemApp flag, use it
+                    if (risk.isSystemApp === true) {
+                        return false;
+                    }
+                    // Otherwise cross-reference with the apps list
+                    return userAppPackageNames.has(risk.packageName);
+                });
+                
+                setRiskyApps(userAppRisks);
+                
+                // Calculate score based ONLY on user app risks
+                const highRiskCount = userAppRisks.filter(
+                    (r: RiskInfo) => r.riskLevel === 'HIGH' || r.riskLevel === 'CRITICAL'
+                ).length;
+                
+                const mediumRiskCount = userAppRisks.filter(
+                    (r: RiskInfo) => r.riskLevel === 'MEDIUM'
+                ).length;
+                
+                const lowRiskCount = userAppRisks.filter(
+                    (r: RiskInfo) => r.riskLevel === 'LOW'
+                ).length;
+                
+                const penalty = (highRiskCount * 8) + (mediumRiskCount * 3) + (lowRiskCount * 1);
+                const calculatedScore = Math.max(0, Math.min(100, 100 - penalty));
+                setScore(calculatedScore);
             }
 
         } catch (error) {
@@ -90,19 +126,6 @@ export const HomeScreen: React.FC = () => {
         } finally {
             setLoading(false);
         }
-    };
-
-    const calculateScore = (appList: AppInfo[]) => {
-        // Count apps with dangerous permissions
-        const dangerousPermissions = ['LOCATION', 'CAMERA', 'RECORD_AUDIO', 'CONTACTS', 'SMS'];
-        const riskyCount = appList.filter(app => 
-            app.permissions.some(perm => 
-                dangerousPermissions.some(danger => perm.includes(danger))
-            )
-        ).length;
-        
-        const newScore = Math.max(0, 100 - (riskyCount * 3));
-        setScore(newScore);
     };
 
     const startVPN = async () => {
@@ -133,6 +156,10 @@ export const HomeScreen: React.FC = () => {
             startVPN();
         }
     };
+
+    // Count high and medium risks for display
+    const highRiskCount = riskyApps.filter(r => r.riskLevel === 'HIGH' || r.riskLevel === 'CRITICAL').length;
+    const mediumRiskCount = riskyApps.filter(r => r.riskLevel === 'MEDIUM').length;
 
     if (loading) {
         return (
@@ -205,20 +232,46 @@ export const HomeScreen: React.FC = () => {
                 </TouchableOpacity>
             </View>
 
-            {/* Risky Apps Alert */}
+            {/* Risky Apps Alert - Only show if there are risky user apps */}
             {riskyApps.length > 0 && (
                 <View style={styles.riskAlert}>
-                    <Text style={styles.riskAlertTitle}>⚠️ {riskyApps.length} Risky App{riskyApps.length > 1 ? 's' : ''} Found</Text>
+                    <Text style={styles.riskAlertTitle}>
+                        ⚠️ {riskyApps.length} Risky User App{riskyApps.length > 1 ? 's' : ''} Found
+                    </Text>
+                    <Text style={styles.riskSubtitle}>
+                        {highRiskCount > 0 ? `🔴 ${highRiskCount} high risk, ` : ''}
+                        {mediumRiskCount > 0 ? `🟡 ${mediumRiskCount} medium risk` : ''}
+                        {highRiskCount === 0 && mediumRiskCount === 0 ? '🟢 Low risk apps' : ''}
+                    </Text>
                     {riskyApps.slice(0, 3).map((app, index) => (
                         <View key={index} style={styles.riskItem}>
                             <Text style={styles.riskAppName}>{app.appName}</Text>
                             <Text style={styles.riskReason}>{app.reason}</Text>
-                            <Text style={styles.riskLevel}>{app.riskLevel}</Text>
+                            <Text style={[
+                                styles.riskLevel,
+                                app.riskLevel === 'HIGH' || app.riskLevel === 'CRITICAL' 
+                                    ? styles.riskHigh 
+                                    : app.riskLevel === 'MEDIUM' 
+                                    ? styles.riskMedium 
+                                    : styles.riskLow
+                            ]}>
+                                {app.riskLevel}
+                            </Text>
                         </View>
                     ))}
                     {riskyApps.length > 3 && (
                         <Text style={styles.moreRisks}>+ {riskyApps.length - 3} more</Text>
                     )}
+                </View>
+            )}
+
+            {/* No Risks Found */}
+            {riskyApps.length === 0 && (
+                <View style={styles.safeAlert}>
+                    <Text style={styles.safeAlertTitle}>✅ No Risky Apps Found</Text>
+                    <Text style={styles.safeAlertText}>
+                        All user-installed apps appear to have normal permission footprints.
+                    </Text>
                 </View>
             )}
 
@@ -235,8 +288,10 @@ export const HomeScreen: React.FC = () => {
             {/* Debug Info */}
             <View style={styles.debugInfo}>
                 <Text style={styles.debugText}>Apps loaded: {apps.length}</Text>
-                <Text style={styles.debugText}>Risky apps: {riskyApps.length}</Text>
+                <Text style={styles.debugText}>User apps: {apps.filter(a => !a.isSystemApp).length}</Text>
+                <Text style={styles.debugText}>Risky user apps: {riskyApps.length}</Text>
                 <Text style={styles.debugText}>Plugin: {pluginConnected ? 'Connected' : 'Disconnected'}</Text>
+                <Text style={styles.debugText}>Score: {score}</Text>
             </View>
         </ScrollView>
     );
@@ -355,6 +410,11 @@ const styles = StyleSheet.create({
         color: '#ff6b6b',
         fontSize: 16,
         fontWeight: 'bold',
+        marginBottom: 4,
+    },
+    riskSubtitle: {
+        color: '#888',
+        fontSize: 13,
         marginBottom: 8,
     },
     riskItem: {
@@ -378,15 +438,41 @@ const styles = StyleSheet.create({
         marginLeft: 8,
     },
     riskLevel: {
-        color: '#ff6b6b',
         fontSize: 12,
         fontWeight: 'bold',
+    },
+    riskHigh: {
+        color: '#ff6b6b',
+    },
+    riskMedium: {
+        color: '#ffa94d',
+    },
+    riskLow: {
+        color: '#4CAF50',
     },
     moreRisks: {
         color: '#888',
         fontSize: 12,
         textAlign: 'center',
         marginTop: 4,
+    },
+    safeAlert: {
+        backgroundColor: '#1a2a1a',
+        borderRadius: 12,
+        padding: 16,
+        marginBottom: 16,
+        borderWidth: 1,
+        borderColor: '#4CAF5033',
+    },
+    safeAlertTitle: {
+        color: '#4CAF50',
+        fontSize: 16,
+        fontWeight: 'bold',
+        marginBottom: 4,
+    },
+    safeAlertText: {
+        color: '#888',
+        fontSize: 13,
     },
     actions: { 
         flexDirection: 'row', 
