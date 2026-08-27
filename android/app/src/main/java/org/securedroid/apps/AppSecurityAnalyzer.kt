@@ -76,12 +76,14 @@ class AppSecurityAnalyzer {
     )
 
     private val trustedInstallers = setOf(
-        "com.android.vending",
-        "com.amazon.venezia",
-        "com.sec.android.app.samsungapps",
-        "com.xiaomi.mipicks",
-        "com.xiaomi.market",
-        "com.huawei.appmarket"
+        "com.android.vending",                    // Google Play
+        "com.google.android.packageinstaller",    // Android Package Installer
+        "com.android.packageinstaller",           // Legacy Package Installer
+        "com.amazon.venezia",                     // Amazon Appstore
+        "com.sec.android.app.samsungapps",        // Galaxy Store
+        "com.xiaomi.mipicks",                     // Xiaomi GetApps
+        "com.xiaomi.market",                      // Xiaomi Market
+        "com.huawei.appmarket"                    // Huawei AppGallery
     )
 
     fun analyze(app: InstalledAppInfo): Assessment {
@@ -157,58 +159,66 @@ class AppSecurityAnalyzer {
          * We inspect DECLARED permissions.
          *
          * This does NOT claim that the permission is currently granted.
+         *
+         * IMPORTANT: System apps (Bluetooth, Phone Services, Google Play Services,
+         * System UI, etc.) legitimately require many permissions to function.
+         * They should NOT be flagged as HIGH risk for having permissions
+         * that are expected for their system role.
          */
-        val declaredHighImpactPermissions =
-            app.requestedPermissions
-                .filter { it in highImpactPermissions }
-                .distinct()
+        if (!app.isSystemApp) {
 
-        if (declaredHighImpactPermissions.isNotEmpty()) {
+            val declaredHighImpactPermissions =
+                app.requestedPermissions
+                    .filter { it in highImpactPermissions }
+                    .distinct()
 
-            val permissionDescriptions =
-                declaredHighImpactPermissions
-                    .mapNotNull {
-                        highImpactPermissions[it]
+            if (declaredHighImpactPermissions.isNotEmpty()) {
+
+                val permissionDescriptions =
+                    declaredHighImpactPermissions
+                        .mapNotNull {
+                            highImpactPermissions[it]
+                        }
+
+                val count =
+                    declaredHighImpactPermissions.size
+
+                val severity =
+                    when {
+                        count >= 4 ->
+                            RiskLevel.HIGH
+
+                        count >= 2 ->
+                            RiskLevel.MEDIUM
+
+                        else ->
+                            RiskLevel.LOW
                     }
 
-            val count =
-                declaredHighImpactPermissions.size
+                val points =
+                    when {
+                        count >= 4 ->
+                            30
 
-            val severity =
-                when {
-                    count >= 4 ->
-                        RiskLevel.HIGH
+                        count >= 2 ->
+                            18
 
-                    count >= 2 ->
-                        RiskLevel.MEDIUM
+                        else ->
+                            8
+                    }
 
-                    else ->
-                        RiskLevel.LOW
-                }
-
-            val points =
-                when {
-                    count >= 4 ->
-                        30
-
-                    count >= 2 ->
-                        18
-
-                    else ->
-                        8
-                }
-
-            findings += Finding(
-                code = "HIGH_IMPACT_PERMISSIONS",
-                title = "High-impact permission footprint",
-                description =
-                    "The application declares $count high-impact permission(s): " +
-                    permissionDescriptions.joinToString("; ") +
-                    ". Declaration alone does not prove that these permissions " +
-                    "are currently granted or being abused.",
-                severity = severity,
-                points = points
-            )
+                findings += Finding(
+                    code = "HIGH_IMPACT_PERMISSIONS",
+                    title = "High-impact permission footprint",
+                    description =
+                        "The application declares $count high-impact permission(s): " +
+                        permissionDescriptions.joinToString("; ") +
+                        ". Declaration alone does not prove that these permissions " +
+                        "are currently granted or being abused.",
+                    severity = severity,
+                    points = points
+                )
+            }
         }
 
         /*
