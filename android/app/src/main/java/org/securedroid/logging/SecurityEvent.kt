@@ -6,6 +6,5 @@ data class SecurityEvent(
     val category: String,
     val severity: String,
     val description: String,
-    val source: String,
-    val metadata: Map<String, String>? = null
+    val source: String
 )
