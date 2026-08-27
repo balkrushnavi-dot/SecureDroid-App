@@ -33,6 +33,11 @@ class SecureDroidCapacitorPlugin : Plugin() {
     private lateinit var vaultStorage: VaultStorage
     private lateinit var logManager: SecurityLogManager
 
+    // Captures the real exception (if any) from load(), so it can be
+    // surfaced through checkConnection() for on-device diagnosis
+    // without needing adb/logcat access.
+    private var loadError: String? = null
+
     override fun load() {
         super.load()
 
@@ -51,7 +56,10 @@ class SecureDroidCapacitorPlugin : Plugin() {
                 "SecureDroid native plugin loaded successfully"
             )
 
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
+            loadError = "${e.javaClass.name}: ${e.message}\n" +
+                (e.stackTrace.take(5).joinToString("\n") { "  at $it" })
+
             Log.e(
                 TAG,
                 "SecureDroid plugin initialization failed",
@@ -74,6 +82,7 @@ class SecureDroidCapacitorPlugin : Plugin() {
             result.put("platform", "android")
             result.put("message", "SecureDroid native security bridge available")
             result.put("timestamp", System.currentTimeMillis())
+            result.put("loadError", loadError ?: "none")
 
             call.resolve(result)
 
