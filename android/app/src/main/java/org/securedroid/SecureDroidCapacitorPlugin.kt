@@ -952,6 +952,11 @@ class SecureDroidCapacitorPlugin : Plugin() {
                 "android_native"
             )
 
+            Log.d(
+                TAG,
+                "getVpnStatus: state=$state, active=$active"
+            )
+
             call.resolve(result)
 
         } catch (e: Exception) {
@@ -1056,6 +1061,11 @@ class SecureDroidCapacitorPlugin : Plugin() {
                 "android_native"
             )
 
+            Log.d(
+                TAG,
+                "startVpn: started=$started, state=$state"
+            )
+
             call.resolve(result)
 
         } catch (e: Exception) {
@@ -1113,6 +1123,11 @@ class SecureDroidCapacitorPlugin : Plugin() {
             result.put(
                 "runtimePlatform",
                 "android_native"
+            )
+
+            Log.d(
+                TAG,
+                "stopVpn: state=$state"
             )
 
             call.resolve(result)
