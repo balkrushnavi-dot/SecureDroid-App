@@ -32,7 +32,6 @@ class SecureVpnManager(
         return try {
             val intent = Intent(context, SecureVpnService::class.java).apply {
                 action = SecureVpnService.ACTION_START
-                putExtra(SecureVpnService.EXTRA_DNS_SERVER, "1.1.1.1")
             }
 
             ContextCompat.startForegroundService(context, intent)
