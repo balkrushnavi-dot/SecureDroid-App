@@ -17,6 +17,9 @@ import org.json.JSONArray
 import org.securedroid.apps.AppSecurityAnalyzer
 import org.securedroid.apps.InstalledAppScanner
 import org.securedroid.diagnostics.HardeningAnalyzer
+import org.securedroid.logging.SecurityEvent
+import org.securedroid.logging.SecurityLogManager
+import org.securedroid.vault.VaultStorage
 import org.securedroid.vpn.SecureVpnManager
 import org.securedroid.vpn.VpnState
 
@@ -27,6 +30,8 @@ class SecureDroidCapacitorPlugin : Plugin() {
     private lateinit var appAnalyzer: AppSecurityAnalyzer
     private lateinit var hardeningAnalyzer: HardeningAnalyzer
     private lateinit var vpnManager: SecureVpnManager
+    private lateinit var vaultStorage: VaultStorage
+    private lateinit var logManager: SecurityLogManager
 
     override fun load() {
         super.load()
@@ -38,6 +43,8 @@ class SecureDroidCapacitorPlugin : Plugin() {
             appAnalyzer = AppSecurityAnalyzer()
             hardeningAnalyzer = HardeningAnalyzer(context)
             vpnManager = SecureVpnManager(context)
+            vaultStorage = VaultStorage(context)
+            logManager = SecurityLogManager(context)
 
             Log.d(
                 TAG,
@@ -935,6 +942,300 @@ class SecureDroidCapacitorPlugin : Plugin() {
 
             call.reject(
                 "Unable to stop VPN: ${e.message}",
+                e
+            )
+        }
+    }
+
+    // =========================================================
+    // SECURE VAULT
+    // =========================================================
+
+    @PluginMethod
+    fun secureStorageSet(call: PluginCall) {
+        try {
+
+            val key = call.getString("key")
+            val value = call.getString("value")
+
+            if (key.isNullOrBlank() || value == null) {
+                call.reject(
+                    "Missing required 'key' or 'value'"
+                )
+                return
+            }
+
+            val success = vaultStorage.set(key, value)
+
+            if (!success) {
+                call.reject(
+                    "Failed to write to secure vault"
+                )
+                return
+            }
+
+            val result = JSObject()
+
+            result.put(
+                "success",
+                true
+            )
+
+            result.put(
+                "value",
+                true
+            )
+
+            call.resolve(result)
+
+        } catch (e: Exception) {
+
+            Log.e(
+                TAG,
+                "secureStorageSet failed",
+                e
+            )
+
+            call.reject(
+                "Unable to write to secure vault: ${e.message}",
+                e
+            )
+        }
+    }
+
+    @PluginMethod
+    fun secureStorageGet(call: PluginCall) {
+        try {
+
+            val key = call.getString("key")
+
+            if (key.isNullOrBlank()) {
+                call.reject(
+                    "Missing required 'key'"
+                )
+                return
+            }
+
+            val value = vaultStorage.get(key)
+
+            val result = JSObject()
+
+            result.put(
+                "success",
+                true
+            )
+
+            result.put(
+                "value",
+                value
+            )
+
+            call.resolve(result)
+
+        } catch (e: Exception) {
+
+            Log.e(
+                TAG,
+                "secureStorageGet failed",
+                e
+            )
+
+            call.reject(
+                "Unable to read from secure vault: ${e.message}",
+                e
+            )
+        }
+    }
+
+    @PluginMethod
+    fun secureStorageRemove(call: PluginCall) {
+        try {
+
+            val key = call.getString("key")
+
+            if (key.isNullOrBlank()) {
+                call.reject(
+                    "Missing required 'key'"
+                )
+                return
+            }
+
+            val success = vaultStorage.remove(key)
+
+            val result = JSObject()
+
+            result.put(
+                "success",
+                true
+            )
+
+            result.put(
+                "value",
+                success
+            )
+
+            call.resolve(result)
+
+        } catch (e: Exception) {
+
+            Log.e(
+                TAG,
+                "secureStorageRemove failed",
+                e
+            )
+
+            call.reject(
+                "Unable to remove secure vault entry: ${e.message}",
+                e
+            )
+        }
+    }
+
+    // =========================================================
+    // SECURITY LOGGING
+    // =========================================================
+
+    @PluginMethod
+    fun logSecurityEvent(call: PluginCall) {
+        try {
+
+            val eventObj = call.getObject("event")
+
+            if (eventObj == null) {
+                call.reject(
+                    "Missing required 'event'"
+                )
+                return
+            }
+
+            val category = eventObj.getString("category") ?: "AUDIT"
+            val severity = eventObj.getString("severity") ?: "INFO"
+            val description = eventObj.getString("description") ?: ""
+            val source = eventObj.getString("source") ?: "Unknown"
+
+            val id = "evt_${System.currentTimeMillis()}_${(0..9999).random()}"
+            val timestamp = System.currentTimeMillis()
+
+            val event = SecurityEvent(
+                id = id,
+                timestamp = timestamp,
+                category = category,
+                severity = severity,
+                description = description,
+                source = source
+            )
+
+            val success = logManager.logEvent(event)
+
+            if (!success) {
+                call.reject(
+                    "Failed to write security log entry"
+                )
+                return
+            }
+
+            val result = JSObject()
+
+            result.put(
+                "success",
+                true
+            )
+
+            result.put(
+                "id",
+                id
+            )
+
+            result.put(
+                "timestamp",
+                timestamp
+            )
+
+            result.put(
+                "category",
+                category
+            )
+
+            result.put(
+                "severity",
+                severity
+            )
+
+            result.put(
+                "description",
+                description
+            )
+
+            result.put(
+                "source",
+                source
+            )
+
+            call.resolve(result)
+
+        } catch (e: Exception) {
+
+            Log.e(
+                TAG,
+                "logSecurityEvent failed",
+                e
+            )
+
+            call.reject(
+                "Unable to write security log entry: ${e.message}",
+                e
+            )
+        }
+    }
+
+    @PluginMethod
+    fun getSecurityLogs(call: PluginCall) {
+        try {
+
+            val limit = call.getInt("limit") ?: 50
+            val category = call.getString("category")
+
+            val events = logManager.getEvents(limit, category)
+
+            val array = JSONArray()
+
+            events.forEach { event ->
+                val obj = JSObject()
+
+                obj.put("id", event.id)
+                obj.put("timestamp", event.timestamp)
+                obj.put("category", event.category)
+                obj.put("severity", event.severity)
+                obj.put("description", event.description)
+                obj.put("source", event.source)
+
+                array.put(obj)
+            }
+
+            val result = JSObject()
+
+            result.put(
+                "success",
+                true
+            )
+
+            result.put(
+                "value",
+                array
+            )
+
+            call.resolve(result)
+
+        } catch (e: Exception) {
+
+            Log.e(
+                TAG,
+                "getSecurityLogs failed",
+                e
+            )
+
+            call.reject(
+                "Unable to read security logs: ${e.message}",
                 e
             )
         }
