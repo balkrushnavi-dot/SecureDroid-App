@@ -26,12 +26,6 @@ class InstalledAppScanner(
     private val context: Context
 ) {
 
-    /**
-     * Thrown when the scan fails, carrying the real underlying cause
-     * so callers (and ultimately the UI, in debug builds) can see
-     * what actually went wrong instead of a generic "unavailable"
-     * message with no diagnostic trail.
-     */
     class ScanException(message: String, cause: Throwable) : Exception(message, cause)
 
     fun scan(): List<InstalledAppInfo> {
@@ -106,15 +100,6 @@ class InstalledAppScanner(
             .sortedBy { it.appName.lowercase() }
     }
 
-    /**
-     * Returns the package name of the app store/installer that
-     * installed this package, or null if it cannot be determined
-     * (e.g. installed via adb, or the info is unavailable). A null
-     * or unrecognized installer is a real, checkable signal that an
-     * app was sideloaded rather than installed from a known store —
-     * it is reported as-is, not upgraded into a "malicious app"
-     * claim.
-     */
     private fun getInstallerPackageName(
         packageManager: android.content.pm.PackageManager,
         packageName: String
