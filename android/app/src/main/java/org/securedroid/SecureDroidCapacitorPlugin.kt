@@ -1887,9 +1887,13 @@ class SecureDroidCapacitorPlugin : Plugin() {
 
         return try {
 
-            val signers =
-                packageInfo.signingInfo
-                    .apkContentsSigners
+            // FIX: Use safe call operator (?.) to handle nullable SigningInfo
+            val signingInfo = packageInfo.signingInfo
+            if (signingInfo == null) {
+                return null
+            }
+
+            val signers = signingInfo.apkContentsSigners
 
             if (signers.isEmpty()) {
                 return null
