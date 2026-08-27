@@ -1,9 +1,22 @@
 // src/hooks/useSecureDroid.ts
 import { useState, useEffect, useCallback } from 'react';
-import { Capacitor } from '@capacitor/core';
+import { registerPlugin } from '@capacitor/core';
 
-// Get the plugin
-const SecureDroid = Capacitor.Plugins.SecureDroid;
+// Use registerPlugin, not Capacitor.Plugins.SecureDroid directly.
+// registerPlugin returns a lazy proxy that resolves the native
+// implementation on each call, so it works correctly regardless of
+// whether native plugin registration has completed by the time this
+// module is first evaluated. Reading Capacitor.Plugins.SecureDroid
+// into a top-level const instead can capture `undefined` if this
+// module runs before Capacitor finishes registering native plugins,
+// and that undefined value never updates afterward.
+interface SecureDroidPluginShape {
+    checkConnection(): Promise<unknown>;
+    getInstalledApps(): Promise<unknown>;
+    scanForRisks(): Promise<unknown>;
+}
+
+const SecureDroid = registerPlugin<SecureDroidPluginShape>('SecureDroid');
 
 // Types
 export interface AppInfo {
@@ -41,14 +54,6 @@ export const useSecureDroid = () => {
 
         try {
             console.log('🔍 useSecureDroid: Starting load...');
-
-            // Check if plugin exists
-            if (!SecureDroid) {
-                setConnected(false);
-                setError('SecureDroid plugin not found');
-                setLoading(false);
-                return;
-            }
 
             // Try to check connection
             try {
