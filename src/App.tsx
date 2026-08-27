@@ -1,6 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ShieldCheck, ScrollText, LayoutGrid, Settings as SettingsIcon, ChevronRight, Info } from 'lucide-react';
-// At the top of your App.tsx
 import { useSecureDroid } from './hooks/useSecureDroid';
 import { ThreatModelCenterScreen } from './components/security/ThreatModelCenterScreen';
 import { SecurityAuditLogScreen } from './components/security/SecurityAuditLogScreen';
@@ -28,9 +27,15 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'settings', label: 'SETTINGS', icon: SettingsIcon },
 ];
 
-// Update your HomeScreen function in App.tsx
 function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
     const { apps, risks, loading, connected, error, score, reload } = useSecureDroid();
+
+    // Debug logging
+    useEffect(() => {
+        console.log('🏠 [HomeScreen] Apps:', apps.length);
+        console.log('🏠 [HomeScreen] Risks:', risks.length);
+        console.log('🏠 [HomeScreen] Risks details:', risks.map(r => r.appName + ' (' + r.riskLevel + ')'));
+    }, [apps, risks]);
 
     const cards: { id: Screen; title: string; description: string; icon: React.ElementType }[] = [
         {
@@ -95,11 +100,26 @@ function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
                             ⚠️ {risks.length} risky app{risks.length !== 1 ? 's' : ''} found
                         </div>
                     )}
+                    {risks.length === 0 && !loading && (
+                        <div className="mt-2 text-sm text-green-400">
+                            ✅ No risky apps found
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Loading State */}
+            {loading && (
+                <div className="bg-slate-900/50 p-8 rounded-xl border border-slate-800 text-center">
+                    <div className="animate-pulse">
+                        <div className="text-4xl mb-2">🔍</div>
+                        <div className="text-slate-400">Scanning your device...</div>
+                    </div>
                 </div>
             )}
 
             {/* Cards */}
-            {cards.map((card) => {
+            {!loading && cards.map((card) => {
                 const Icon = card.icon;
                 return (
                     <button
@@ -122,6 +142,20 @@ function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
                     </button>
                 );
             })}
+
+            {/* Debug Info */}
+            {process.env.NODE_ENV === 'development' && (
+                <div className="mt-4 p-3 bg-slate-900/50 rounded-xl border border-slate-800">
+                    <div className="text-xs text-slate-500 font-mono space-y-1">
+                        <div>🔍 Debug Info:</div>
+                        <div>• Total Apps: {apps.length}</div>
+                        <div>• Risky Apps: {risks.length}</div>
+                        <div>• Score: {score}</div>
+                        <div>• Connected: {connected ? 'Yes' : 'No'}</div>
+                        <div>• Loading: {loading ? 'Yes' : 'No'}</div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
