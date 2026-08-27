@@ -1,20 +1,21 @@
 package org.securedroid
 
-import android.app.Activity
+import android.content.pm.PackageInfo
+import android.content.pm.PackageManager
+import android.content.pm.PermissionInfo
 import android.net.VpnService
+import android.os.Build
 import android.util.Log
-
-import androidx.activity.result.ActivityResult
 
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
-import com.getcapacitor.annotation.ActivityCallback
 import com.getcapacitor.annotation.CapacitorPlugin
 
 import org.json.JSONArray
-import org.securedroid.apps.AppSecurityAnalyzer
+import org.securedroid.apps.AppRiskAnalyzer
+import org.securedroid.apps.InstalledAppInfo
 import org.securedroid.apps.InstalledAppScanner
 import org.securedroid.diagnostics.HardeningAnalyzer
 import org.securedroid.logging.SecurityEvent
@@ -23,49 +24,51 @@ import org.securedroid.vault.VaultStorage
 import org.securedroid.vpn.SecureVpnManager
 import org.securedroid.vpn.VpnState
 
+import java.security.MessageDigest
+
 @CapacitorPlugin(name = "SecureDroid")
 class SecureDroidCapacitorPlugin : Plugin() {
 
-    private lateinit var appScanner: InstalledAppScanner
-    private lateinit var appAnalyzer: AppSecurityAnalyzer
-    private lateinit var hardeningAnalyzer: HardeningAnalyzer
-    private lateinit var vpnManager: SecureVpnManager
-    private lateinit var vaultStorage: VaultStorage
-    private lateinit var logManager: SecurityLogManager
+    /*
+     * Lazy initialization is deliberate.
+     *
+     * The previous implementation initialized every native service
+     * inside load(). One failing constructor could make the whole
+     * plugin fail to initialize and Capacitor would then report:
+     *
+     * "SecureDroid plugin is not implemented on android"
+     *
+     * Services are now created only when actually used.
+     */
 
-    // Captures the real exception (if any) from load(), so it can be
-    // surfaced through checkConnection() for on-device diagnosis
-    // without needing adb/logcat access.
-    private var loadError: String? = null
+    private val appScanner by lazy {
+        InstalledAppScanner(
+            bridge.context.applicationContext
+        )
+    }
 
-    override fun load() {
-        try {
-            super.load()
+    private val hardeningAnalyzer by lazy {
+        HardeningAnalyzer(
+            bridge.context.applicationContext
+        )
+    }
 
-            val context = bridge.context
+    private val vpnManager by lazy {
+        SecureVpnManager(
+            bridge.context.applicationContext
+        )
+    }
 
-            appScanner = InstalledAppScanner(context)
-            appAnalyzer = AppSecurityAnalyzer()
-            hardeningAnalyzer = HardeningAnalyzer(context)
-            vpnManager = SecureVpnManager(context)
-            vaultStorage = VaultStorage(context)
-            logManager = SecurityLogManager(context)
+    private val vaultStorage by lazy {
+        VaultStorage(
+            bridge.context.applicationContext
+        )
+    }
 
-            Log.d(
-                TAG,
-                "SecureDroid native plugin loaded successfully"
-            )
-
-        } catch (e: Throwable) {
-            loadError = "${e.javaClass.name}: ${e.message}\n" +
-                (e.stackTrace.take(5).joinToString("\n") { "  at $it" })
-
-            Log.e(
-                TAG,
-                "SecureDroid plugin initialization failed",
-                e
-            )
-        }
+    private val logManager by lazy {
+        SecurityLogManager(
+            bridge.context.applicationContext
+        )
     }
 
     // =========================================================
@@ -74,19 +77,40 @@ class SecureDroidCapacitorPlugin : Plugin() {
 
     @PluginMethod
     fun checkConnection(call: PluginCall) {
+
         try {
+
             val result = JSObject()
 
-            result.put("connected", true)
-            result.put("plugin", "SecureDroid")
-            result.put("platform", "android")
-            result.put("message", "SecureDroid native security bridge available")
-            result.put("timestamp", System.currentTimeMillis())
-            result.put("loadError", loadError ?: "none")
+            result.put(
+                "connected",
+                true
+            )
+
+            result.put(
+                "plugin",
+                "SecureDroid"
+            )
+
+            result.put(
+                "platform",
+                "android"
+            )
+
+            result.put(
+                "message",
+                "SecureDroid native security bridge available"
+            )
+
+            result.put(
+                "timestamp",
+                System.currentTimeMillis()
+            )
 
             call.resolve(result)
 
         } catch (e: Exception) {
+
             Log.e(
                 TAG,
                 "checkConnection failed",
@@ -94,7 +118,7 @@ class SecureDroidCapacitorPlugin : Plugin() {
             )
 
             call.reject(
-                "Native security bridge unavailable",
+                "Native security bridge unavailable: ${e.message}",
                 e
             )
         }
@@ -106,144 +130,74 @@ class SecureDroidCapacitorPlugin : Plugin() {
 
     @PluginMethod
     fun getInstalledApps(call: PluginCall) {
+
         try {
-            val apps = appScanner.scan()
-            val jsonApps = JSONArray()
+
+            val apps =
+                appScanner.scan()
+
+            val nativeApps =
+                JSONArray()
+
+            val legacyApps =
+                JSONArray()
 
             apps.forEach { app ->
 
-                val permissions = JSONArray()
-
-                app.requestedPermissions.forEach { permission ->
-                    permissions.put(permission)
-                }
-
-                val installer = app.installerPackageName
-
-                /*
-                 * A null installer does NOT prove sideloading.
-                 *
-                 * UNKNOWN remains UNKNOWN.
-                 */
-
-                val installSource =
-                    installer ?: "UNKNOWN"
-
-                val isKnownPlayInstall =
-                    installer == "com.android.vending"
-
-                val isSideloaded =
-                    !app.isSystemApp &&
-                    installer != null &&
-                    !isKnownPlayInstall
-
-                val json = JSObject()
-
-                json.put(
-                    "packageName",
-                    app.packageName
+                nativeApps.put(
+                    installedAppToJson(app)
                 )
 
-                json.put(
-                    "appName",
-                    app.appName
+                legacyApps.put(
+                    legacyAppToJson(app)
                 )
-
-                json.put(
-                    "versionName",
-                    app.versionName ?: "Unknown"
-                )
-
-                json.put(
-                    "versionCode",
-                    app.versionCode
-                )
-
-                json.put(
-                    "targetSdk",
-                    app.targetSdk
-                )
-
-                json.put(
-                    "minSdk",
-                    app.minSdk
-                )
-
-                json.put(
-                    "isSystemApp",
-                    app.isSystemApp
-                )
-
-                json.put(
-                    "isEnabled",
-                    app.isEnabled
-                )
-
-                json.put(
-                    "isLaunchable",
-                    app.isLaunchable
-                )
-
-                json.put(
-                    "isDebuggable",
-                    app.isDebuggable
-                )
-
-                json.put(
-                    "installTime",
-                    app.firstInstallTime
-                )
-
-                json.put(
-                    "updateTime",
-                    app.lastUpdateTime
-                )
-
-                json.put(
-                    "installSource",
-                    installSource
-                )
-
-                json.put(
-                    "isSideloaded",
-                    isSideloaded
-                )
-
-                json.put(
-                    "installerKnown",
-                    installer != null
-                )
-
-                json.put(
-                    "permissions",
-                    permissions
-                )
-
-                jsonApps.put(json)
             }
 
-            val result = JSObject()
+            val result =
+                JSObject()
 
             result.put(
                 "success",
                 true
             )
 
+            /*
+             * New native API shape.
+             */
+            result.put(
+                "data",
+                nativeApps
+            )
+
+            /*
+             * Backwards-compatible shape used by
+             * useSecureDroid.ts.
+             */
             result.put(
                 "apps",
-                jsonApps
+                legacyApps
             )
 
             result.put(
                 "count",
-                jsonApps.length()
+                apps.size
+            )
+
+            result.put(
+                "isSupported",
+                true
+            )
+
+            result.put(
+                "runtimePlatform",
+                "android_native"
             )
 
             call.resolve(result)
 
             Log.d(
                 TAG,
-                "Returned ${jsonApps.length()} installed applications"
+                "Returned ${apps.size} installed applications"
             )
 
         } catch (e: Exception) {
@@ -262,59 +216,68 @@ class SecureDroidCapacitorPlugin : Plugin() {
     }
 
     // =========================================================
-    // APPLICATION SECURITY ANALYSIS
+    // APPLICATION RISK SCAN
     // =========================================================
 
     @PluginMethod
     fun scanForRisks(call: PluginCall) {
+
         try {
 
-            val apps = appScanner.scan()
-            val riskDetails = JSONArray()
+            val apps =
+                appScanner.scan()
+
+            val riskDetails =
+                JSONArray()
 
             apps.forEach { app ->
 
-                val assessment =
-                    appAnalyzer.analyze(app)
+                val report =
+                    AppRiskAnalyzer.analyze(app)
 
                 /*
-                 * Only applications with actual findings
-                 * are returned.
+                 * Only return apps with actual findings.
                  */
-
-                if (assessment.findings.isEmpty()) {
+                if (report.findings.isEmpty()) {
                     return@forEach
                 }
 
-                val findings = JSONArray()
+                val findings =
+                    JSONArray()
 
-                assessment.findings.forEach { finding ->
+                report.findings.forEach { finding ->
 
-                    val findingJson = JSObject()
+                    val findingJson =
+                        JSObject()
+
+                    findingJson.put(
+                        "id",
+                        finding.id
+                    )
 
                     findingJson.put(
                         "code",
-                        finding.code
+                        finding.id
                     )
 
                     findingJson.put(
-                        "title",
-                        finding.title
-                    )
-
-                    findingJson.put(
-                        "description",
-                        finding.description
+                        "level",
+                        finding.level.name
                     )
 
                     findingJson.put(
                         "severity",
-                        finding.severity.name
+                        finding.level.name
                     )
 
                     findingJson.put(
-                        "points",
-                        finding.points
+                        "summary",
+                        finding.summary
+                    )
+
+                    findingJson.put(
+                        "title",
+                        finding.summary
                     )
 
                     findings.put(
@@ -322,31 +285,37 @@ class SecureDroidCapacitorPlugin : Plugin() {
                     )
                 }
 
-                val json = JSObject()
+                val json =
+                    JSObject()
 
                 json.put(
                     "appName",
-                    assessment.appName
+                    app.appName
+                )
+
+                json.put(
+                    "label",
+                    app.appName
                 )
 
                 json.put(
                     "packageName",
-                    assessment.packageName
+                    report.packageName
                 )
 
                 json.put(
                     "riskLevel",
-                    assessment.riskLevel.name
+                    report.overallRisk.name
                 )
 
                 json.put(
-                    "securityScore",
-                    assessment.score
+                    "overallRisk",
+                    report.overallRisk.name
                 )
 
                 json.put(
                     "findingCount",
-                    assessment.findings.size
+                    report.findings.size
                 )
 
                 json.put(
@@ -354,16 +323,27 @@ class SecureDroidCapacitorPlugin : Plugin() {
                     findings
                 )
 
-                riskDetails.put(json)
+                riskDetails.put(
+                    json
+                )
             }
 
-            val result = JSObject()
+            val result =
+                JSObject()
 
             result.put(
                 "success",
                 true
             )
 
+            result.put(
+                "data",
+                riskDetails
+            )
+
+            /*
+             * Backwards compatibility.
+             */
             result.put(
                 "riskDetails",
                 riskDetails
@@ -379,13 +359,17 @@ class SecureDroidCapacitorPlugin : Plugin() {
                 apps.size
             )
 
-            call.resolve(result)
-
-            Log.d(
-                TAG,
-                "Analyzed ${apps.size} apps; " +
-                    "${riskDetails.length()} have findings"
+            result.put(
+                "isSupported",
+                true
             )
+
+            result.put(
+                "runtimePlatform",
+                "android_native"
+            )
+
+            call.resolve(result)
 
         } catch (e: Exception) {
 
@@ -402,9 +386,134 @@ class SecureDroidCapacitorPlugin : Plugin() {
         }
     }
 
+    // =========================================================
+    // APP SECURITY AUDITOR
+    // =========================================================
+
     @PluginMethod
     fun getAppRiskReports(call: PluginCall) {
-        scanForRisks(call)
+
+        try {
+
+            val apps =
+                appScanner.scan()
+
+            val reports =
+                JSONArray()
+
+            apps.forEach { app ->
+
+                val report =
+                    AppRiskAnalyzer.analyze(app)
+
+                if (report.findings.isEmpty()) {
+                    return@forEach
+                }
+
+                val findings =
+                    JSONArray()
+
+                report.findings.forEach { finding ->
+
+                    val item =
+                        JSObject()
+
+                    item.put(
+                        "id",
+                        finding.id
+                    )
+
+                    item.put(
+                        "level",
+                        finding.level.name
+                    )
+
+                    item.put(
+                        "summary",
+                        finding.summary
+                    )
+
+                    findings.put(
+                        item
+                    )
+                }
+
+                val json =
+                    JSObject()
+
+                json.put(
+                    "packageName",
+                    report.packageName
+                )
+
+                json.put(
+                    "label",
+                    app.appName
+                )
+
+                json.put(
+                    "overallRisk",
+                    report.overallRisk.name
+                )
+
+                json.put(
+                    "findings",
+                    findings
+                )
+
+                reports.put(
+                    json
+                )
+            }
+
+            val result =
+                JSObject()
+
+            result.put(
+                "success",
+                true
+            )
+
+            result.put(
+                "data",
+                reports
+            )
+
+            result.put(
+                "reports",
+                reports
+            )
+
+            result.put(
+                "totalRiskyApps",
+                reports.length()
+            )
+
+            result.put(
+                "isSupported",
+                true
+            )
+
+            result.put(
+                "runtimePlatform",
+                "android_native"
+            )
+
+            call.resolve(result)
+
+        } catch (e: Exception) {
+
+            Log.e(
+                TAG,
+                "getAppRiskReports failed",
+                e
+            )
+
+            call.reject(
+                "Application risk reports unavailable: ${e.message}",
+                e
+            )
+        }
     }
 
     // =========================================================
@@ -413,16 +522,26 @@ class SecureDroidCapacitorPlugin : Plugin() {
 
     @PluginMethod
     fun getHardeningReport(call: PluginCall) {
+
         try {
 
             val report =
                 hardeningAnalyzer.analyze()
 
-            val findings = JSONArray()
+            val findings =
+                JSONArray()
+
+            val findingIds =
+                mutableSetOf<String>()
 
             report.findings.forEach { finding ->
 
-                val json = JSObject()
+                findingIds.add(
+                    finding.id
+                )
+
+                val json =
+                    JSObject()
 
                 json.put(
                     "id",
@@ -439,24 +558,46 @@ class SecureDroidCapacitorPlugin : Plugin() {
                     finding.summary
                 )
 
-                findings.put(json)
+                findings.put(
+                    json
+                )
             }
 
             val vpnState =
                 vpnManager.getState()
 
-            val findingIds =
-                report.findings
-                    .map { it.id }
-                    .toSet()
-
-            val result = JSObject()
+            val result =
+                JSObject()
 
             result.put(
                 "success",
                 true
             )
 
+            /*
+             * NativeResult-compatible payload.
+             */
+            val data =
+                JSObject()
+
+            data.put(
+                "score",
+                report.score
+            )
+
+            data.put(
+                "findings",
+                findings
+            )
+
+            result.put(
+                "data",
+                data
+            )
+
+            /*
+             * Backwards-compatible top-level fields.
+             */
             result.put(
                 "score",
                 report.score
@@ -467,10 +608,7 @@ class SecureDroidCapacitorPlugin : Plugin() {
                 findings
             )
 
-            // -------------------------------------------------
             // VPN
-            // -------------------------------------------------
-
             result.put(
                 "vpnStatus",
                 vpnState == VpnState.CONNECTED
@@ -481,10 +619,7 @@ class SecureDroidCapacitorPlugin : Plugin() {
                 vpnState.name
             )
 
-            // -------------------------------------------------
-            // SCREEN LOCK
-            // -------------------------------------------------
-
+            // Screen lock
             result.put(
                 "screenLock",
                 "NO_SCREEN_LOCK" !in findingIds &&
@@ -505,10 +640,7 @@ class SecureDroidCapacitorPlugin : Plugin() {
                 }
             )
 
-            // -------------------------------------------------
-            // USB DEBUGGING
-            // -------------------------------------------------
-
+            // USB debugging
             result.put(
                 "usbDebugging",
                 "USB_DEBUGGING_ENABLED" in findingIds
@@ -516,19 +648,16 @@ class SecureDroidCapacitorPlugin : Plugin() {
 
             result.put(
                 "usbDebuggingStatus",
-                when {
-                    "USB_DEBUGGING_ENABLED" in findingIds ->
-                        "WARNING"
-
-                    else ->
-                        "PASS"
+                if (
+                    "USB_DEBUGGING_ENABLED" in findingIds
+                ) {
+                    "WARNING"
+                } else {
+                    "PASS"
                 }
             )
 
-            // -------------------------------------------------
-            // DEVELOPER OPTIONS
-            // -------------------------------------------------
-
+            // Developer options
             result.put(
                 "developerOptions",
                 "DEVELOPER_OPTIONS_ENABLED" in findingIds
@@ -536,19 +665,16 @@ class SecureDroidCapacitorPlugin : Plugin() {
 
             result.put(
                 "developerOptionsStatus",
-                when {
-                    "DEVELOPER_OPTIONS_ENABLED" in findingIds ->
-                        "WARNING"
-
-                    else ->
-                        "PASS"
+                if (
+                    "DEVELOPER_OPTIONS_ENABLED" in findingIds
+                ) {
+                    "WARNING"
+                } else {
+                    "PASS"
                 }
             )
 
-            // -------------------------------------------------
-            // SECURITY PATCH
-            // -------------------------------------------------
-
+            // Security patch
             result.put(
                 "securityPatchStatus",
                 when {
@@ -563,18 +689,7 @@ class SecureDroidCapacitorPlugin : Plugin() {
                 }
             )
 
-            // -------------------------------------------------
-            // UNKNOWN SOURCES
-            // -------------------------------------------------
-
-            /*
-             * Android does not expose one universal global
-             * "unknown sources" switch on modern versions.
-             *
-             * Therefore UNKNOWN is the correct default unless
-             * the analyzer has an explicit finding.
-             */
-
+            // Unknown sources
             result.put(
                 "unknownSources",
                 "UNKNOWN_SOURCES_ENABLED" in findingIds
@@ -582,22 +697,26 @@ class SecureDroidCapacitorPlugin : Plugin() {
 
             result.put(
                 "unknownSourcesStatus",
-                when {
-                    "UNKNOWN_SOURCES_ENABLED" in findingIds ->
-                        "WARNING"
-
-                    else ->
-                        "UNKNOWN"
+                if (
+                    "UNKNOWN_SOURCES_ENABLED" in findingIds
+                ) {
+                    "WARNING"
+                } else {
+                    "UNKNOWN"
                 }
             )
 
-            call.resolve(result)
-
-            Log.d(
-                TAG,
-                "Hardening score=${report.score}, " +
-                    "findings=${report.findings.size}"
+            result.put(
+                "isSupported",
+                true
             )
+
+            result.put(
+                "runtimePlatform",
+                "android_native"
+            )
+
+            call.resolve(result)
 
         } catch (e: Exception) {
 
@@ -614,25 +733,35 @@ class SecureDroidCapacitorPlugin : Plugin() {
         }
     }
 
+    /*
+     * Compatibility alias used by older frontend code.
+     */
+    @PluginMethod
+    fun getDeviceHardening(call: PluginCall) {
+        getHardeningReport(call)
+    }
+
     // =========================================================
     // VPN PERMISSION
     // =========================================================
 
     @PluginMethod
     fun requestVpnPermission(call: PluginCall) {
+
         try {
 
-            val context = bridge.context
-
             val prepareIntent =
-                VpnService.prepare(context)
+                VpnService.prepare(
+                    bridge.context
+                )
 
             /*
              * Permission already granted.
              */
             if (prepareIntent == null) {
 
-                val result = JSObject()
+                val result =
+                    JSObject()
 
                 result.put(
                     "success",
@@ -660,81 +789,59 @@ class SecureDroidCapacitorPlugin : Plugin() {
             }
 
             /*
-             * Use Capacitor's ActivityCallback mechanism.
+             * We deliberately do NOT use ActivityResult here.
              *
-             * ActivityResult is AndroidX:
-             * androidx.activity.result.ActivityResult
+             * The previous implementation introduced an AndroidX
+             * ActivityResult dependency only for this system consent
+             * screen. That dependency path is unnecessary.
+             *
+             * After the system dialog closes, the frontend can call
+             * startVpn()/getVpnStatus() again.
              */
-
-            startActivityForResult(
-                call,
-                prepareIntent,
-                VPN_PERMISSION_CALLBACK
+            getActivity().startActivity(
+                prepareIntent
             )
+
+            val result =
+                JSObject()
+
+            result.put(
+                "success",
+                true
+            )
+
+            result.put(
+                "granted",
+                false
+            )
+
+            result.put(
+                "permissionRequested",
+                true
+            )
+
+            result.put(
+                "state",
+                vpnManager.getState().name
+            )
+
+            result.put(
+                "message",
+                "VPN permission request opened"
+            )
+
+            call.resolve(result)
 
         } catch (e: Exception) {
 
             Log.e(
                 TAG,
-                "VPN permission request failed",
+                "requestVpnPermission failed",
                 e
             )
 
             call.reject(
                 "Unable to request VPN permission: ${e.message}",
-                e
-            )
-        }
-    }
-
-    @ActivityCallback
-    private fun vpnPermissionResult(
-        call: PluginCall,
-        result: ActivityResult
-    ) {
-        try {
-
-            val granted =
-                result.resultCode == Activity.RESULT_OK
-
-            val response = JSObject()
-
-            response.put(
-                "success",
-                true
-            )
-
-            response.put(
-                "granted",
-                granted
-            )
-
-            response.put(
-                "state",
-                vpnManager.getState().name
-            )
-
-            response.put(
-                "message",
-                if (granted) {
-                    "VPN permission granted"
-                } else {
-                    "VPN permission denied"
-                }
-            )
-
-            call.resolve(response)
-
-        } catch (e: Exception) {
-
-            Log.e(
-                TAG,
-                "VPN permission callback failed",
-                e
-            )
-
-            call.reject(
-                "Unable to process VPN permission result: ${e.message}",
                 e
             )
         }
@@ -746,16 +853,73 @@ class SecureDroidCapacitorPlugin : Plugin() {
 
     @PluginMethod
     fun getVpnStatus(call: PluginCall) {
+
         try {
 
             val state =
                 vpnManager.getState()
 
-            val result = JSObject()
+            val active =
+                state == VpnState.CONNECTED
+
+            val data =
+                JSObject()
+
+            data.put(
+                "isActive",
+                active
+            )
+
+            data.put(
+                "state",
+                state.name
+            )
+
+            data.put(
+                "establishedTime",
+                if (active) {
+                    System.currentTimeMillis()
+                } else {
+                    null
+                }
+            )
+
+            data.put(
+                "bytesReceived",
+                0
+            )
+
+            data.put(
+                "bytesTransmitted",
+                0
+            )
+
+            data.put(
+                "blockedDomainsCount",
+                0
+            )
+
+            data.put(
+                "activeDns",
+                "1.1.1.1"
+            )
+
+            data.put(
+                "filterMode",
+                "BLOCKLIST"
+            )
+
+            val result =
+                JSObject()
 
             result.put(
                 "success",
                 true
+            )
+
+            result.put(
+                "data",
+                data
             )
 
             result.put(
@@ -765,33 +929,27 @@ class SecureDroidCapacitorPlugin : Plugin() {
 
             result.put(
                 "isConnected",
-                state == VpnState.CONNECTED
+                active
             )
 
             result.put(
                 "isActive",
-                state == VpnState.CONNECTED
+                active
             )
 
             result.put(
                 "message",
-                when (state) {
+                vpnMessage(state)
+            )
 
-                    VpnState.CONNECTED ->
-                        "VPN protection is active"
+            result.put(
+                "isSupported",
+                true
+            )
 
-                    VpnState.CONNECTING ->
-                        "VPN protection is connecting"
-
-                    VpnState.DISCONNECTING ->
-                        "VPN protection is disconnecting"
-
-                    VpnState.ERROR ->
-                        "VPN protection encountered an error"
-
-                    VpnState.DISCONNECTED ->
-                        "VPN protection is disconnected"
-                }
+            result.put(
+                "runtimePlatform",
+                "android_native"
             )
 
             call.resolve(result)
@@ -820,19 +978,15 @@ class SecureDroidCapacitorPlugin : Plugin() {
 
         try {
 
-            val context = bridge.context
-
-            /*
-             * Android requires user authorization before
-             * establishing a VPN.
-             */
-
             val prepareIntent =
-                VpnService.prepare(context)
+                VpnService.prepare(
+                    bridge.context
+                )
 
             if (prepareIntent != null) {
 
-                val result = JSObject()
+                val result =
+                    JSObject()
 
                 result.put(
                     "success",
@@ -865,7 +1019,8 @@ class SecureDroidCapacitorPlugin : Plugin() {
             val state =
                 vpnManager.getState()
 
-            val result = JSObject()
+            val result =
+                JSObject()
 
             result.put(
                 "success",
@@ -889,6 +1044,16 @@ class SecureDroidCapacitorPlugin : Plugin() {
                 } else {
                     "VPN could not be started"
                 }
+            )
+
+            result.put(
+                "isSupported",
+                true
+            )
+
+            result.put(
+                "runtimePlatform",
+                "android_native"
             )
 
             call.resolve(result)
@@ -922,7 +1087,8 @@ class SecureDroidCapacitorPlugin : Plugin() {
             val state =
                 vpnManager.getState()
 
-            val result = JSObject()
+            val result =
+                JSObject()
 
             result.put(
                 "success",
@@ -937,6 +1103,16 @@ class SecureDroidCapacitorPlugin : Plugin() {
             result.put(
                 "message",
                 "VPN stop requested"
+            )
+
+            result.put(
+                "isSupported",
+                true
+            )
+
+            result.put(
+                "runtimePlatform",
+                "android_native"
             )
 
             call.resolve(result)
@@ -957,36 +1133,55 @@ class SecureDroidCapacitorPlugin : Plugin() {
     }
 
     // =========================================================
-    // SECURE VAULT
+    // SECURE STORAGE
     // =========================================================
 
     @PluginMethod
     fun secureStorageSet(call: PluginCall) {
+
         try {
 
-            val key = call.getString("key")
-            val value = call.getString("value")
+            val key =
+                call.getString("key")
 
-            if (key.isNullOrBlank() || value == null) {
+            val value =
+                call.getString("value")
+
+            if (
+                key.isNullOrBlank() ||
+                value == null
+            ) {
                 call.reject(
                     "Missing required 'key' or 'value'"
                 )
                 return
             }
 
-            val success = vaultStorage.set(key, value)
+            val success =
+                vaultStorage.set(
+                    key,
+                    value
+                )
 
             if (!success) {
+
                 call.reject(
                     "Failed to write to secure vault"
                 )
+
                 return
             }
 
-            val result = JSObject()
+            val result =
+                JSObject()
 
             result.put(
                 "success",
+                true
+            )
+
+            result.put(
+                "data",
                 true
             )
 
@@ -1014,24 +1209,35 @@ class SecureDroidCapacitorPlugin : Plugin() {
 
     @PluginMethod
     fun secureStorageGet(call: PluginCall) {
+
         try {
 
-            val key = call.getString("key")
+            val key =
+                call.getString("key")
 
             if (key.isNullOrBlank()) {
+
                 call.reject(
                     "Missing required 'key'"
                 )
+
                 return
             }
 
-            val value = vaultStorage.get(key)
+            val value =
+                vaultStorage.get(key)
 
-            val result = JSObject()
+            val result =
+                JSObject()
 
             result.put(
                 "success",
                 true
+            )
+
+            result.put(
+                "data",
+                value
             )
 
             result.put(
@@ -1058,24 +1264,35 @@ class SecureDroidCapacitorPlugin : Plugin() {
 
     @PluginMethod
     fun secureStorageRemove(call: PluginCall) {
+
         try {
 
-            val key = call.getString("key")
+            val key =
+                call.getString("key")
 
             if (key.isNullOrBlank()) {
+
                 call.reject(
                     "Missing required 'key'"
                 )
+
                 return
             }
 
-            val success = vaultStorage.remove(key)
+            val success =
+                vaultStorage.remove(key)
 
-            val result = JSObject()
+            val result =
+                JSObject()
 
             result.put(
                 "success",
                 true
+            )
+
+            result.put(
+                "data",
+                success
             )
 
             result.put(
@@ -1101,49 +1318,115 @@ class SecureDroidCapacitorPlugin : Plugin() {
     }
 
     // =========================================================
-    // SECURITY LOGGING
+    // SECURITY AUDIT LOG
     // =========================================================
 
     @PluginMethod
     fun logSecurityEvent(call: PluginCall) {
+
         try {
 
-            val eventObj = call.getObject("event")
+            val eventObj =
+                call.getObject("event")
 
             if (eventObj == null) {
+
                 call.reject(
                     "Missing required 'event'"
                 )
+
                 return
             }
 
-            val category = eventObj.getString("category") ?: "AUDIT"
-            val severity = eventObj.getString("severity") ?: "INFO"
-            val description = eventObj.getString("description") ?: ""
-            val source = eventObj.getString("source") ?: "Unknown"
+            val id =
+                "evt_${System.currentTimeMillis()}_${(0..9999).random()}"
 
-            val id = "evt_${System.currentTimeMillis()}_${(0..9999).random()}"
-            val timestamp = System.currentTimeMillis()
+            val timestamp =
+                System.currentTimeMillis()
 
-            val event = SecurityEvent(
-                id = id,
-                timestamp = timestamp,
-                category = category,
-                severity = severity,
-                description = description,
-                source = source
-            )
+            val category =
+                eventObj.optString(
+                    "category",
+                    "AUDIT"
+                )
 
-            val success = logManager.logEvent(event)
+            val severity =
+                eventObj.optString(
+                    "severity",
+                    "INFO"
+                )
+
+            val description =
+                eventObj.optString(
+                    "description",
+                    ""
+                )
+
+            val source =
+                eventObj.optString(
+                    "source",
+                    "SecureDroid"
+                )
+
+            val event =
+                SecurityEvent(
+                    id = id,
+                    timestamp = timestamp,
+                    category = category,
+                    severity = severity,
+                    description = description,
+                    source = source
+                )
+
+            val success =
+                logManager.logEvent(
+                    event
+                )
 
             if (!success) {
+
                 call.reject(
                     "Failed to write security log entry"
                 )
+
                 return
             }
 
-            val result = JSObject()
+            val data =
+                JSObject()
+
+            data.put(
+                "id",
+                id
+            )
+
+            data.put(
+                "timestamp",
+                timestamp
+            )
+
+            data.put(
+                "category",
+                category
+            )
+
+            data.put(
+                "severity",
+                severity
+            )
+
+            data.put(
+                "description",
+                description
+            )
+
+            data.put(
+                "source",
+                source
+            )
+
+            val result =
+                JSObject()
 
             result.put(
                 "success",
@@ -1151,33 +1434,13 @@ class SecureDroidCapacitorPlugin : Plugin() {
             )
 
             result.put(
-                "id",
-                id
+                "data",
+                data
             )
 
             result.put(
-                "timestamp",
-                timestamp
-            )
-
-            result.put(
-                "category",
-                category
-            )
-
-            result.put(
-                "severity",
-                severity
-            )
-
-            result.put(
-                "description",
-                description
-            )
-
-            result.put(
-                "source",
-                source
+                "value",
+                data
             )
 
             call.resolve(result)
@@ -1199,29 +1462,72 @@ class SecureDroidCapacitorPlugin : Plugin() {
 
     @PluginMethod
     fun getSecurityLogs(call: PluginCall) {
+
         try {
 
-            val limit = call.getInt("limit") ?: 50
-            val category = call.getString("category")
+            val requestedLimit =
+                call.getInt("limit") ?: 50
 
-            val events = logManager.getEvents(limit, category)
+            val limit =
+                requestedLimit.coerceIn(
+                    1,
+                    500
+                )
 
-            val array = JSONArray()
+            val category =
+                call.getString("category")
+
+            val events =
+                logManager.getEvents(
+                    limit,
+                    category
+                )
+
+            val array =
+                JSONArray()
 
             events.forEach { event ->
-                val obj = JSObject()
 
-                obj.put("id", event.id)
-                obj.put("timestamp", event.timestamp)
-                obj.put("category", event.category)
-                obj.put("severity", event.severity)
-                obj.put("description", event.description)
-                obj.put("source", event.source)
+                val obj =
+                    JSObject()
 
-                array.put(obj)
+                obj.put(
+                    "id",
+                    event.id
+                )
+
+                obj.put(
+                    "timestamp",
+                    event.timestamp
+                )
+
+                obj.put(
+                    "category",
+                    event.category
+                )
+
+                obj.put(
+                    "severity",
+                    event.severity
+                )
+
+                obj.put(
+                    "description",
+                    event.description
+                )
+
+                obj.put(
+                    "source",
+                    event.source
+                )
+
+                array.put(
+                    obj
+                )
             }
 
-            val result = JSObject()
+            val result =
+                JSObject()
 
             result.put(
                 "success",
@@ -1229,8 +1535,23 @@ class SecureDroidCapacitorPlugin : Plugin() {
             )
 
             result.put(
+                "data",
+                array
+            )
+
+            result.put(
                 "value",
                 array
+            )
+
+            result.put(
+                "isSupported",
+                true
+            )
+
+            result.put(
+                "runtimePlatform",
+                "android_native"
             )
 
             call.resolve(result)
@@ -1251,13 +1572,401 @@ class SecureDroidCapacitorPlugin : Plugin() {
     }
 
     // =========================================================
-    // CONSTANTS
+    // PACKAGE JSON
     // =========================================================
 
-    companion object {
-        private const val TAG = "SecureDroid"
+    private fun installedAppToJson(
+        app: InstalledAppInfo
+    ): JSObject {
 
-        private const val VPN_PERMISSION_CALLBACK =
-            "vpnPermissionResult"
+        val packageManager =
+            bridge.context.packageManager
+
+        val packageInfo =
+            getPackageInfoSafe(
+                packageManager,
+                app.packageName
+            )
+
+        val requested =
+            app.requestedPermissions
+
+        /*
+         * Real granted-permission check.
+         *
+         * We do NOT claim every requested permission is granted.
+         */
+        val granted =
+            requested.filter { permission ->
+
+                try {
+
+                    bridge.context.checkSelfPermission(
+                        permission
+                    ) == PackageManager.PERMISSION_GRANTED
+
+                } catch (_: Exception) {
+
+                    false
+                }
+            }
+
+        /*
+         * Real dangerous-permission classification.
+         */
+        val dangerous =
+            requested.filter { permission ->
+
+                try {
+
+                    val permissionInfo =
+                        packageManager.getPermissionInfo(
+                            permission,
+                            0
+                        )
+
+                    (
+                        permissionInfo.protectionLevel and
+                            PermissionInfo.PROTECTION_MASK_BASE
+                        ) == PermissionInfo.PROTECTION_DANGEROUS
+
+                } catch (_: Exception) {
+
+                    false
+                }
+            }
+
+        val json =
+            JSObject()
+
+        json.put(
+            "packageName",
+            app.packageName
+        )
+
+        json.put(
+            "label",
+            app.appName
+        )
+
+        json.put(
+            "appName",
+            app.appName
+        )
+
+        json.put(
+            "versionName",
+            app.versionName ?: "Unknown"
+        )
+
+        json.put(
+            "versionCode",
+            app.versionCode
+        )
+
+        json.put(
+            "targetSdk",
+            app.targetSdk
+        )
+
+        json.put(
+            "minSdk",
+            app.minSdk
+        )
+
+        json.put(
+            "isSystemApp",
+            app.isSystemApp
+        )
+
+        json.put(
+            "isLaunchable",
+            app.isLaunchable
+        )
+
+        json.put(
+            "firstInstallTime",
+            app.firstInstallTime
+        )
+
+        json.put(
+            "lastUpdateTime",
+            app.lastUpdateTime
+        )
+
+        json.put(
+            "installTime",
+            app.firstInstallTime
+        )
+
+        json.put(
+            "updateTime",
+            app.lastUpdateTime
+        )
+
+        json.put(
+            "requestedPermissions",
+            JSONArray(requested)
+        )
+
+        /*
+         * Backwards-compatible field.
+         */
+        json.put(
+            "permissions",
+            JSONArray(requested)
+        )
+
+        json.put(
+            "grantedPermissions",
+            JSONArray(granted)
+        )
+
+        json.put(
+            "dangerousPermissions",
+            JSONArray(dangerous)
+        )
+
+        json.put(
+            "installerPackage",
+            app.installerPackageName
+        )
+
+        json.put(
+            "installSource",
+            app.installerPackageName ?: "UNKNOWN"
+        )
+
+        json.put(
+            "installerKnown",
+            app.installerPackageName != null
+        )
+
+        json.put(
+            "isSideloaded",
+            isSideloaded(app)
+        )
+
+        json.put(
+            "isDebuggable",
+            app.isDebuggable
+        )
+
+        json.put(
+            "enabled",
+            app.isEnabled
+        )
+
+        json.put(
+            "isEnabled",
+            app.isEnabled
+        )
+
+        json.put(
+            "signingCertSha256",
+            signingCertSha256(
+                packageInfo
+            )
+        )
+
+        return json
+    }
+
+    private fun legacyAppToJson(
+        app: InstalledAppInfo
+    ): JSObject {
+
+        val json =
+            JSObject()
+
+        json.put(
+            "packageName",
+            app.packageName
+        )
+
+        json.put(
+            "appName",
+            app.appName
+        )
+
+        json.put(
+            "versionName",
+            app.versionName ?: "Unknown"
+        )
+
+        json.put(
+            "versionCode",
+            app.versionCode
+        )
+
+        json.put(
+            "isSystemApp",
+            app.isSystemApp
+        )
+
+        json.put(
+            "installTime",
+            app.firstInstallTime
+        )
+
+        json.put(
+            "updateTime",
+            app.lastUpdateTime
+        )
+
+        json.put(
+            "installSource",
+            app.installerPackageName ?: "UNKNOWN"
+        )
+
+        json.put(
+            "isSideloaded",
+            isSideloaded(app)
+        )
+
+        json.put(
+            "permissions",
+            JSONArray(
+                app.requestedPermissions
+            )
+        )
+
+        return json
+    }
+
+    // =========================================================
+    // PACKAGE HELPERS
+    // =========================================================
+
+    private fun getPackageInfoSafe(
+        packageManager: PackageManager,
+        packageName: String
+    ): PackageInfo? {
+
+        return try {
+
+            if (
+                Build.VERSION.SDK_INT >=
+                Build.VERSION_CODES.TIRAMISU
+            ) {
+
+                packageManager.getPackageInfo(
+                    packageName,
+                    PackageManager.PackageInfoFlags.of(
+                        PackageManager.GET_PERMISSIONS.toLong()
+                    )
+                )
+
+            } else {
+
+                @Suppress("DEPRECATION")
+
+                packageManager.getPackageInfo(
+                    packageName,
+                    PackageManager.GET_PERMISSIONS
+                )
+            }
+
+        } catch (_: Exception) {
+
+            null
+        }
+    }
+
+    private fun signingCertSha256(
+        packageInfo: PackageInfo?
+    ): String? {
+
+        if (
+            packageInfo == null ||
+            Build.VERSION.SDK_INT <
+            Build.VERSION_CODES.P
+        ) {
+            return null
+        }
+
+        return try {
+
+            val signers =
+                packageInfo.signingInfo
+                    .apkContentsSigners
+
+            if (signers.isEmpty()) {
+                return null
+            }
+
+            val digest =
+                MessageDigest.getInstance(
+                    "SHA-256"
+                ).digest(
+                    signers.first().toByteArray()
+                )
+
+            digest.joinToString(":") {
+                "%02X".format(it)
+            }
+
+        } catch (_: Exception) {
+
+            null
+        }
+    }
+
+    private fun isSideloaded(
+        app: InstalledAppInfo
+    ): Boolean {
+
+        /*
+         * Null installer is UNKNOWN.
+         *
+         * We deliberately do not call it sideloaded.
+         */
+        val installer =
+            app.installerPackageName
+                ?: return false
+
+        if (app.isSystemApp) {
+            return false
+        }
+
+        return installer !in KNOWN_STORES
+    }
+
+    private fun vpnMessage(
+        state: VpnState
+    ): String {
+
+        return when (state) {
+
+            VpnState.CONNECTED ->
+                "VPN protection is active"
+
+            VpnState.CONNECTING ->
+                "VPN protection is connecting"
+
+            VpnState.DISCONNECTING ->
+                "VPN protection is disconnecting"
+
+            VpnState.ERROR ->
+                "VPN protection encountered an error"
+
+            VpnState.DISCONNECTED ->
+                "VPN protection is disconnected"
+        }
+    }
+
+    companion object {
+
+        private const val TAG =
+            "SecureDroid"
+
+        private val KNOWN_STORES =
+            setOf(
+                "com.android.vending",
+                "com.amazon.venezia",
+                "com.sec.android.app.samsungapps",
+                "com.google.android.packageinstaller",
+                "com.android.packageinstaller"
+            )
     }
 }
