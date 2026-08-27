@@ -76,21 +76,13 @@ class AppSecurityAnalyzer {
     )
 
     private val trustedInstallers = setOf(
-        "com.android.vending",                 // Google Play
-        "com.amazon.venezia",                 // Amazon Appstore
-        "com.sec.android.app.samsungapps",    // Galaxy Store
-        "com.xiaomi.mipicks",                 // Xiaomi GetApps
+        "com.android.vending",
+        "com.amazon.venezia",
+        "com.sec.android.app.samsungapps",
+        "com.xiaomi.mipicks",
         "com.xiaomi.market",
         "com.huawei.appmarket"
     )
-
-    /*
-     * Android 12+ is API 31.
-     *
-     * We do NOT flag system applications for this rule because OEM
-     * system components frequently have legacy target metadata.
-     */
-    private const val LEGACY_TARGET_SDK = 31
 
     fun analyze(app: InstalledAppInfo): Assessment {
 
@@ -129,6 +121,7 @@ class AppSecurityAnalyzer {
             when {
 
                 installer == null -> {
+
                     findings += Finding(
                         code = "UNKNOWN_INSTALLER",
                         title = "Installation source unknown",
@@ -142,6 +135,7 @@ class AppSecurityAnalyzer {
                 }
 
                 installer !in trustedInstallers -> {
+
                     findings += Finding(
                         code = "UNTRUSTED_INSTALLER",
                         title = "Unrecognized installation source",
@@ -173,22 +167,35 @@ class AppSecurityAnalyzer {
 
             val permissionDescriptions =
                 declaredHighImpactPermissions
-                    .mapNotNull { highImpactPermissions[it] }
+                    .mapNotNull {
+                        highImpactPermissions[it]
+                    }
 
-            val count = declaredHighImpactPermissions.size
+            val count =
+                declaredHighImpactPermissions.size
 
             val severity =
                 when {
-                    count >= 4 -> RiskLevel.HIGH
-                    count >= 2 -> RiskLevel.MEDIUM
-                    else -> RiskLevel.LOW
+                    count >= 4 ->
+                        RiskLevel.HIGH
+
+                    count >= 2 ->
+                        RiskLevel.MEDIUM
+
+                    else ->
+                        RiskLevel.LOW
                 }
 
             val points =
                 when {
-                    count >= 4 -> 30
-                    count >= 2 -> 18
-                    else -> 8
+                    count >= 4 ->
+                        30
+
+                    count >= 2 ->
+                        18
+
+                    else ->
+                        8
                 }
 
             findings += Finding(
@@ -235,14 +242,20 @@ class AppSecurityAnalyzer {
          * score = RISK SCORE, not a device security score.
          */
         val riskPoints =
-            findings.sumOf { it.points }.coerceIn(0, 100)
+            findings
+                .sumOf { it.points }
+                .coerceIn(0, 100)
 
         val riskLevel =
             when {
-                findings.any { it.severity == RiskLevel.HIGH } ->
+                findings.any {
+                    it.severity == RiskLevel.HIGH
+                } ->
                     RiskLevel.HIGH
 
-                findings.any { it.severity == RiskLevel.MEDIUM } ->
+                findings.any {
+                    it.severity == RiskLevel.MEDIUM
+                } ->
                     RiskLevel.MEDIUM
 
                 findings.isNotEmpty() ->
@@ -259,5 +272,16 @@ class AppSecurityAnalyzer {
             riskLevel = riskLevel,
             findings = findings
         )
+    }
+
+    companion object {
+
+        /*
+         * Android 12 / API 31.
+         *
+         * Applications below this target level may miss newer
+         * Android security behavior and compatibility restrictions.
+         */
+        private const val LEGACY_TARGET_SDK = 31
     }
 }
