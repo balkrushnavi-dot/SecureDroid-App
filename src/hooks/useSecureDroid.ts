@@ -60,7 +60,7 @@ export interface RiskInfo {
   }>;
   reason?: string;
   installSource?: string;
-  isSystemApp?: boolean;  // Added to filter system apps
+  isSystemApp?: boolean;
 }
 
 export const useSecureDroid = () => {
@@ -79,176 +79,106 @@ export const useSecureDroid = () => {
 
     try {
 
-      /*
-       * ----------------------------------------------------------
-       * CONNECTION
-       * ----------------------------------------------------------
-       */
-      const connection =
-        await SecureDroid.checkConnection();
+      // Connection
+      const connection = await SecureDroid.checkConnection();
 
       if (!connection?.connected) {
-
         setConnected(false);
-        setError(
-          connection?.message ||
-          'SecureDroid native bridge is unavailable.',
-        );
-
+        setError(connection?.message || 'SecureDroid native bridge is unavailable.');
         setApps([]);
         setRisks([]);
         setScore(0);
-
         return;
       }
 
       setConnected(true);
 
-      /*
-       * ----------------------------------------------------------
-       * INSTALLED APPLICATIONS
-       * ----------------------------------------------------------
-       */
-      const appsResult =
-        await SecureDroid.getInstalledApps();
+      // Get installed apps
+      const appsResult = await SecureDroid.getInstalledApps();
 
-      if (
-        !appsResult ||
-        !Array.isArray(appsResult.apps)
-      ) {
-
-        throw new Error(
-          appsResult?.message ||
-          'Installed application evidence is unavailable.',
-        );
+      if (!appsResult || !Array.isArray(appsResult.apps)) {
+        throw new Error(appsResult?.message || 'Installed application evidence is unavailable.');
       }
 
-      const appList =
-        appsResult.apps;
-
+      const appList = appsResult.apps;
       setApps(appList);
 
-      /*
-       * ----------------------------------------------------------
-       * RISK SCAN
-       * ----------------------------------------------------------
-       */
-      const riskResult =
-        await SecureDroid.scanForRisks();
+      // Get risk scan
+      const riskResult = await SecureDroid.scanForRisks();
 
-      const allRiskDetails =
-        Array.isArray(riskResult?.riskDetails)
-          ? riskResult.riskDetails
-          : [];
+      const allRiskDetails = Array.isArray(riskResult?.riskDetails)
+        ? riskResult.riskDetails
+        : [];
 
-      /*
-       * ----------------------------------------------------------
-       * FILTER OUT SYSTEM APPS FROM RISK COUNT
-       * ----------------------------------------------------------
-       *
-       * System apps (Bluetooth, Phone Services, Google Play Services,
-       * System UI, etc.) legitimately require many permissions to function.
-       * They should NOT be counted as "risky apps" on the Home dashboard
-       * or in the Threat Model Center.
-       *
-       * We filter by checking if the app is a system app using either:
-       * 1. The isSystemApp flag if present in the risk data
-       * 2. Cross-referencing with the apps list
-       */
+      // DEBUG: Log what we got from native
+      console.log('🔍 [useSecureDroid] Total risk details from native:', allRiskDetails.length);
+      console.log('🔍 [useSecureDroid] Total apps:', appList.length);
+      console.log('🔍 [useSecureDroid] System apps:', appList.filter(a => a.isSystemApp).length);
+      console.log('🔍 [useSecureDroid] User apps:', appList.filter(a => !a.isSystemApp).length);
+
+      // Filter out system apps
       const userAppPackageNames = new Set(
         appList
           .filter(app => !app.isSystemApp)
           .map(app => app.packageName)
       );
 
-      const userAppRisks =
-        allRiskDetails.filter((risk) => {
-          // If the risk data has an isSystemApp flag, use it
-          if (risk.isSystemApp === true) {
-            return false;
-          }
-          // Otherwise cross-reference with the apps list
-          return userAppPackageNames.has(risk.packageName);
-        });
+      console.log('🔍 [useSecureDroid] User app package names:', userAppPackageNames.size);
 
-      /*
-       * Only MEDIUM/HIGH/CRITICAL findings count as
-       * "risky apps" on the Home dashboard.
-       *
-       * LOW findings remain useful in the detailed auditor,
-       * but should not inflate the headline risk count.
-       */
-      const meaningfulRisks =
-        userAppRisks.filter((risk) =>
-          risk.riskLevel === 'MEDIUM' ||
-          risk.riskLevel === 'HIGH' ||
-          risk.riskLevel === 'CRITICAL'
-        );
+      const userAppRisks = allRiskDetails.filter((risk) => {
+        if (risk.isSystemApp === true) {
+          return false;
+        }
+        return userAppPackageNames.has(risk.packageName);
+      });
+
+      console.log('🔍 [useSecureDroid] User app risks after filtering:', userAppRisks.length);
+
+      // Log which risks were filtered out
+      const filteredOut = allRiskDetails.filter((risk) => {
+        if (risk.isSystemApp === true) return true;
+        return !userAppPackageNames.has(risk.packageName);
+      });
+      
+      console.log('🔍 [useSecureDroid] Filtered out risks (system apps):', filteredOut.length);
+      if (filteredOut.length > 0) {
+        console.log('🔍 [useSecureDroid] Sample filtered out:', filteredOut.slice(0, 5).map(r => r.appName));
+      }
+
+      // Only MEDIUM/HIGH/CRITICAL count as "risky apps"
+      const meaningfulRisks = userAppRisks.filter((risk) =>
+        risk.riskLevel === 'MEDIUM' ||
+        risk.riskLevel === 'HIGH' ||
+        risk.riskLevel === 'CRITICAL'
+      );
+
+      console.log('🔍 [useSecureDroid] Meaningful risks (MEDIUM+):', meaningfulRisks.length);
 
       setRisks(meaningfulRisks);
 
-      /*
-       * ----------------------------------------------------------
-       * MEASURABLE DASHBOARD SCORE
-       * ----------------------------------------------------------
-       *
-       * This score is derived from actual findings.
-       *
-       * HIGH/CRITICAL = 8 points
-       * MEDIUM         = 3 points
-       * LOW            = 1 point
-       *
-       * The result is bounded to 0..100.
-       *
-       * Most importantly, it uses the freshly received
-       * riskDetails rather than stale React state.
-       */
-      const highRiskCount =
-        meaningfulRisks.filter(
-          (risk) =>
-            risk.riskLevel === 'HIGH' ||
-            risk.riskLevel === 'CRITICAL',
-        ).length;
+      // Calculate score
+      const highRiskCount = meaningfulRisks.filter(
+        (risk) => risk.riskLevel === 'HIGH' || risk.riskLevel === 'CRITICAL'
+      ).length;
 
-      const mediumRiskCount =
-        meaningfulRisks.filter(
-          (risk) =>
-            risk.riskLevel === 'MEDIUM',
-        ).length;
+      const mediumRiskCount = meaningfulRisks.filter(
+        (risk) => risk.riskLevel === 'MEDIUM'
+      ).length;
 
-      const lowRiskCount =
-        meaningfulRisks.filter(
-          (risk) =>
-            risk.riskLevel === 'LOW',
-        ).length;
+      const penalty = (highRiskCount * 8) + (mediumRiskCount * 3);
+      const calculatedScore = Math.max(0, Math.min(100, 100 - penalty));
 
-      const penalty =
-        (highRiskCount * 8) +
-        (mediumRiskCount * 3) +
-        (lowRiskCount * 1);
-
-      const calculatedScore =
-        Math.max(
-          0,
-          Math.min(
-            100,
-            100 - penalty,
-          ),
-        );
+      console.log('🔍 [useSecureDroid] High risk:', highRiskCount, 'Medium risk:', mediumRiskCount, 'Score:', calculatedScore);
 
       setScore(calculatedScore);
 
     } catch (err: unknown) {
 
-      console.error(
-        'SecureDroid data load failed:',
-        err,
-      );
+      console.error('SecureDroid data load failed:', err);
 
       setApps([]);
       setRisks([]);
       setScore(0);
-
       setConnected(false);
 
       setError(
@@ -258,7 +188,6 @@ export const useSecureDroid = () => {
       );
 
     } finally {
-
       setLoading(false);
     }
 
