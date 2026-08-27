@@ -361,7 +361,7 @@ export const SecureDroidIconButton: React.FC<{
 };
 
 // -------------------------------------------------------------
-// 7. Qualitative Status Chip (Muted & Minimalist)
+// 7. Qualitative Status Chip (Minimalist & VPN-Aware)
 // -------------------------------------------------------------
 interface SecureDroidStatusChipProps {
   status: string;
@@ -382,6 +382,7 @@ export const SecureDroidStatusChip: React.FC<SecureDroidStatusChipProps> = ({
     : 'bg-zinc-800/80 text-zinc-300 border-zinc-700';
   let Icon = HelpCircle;
 
+  // VPN & Security statuses - Green/Protected
   if (
     norm === 'PROTECTED' ||
     norm === 'VERIFIED' ||
@@ -391,22 +392,53 @@ export const SecureDroidStatusChip: React.FC<SecureDroidStatusChipProps> = ({
     norm === 'SECURE' ||
     norm === 'SUPPORTED' ||
     norm === 'AVAILABLE' ||
-    norm === 'ACTIVE'
+    norm === 'ACTIVE' ||
+    norm === 'CONNECTED' ||
+    norm === 'ON' ||
+    norm === 'ENABLED' ||
+    norm === 'GOOD' ||
+    norm === 'SAFE'
   ) {
     color = isLight
-      ? 'bg-zinc-100 text-zinc-800 border-zinc-300'
-      : 'bg-zinc-800 text-zinc-200 border-zinc-700';
+      ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+      : 'bg-emerald-950/40 text-emerald-300 border-emerald-800/60';
     Icon = CheckCircle2;
-  } else if (norm === 'ATTENTION REQUIRED' || norm === 'WARNING' || norm === 'PARTIAL' || norm === 'DEGRADED') {
+  } 
+  // Warning/Attention states - Amber/Yellow
+  else if (
+    norm === 'ATTENTION REQUIRED' || 
+    norm === 'WARNING' || 
+    norm === 'PARTIAL' || 
+    norm === 'DEGRADED' ||
+    norm === 'CONNECTING' ||
+    norm === 'DISCONNECTING' ||
+    norm === 'LIMITED' ||
+    norm === 'RESTRICTED'
+  ) {
     color = isLight
       ? 'bg-amber-50 text-amber-900 border-amber-300'
       : 'bg-amber-950/40 text-amber-200 border-amber-800/60';
     Icon = AlertTriangle;
-  } else if (norm === 'CRITICAL' || norm === 'UNSUPPORTED' || norm === 'INVALID' || norm === 'UNAVAILABLE') {
+  } 
+  // Critical/Error states - Red
+  else if (
+    norm === 'CRITICAL' || 
+    norm === 'UNSUPPORTED' || 
+    norm === 'INVALID' || 
+    norm === 'UNAVAILABLE' ||
+    norm === 'ERROR' ||
+    norm === 'FAILED' ||
+    norm === 'OFF' ||
+    norm === 'DISABLED' ||
+    norm === 'DISCONNECTED' ||
+    norm === 'UNKNOWN'
+  ) {
     color = isLight
       ? 'bg-rose-50 text-rose-900 border-rose-300'
       : 'bg-rose-950/40 text-rose-200 border-rose-800/60';
-    Icon = XCircle;
+    Icon = norm === 'OFF' || norm === 'DISABLED' || norm === 'DISCONNECTED' || norm === 'UNKNOWN' 
+      ? Shield 
+      : XCircle;
   }
 
   const text = label || status;
