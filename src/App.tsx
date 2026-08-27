@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { ShieldCheck, ScrollText, LayoutGrid, Settings as SettingsIcon, ChevronRight, Info } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { ShieldCheck, ScrollText, LayoutGrid, Settings as SettingsIcon, ChevronRight, Info, Wifi } from 'lucide-react';
 import { useSecureDroid } from './hooks/useSecureDroid';
 import { ThreatModelCenterScreen } from './components/security/ThreatModelCenterScreen';
 import { SecurityAuditLogScreen } from './components/security/SecurityAuditLogScreen';
 import { AppSecurityAuditorScreen } from './components/security/AppSecurityAuditorScreen';
+import { NetworkControlScreen } from './components/NetworkControlScreen';
 
 import {
   SecureDroidTopBar,
@@ -11,7 +12,7 @@ import {
   SecureDroidSectionHeader
 } from './components/ui/designSystem';
 
-type Screen = 'home' | 'threat_model' | 'app_auditor' | 'security_log' | 'settings';
+type Screen = 'home' | 'threat_model' | 'app_auditor' | 'security_log' | 'network' | 'settings';
 
 interface NavItem {
   id: Screen;
@@ -23,6 +24,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'home', label: 'HOME', icon: LayoutGrid },
   { id: 'app_auditor', label: 'APPS', icon: ShieldCheck },
   { id: 'threat_model', label: 'THREATS', icon: ShieldCheck },
+  { id: 'network', label: 'NETWORK', icon: Wifi },
   { id: 'security_log', label: 'LOG', icon: ScrollText },
   { id: 'settings', label: 'SETTINGS', icon: SettingsIcon },
 ];
@@ -30,12 +32,24 @@ const NAV_ITEMS: NavItem[] = [
 function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
     const { apps, risks, loading, connected, error, score, reload } = useSecureDroid();
 
-    // Debug logging
-    useEffect(() => {
-        console.log('🏠 [HomeScreen] Apps:', apps.length);
-        console.log('🏠 [HomeScreen] Risks:', risks.length);
-        console.log('🏠 [HomeScreen] Risks details:', risks.map(r => r.appName + ' (' + r.riskLevel + ')'));
+    // Filter out system apps from risks
+    const userRisks = useMemo(() => {
+        // Create a set of user app package names
+        const userAppPackageNames = new Set(
+            apps
+                .filter(app => !app.isSystemApp)
+                .map(app => app.packageName)
+        );
+
+        // Filter risks to only include user apps
+        return risks.filter(risk => 
+            userAppPackageNames.has(risk.packageName)
+        );
     }, [apps, risks]);
+
+    // Count high and medium risks
+    const highRiskCount = userRisks.filter(r => r.riskLevel === 'HIGH' || r.riskLevel === 'CRITICAL').length;
+    const mediumRiskCount = userRisks.filter(r => r.riskLevel === 'MEDIUM').length;
 
     const cards: { id: Screen; title: string; description: string; icon: React.ElementType }[] = [
         {
@@ -47,7 +61,7 @@ function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
         {
             id: 'threat_model',
             title: 'Threat Model Center',
-            description: `${risks.length} risky app${risks.length !== 1 ? 's' : ''} detected`,
+            description: `${userRisks.length} risky app${userRisks.length !== 1 ? 's' : ''} detected`,
             icon: ShieldCheck,
         },
         {
@@ -55,6 +69,12 @@ function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
             title: 'Security Audit Log',
             description: 'View security events and timeline',
             icon: ScrollText,
+        },
+        {
+            id: 'network',
+            title: 'Network Protection',
+            description: 'VPN tunnel status and control',
+            icon: ShieldCheck,
         },
     ];
 
@@ -95,14 +115,19 @@ function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
                             <div className="text-lg font-semibold">{apps.length}</div>
                         </div>
                     </div>
-                    {risks.length > 0 && (
+                    {userRisks.length > 0 && (
                         <div className="mt-2 text-sm text-orange-400">
-                            ⚠️ {risks.length} risky app{risks.length !== 1 ? 's' : ''} found
+                            ⚠️ {userRisks.length} risky app{userRisks.length !== 1 ? 's' : ''} found
                         </div>
                     )}
-                    {risks.length === 0 && !loading && (
+                    {userRisks.length === 0 && !loading && (
                         <div className="mt-2 text-sm text-green-400">
                             ✅ No risky apps found
+                        </div>
+                    )}
+                    {highRiskCount > 0 && (
+                        <div className="mt-1 text-xs text-red-400">
+                            🔴 {highRiskCount} high risk, 🟡 {mediumRiskCount} medium risk
                         </div>
                     )}
                 </div>
@@ -149,10 +174,13 @@ function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
                     <div className="text-xs text-slate-500 font-mono space-y-1">
                         <div>🔍 Debug Info:</div>
                         <div>• Total Apps: {apps.length}</div>
-                        <div>• Risky Apps: {risks.length}</div>
+                        <div>• User Apps: {apps.filter(a => !a.isSystemApp).length}</div>
+                        <div>• System Apps: {apps.filter(a => a.isSystemApp).length}</div>
+                        <div>• Total Risks: {risks.length}</div>
+                        <div>• User Risks: {userRisks.length}</div>
+                        <div>• High Risk: {highRiskCount}</div>
+                        <div>• Medium Risk: {mediumRiskCount}</div>
                         <div>• Score: {score}</div>
-                        <div>• Connected: {connected ? 'Yes' : 'No'}</div>
-                        <div>• Loading: {loading ? 'Yes' : 'No'}</div>
                     </div>
                 </div>
             )}
@@ -204,6 +232,10 @@ export default function App() {
 
         {currentScreen === 'security_log' && (
           <SecurityAuditLogScreen onBack={handleBack} />
+        )}
+
+        {currentScreen === 'network' && (
+          <NetworkControlScreen onBack={handleBack} />
         )}
 
         {currentScreen === 'settings' && <SettingsScreen />}
