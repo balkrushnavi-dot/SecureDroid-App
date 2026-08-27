@@ -59,11 +59,14 @@ object AppRiskAnalyzer {
     private const val STALE_TARGET_SDK_THRESHOLD = 29 // Android 10
 
     private val KNOWN_APP_STORES = setOf(
-        "com.android.vending",       // Google Play
-        "com.google.android.packageinstaller",
-        "com.android.packageinstaller",
-        "com.amazon.venezia",        // Amazon Appstore
-        "com.sec.android.app.samsungapps" // Galaxy Store
+        "com.android.vending",                    // Google Play
+        "com.google.android.packageinstaller",    // Android Package Installer
+        "com.android.packageinstaller",           // Legacy Package Installer
+        "com.amazon.venezia",                     // Amazon Appstore
+        "com.sec.android.app.samsungapps",        // Galaxy Store
+        "com.xiaomi.mipicks",                     // Xiaomi GetApps
+        "com.xiaomi.market",                      // Xiaomi Market
+        "com.huawei.appmarket"                    // Huawei AppGallery
     )
 
     fun analyze(app: InstalledAppInfo): AppRiskReport {
@@ -96,32 +99,41 @@ object AppRiskAnalyzer {
             }
         }
 
-        val sensitiveGranted =
-            app.requestedPermissions.filter {
-                it in SENSITIVE_PERMISSIONS
-            }
+        /*
+         * IMPORTANT: System apps (Bluetooth, Phone Services, Google Play Services,
+         * System UI, etc.) legitimately require many sensitive permissions to function.
+         * They should NOT be flagged as HIGH risk for having permissions
+         * that are expected for their system role.
+         */
+        if (!app.isSystemApp) {
 
-        if (sensitiveGranted.isNotEmpty()) {
-            val level =
-                if (sensitiveGranted.size >= 4) {
-                    RiskLevel.HIGH
-                } else if (sensitiveGranted.size >= 2) {
-                    RiskLevel.MEDIUM
-                } else {
-                    RiskLevel.LOW
+            val sensitiveGranted =
+                app.requestedPermissions.filter {
+                    it in SENSITIVE_PERMISSIONS
                 }
 
-            findings.add(
-                RiskFinding(
-                    id = "SENSITIVE_PERMISSIONS",
-                    level = level,
-                    summary = "Requests ${sensitiveGranted.size} sensitive " +
-                        "permission(s): " +
-                        sensitiveGranted.mapNotNull {
-                            SENSITIVE_PERMISSIONS[it]
-                        }.joinToString(", ")
+            if (sensitiveGranted.isNotEmpty()) {
+                val level =
+                    if (sensitiveGranted.size >= 4) {
+                        RiskLevel.HIGH
+                    } else if (sensitiveGranted.size >= 2) {
+                        RiskLevel.MEDIUM
+                    } else {
+                        RiskLevel.LOW
+                    }
+
+                findings.add(
+                    RiskFinding(
+                        id = "SENSITIVE_PERMISSIONS",
+                        level = level,
+                        summary = "Requests ${sensitiveGranted.size} sensitive " +
+                            "permission(s): " +
+                            sensitiveGranted.mapNotNull {
+                                SENSITIVE_PERMISSIONS[it]
+                            }.joinToString(", ")
+                    )
                 )
-            )
+            }
         }
 
         if (!app.isSystemApp && app.targetSdk in 1 until STALE_TARGET_SDK_THRESHOLD) {
