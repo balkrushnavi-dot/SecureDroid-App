@@ -44,7 +44,7 @@ import { SecurityReportScreen } from './components/SecurityReportScreen';
 import { AppDetailScreen } from './components/AppDetailScreen';
 import { AiAssistantScreen } from './components/AiAssistantScreen';
 import { FamilyScreen } from './components/FamilyScreen';
-
+import { AppDetailScreen } from './components/AppDetailScreen';
 import {
     SecureDroidTopBar,
     SecureDroidCard,
