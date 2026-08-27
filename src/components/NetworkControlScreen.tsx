@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { ShieldCheck, ShieldOff, RefreshCw } from 'lucide-react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { ShieldCheck, ShieldOff, RefreshCw, AlertTriangle } from 'lucide-react';
 import {
   SecureDroidTopBar,
   SecureDroidCard,
@@ -22,52 +22,125 @@ export const NetworkControlScreen: React.FC<NetworkControlScreenProps> = ({
   isLight = false,
 }) => {
   const [status, setStatus] = useState<NativeVpnStatus | null>(null);
-  const [state, setState] = useState<UiState>('UNKNOWN');
+  const [uiState, setUiState] = useState<UiState>('UNKNOWN');
   const [isBusy, setIsBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [needsPermission, setNeedsPermission] = useState(false);
+  const pollInterval = useRef<NodeJS.Timeout | null>(null);
+  const pollAttempts = useRef(0);
+  const maxPollAttempts = 10;
 
   const refreshStatus = useCallback(async () => {
-    const res = await SecureDroidNative.getVpnStatus();
-    if (res.success && res.data) {
-      setStatus(res.data);
-      setError(null);
-    } else {
-      setError(res.message || 'VPN status is unavailable on this device.');
+    try {
+      const res = await SecureDroidNative.getVpnStatus();
+      if (res.success && res.data) {
+        setStatus(res.data);
+        setUiState(res.data.state as UiState);
+        setError(null);
+
+        // If we're trying to connect and we get CONNECTED, stop polling
+        if (res.data.state === 'CONNECTED' && pollInterval.current) {
+          clearInterval(pollInterval.current);
+          pollInterval.current = null;
+          pollAttempts.current = 0;
+        }
+        // If we get ERROR, stop polling
+        if (res.data.state === 'ERROR' && pollInterval.current) {
+          clearInterval(pollInterval.current);
+          pollInterval.current = null;
+          pollAttempts.current = 0;
+        }
+      } else {
+        setError(res.message || 'VPN status is unavailable on this device.');
+        setUiState('ERROR');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to get VPN status');
+      setUiState('ERROR');
     }
   }, []);
 
+  // Initial load and cleanup
   useEffect(() => {
+    refreshStatus();
+    return () => {
+      if (pollInterval.current) {
+        clearInterval(pollInterval.current);
+        pollInterval.current = null;
+      }
+    };
+  }, [refreshStatus]);
+
+  const startPolling = useCallback(() => {
+    // Clear any existing poll
+    if (pollInterval.current) {
+      clearInterval(pollInterval.current);
+      pollInterval.current = null;
+    }
+
+    pollAttempts.current = 0;
+
+    // Poll every 1.5 seconds for up to maxPollAttempts
+    pollInterval.current = setInterval(() => {
+      pollAttempts.current++;
+      if (pollAttempts.current > maxPollAttempts) {
+        clearInterval(pollInterval.current!);
+        pollInterval.current = null;
+        setError('VPN connection timed out. Please try again.');
+        setUiState('ERROR');
+        return;
+      }
+      refreshStatus();
+    }, 1500);
+
+    // Do an immediate refresh
     refreshStatus();
   }, [refreshStatus]);
 
   const handleToggle = async () => {
     setIsBusy(true);
     setError(null);
+    setNeedsPermission(false);
 
     try {
       const isActive = status?.isActive;
 
       if (isActive) {
+        // Disconnect
         const res = await SecureDroidNative.stopVpn();
-        if (res.data?.state) setState(res.data.state as UiState);
-        if (!res.success) setError(res.message || 'Unable to stop VPN.');
+        if (res.data?.state) {
+          setUiState(res.data.state as UiState);
+        }
+        if (!res.success) {
+          setError(res.message || 'Unable to stop VPN.');
+        }
+        // Refresh status after stop
+        setTimeout(refreshStatus, 1000);
       } else {
+        // Connect
         const res = await SecureDroidNative.startVpn();
 
         if (res.data?.permissionRequired) {
           setNeedsPermission(true);
           setError(null);
-        } else if (!res.success) {
-          setError(res.message || 'Unable to start VPN.');
-        } else if (res.data?.state) {
-          setState(res.data.state as UiState);
+          setIsBusy(false);
+          return;
         }
-      }
 
-      // The tunnel establishes asynchronously; poll shortly after
-      // to reflect the real state rather than assuming success.
-      setTimeout(refreshStatus, 1500);
+        if (!res.success) {
+          setError(res.message || 'Unable to start VPN.');
+          setUiState('ERROR');
+          setIsBusy(false);
+          return;
+        }
+
+        // Set state to CONNECTING and start polling
+        setUiState('CONNECTING');
+        startPolling();
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'VPN operation failed');
+      setUiState('ERROR');
     } finally {
       setIsBusy(false);
     }
@@ -75,26 +148,39 @@ export const NetworkControlScreen: React.FC<NetworkControlScreenProps> = ({
 
   const handleRequestPermission = async () => {
     setIsBusy(true);
+    setError(null);
+
     try {
       const res = await SecureDroidNative.requestVpnPermission();
+
       if (res.success && res.data?.granted) {
         setNeedsPermission(false);
-        // Permission was already granted; try starting now.
-        await SecureDroidNative.startVpn();
-        setTimeout(refreshStatus, 1500);
+        // Permission was already granted or just granted
+        const startResult = await SecureDroidNative.startVpn();
+        if (startResult.success) {
+          setUiState('CONNECTING');
+          startPolling();
+        } else {
+          setError(startResult.message || 'Failed to start VPN after permission grant');
+        }
       } else if (res.success && res.data?.permissionRequested) {
-        // System dialog was opened; wait for the user to respond,
-        // then let them tap the toggle again.
+        // System dialog was opened
         setNeedsPermission(false);
-      } else if (!res.success) {
+        setError('Please grant VPN permission in the system dialog.');
+        // Start polling to check when permission is granted
+        startPolling();
+      } else {
         setError(res.message || 'Unable to request VPN permission.');
       }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Permission request failed');
     } finally {
       setIsBusy(false);
     }
   };
 
-  const isActive = !!status?.isActive;
+  const isActive = uiState === 'CONNECTED';
+  const isConnecting = uiState === 'CONNECTING' || uiState === 'DISCONNECTING';
 
   return (
     <div
@@ -114,13 +200,17 @@ export const NetworkControlScreen: React.FC<NetworkControlScreenProps> = ({
           <div className="flex flex-col items-center gap-3">
             {isActive ? (
               <ShieldCheck className="w-12 h-12 text-emerald-400" />
+            ) : isConnecting ? (
+              <RefreshCw className="w-12 h-12 text-amber-400 animate-spin" />
+            ) : uiState === 'ERROR' ? (
+              <AlertTriangle className="w-12 h-12 text-red-400" />
             ) : (
               <ShieldOff className="w-12 h-12 text-zinc-500" />
             )}
 
             <SecureDroidStatusChip
-              status={isActive ? 'CONNECTED' : status?.filterMode === 'DISABLED' ? 'OFF' : 'DISCONNECTED'}
-              label={isActive ? 'VPN Active' : 'VPN Disconnected'}
+              status={isActive ? 'CONNECTED' : isConnecting ? 'CONNECTING' : uiState === 'ERROR' ? 'ERROR' : 'DISCONNECTED'}
+              label={isActive ? 'VPN Active' : isConnecting ? 'Connecting...' : uiState === 'ERROR' ? 'Error' : 'VPN Disconnected'}
               isLight={isLight}
               size="md"
             />
@@ -128,6 +218,10 @@ export const NetworkControlScreen: React.FC<NetworkControlScreenProps> = ({
             <p className="text-xs text-zinc-500">
               {isActive
                 ? 'Your traffic is routed through the SecureDroid VPN tunnel.'
+                : isConnecting
+                ? 'Establishing VPN connection...'
+                : uiState === 'ERROR'
+                ? 'There was an error with the VPN connection.'
                 : 'The VPN tunnel is not currently protecting this device.'}
             </p>
 
@@ -149,18 +243,33 @@ export const NetworkControlScreen: React.FC<NetworkControlScreenProps> = ({
             {error && (
               <div className="w-full mt-2 p-3 rounded-lg bg-red-950/40 border border-red-700/50 text-xs text-red-300">
                 {error}
+                {error.includes('timed out') && (
+                  <button
+                    onClick={() => {
+                      setError(null);
+                      setUiState('DISCONNECTED');
+                    }}
+                    className="mt-1 text-amber-400 hover:text-amber-300 underline"
+                  >
+                    Dismiss
+                  </button>
+                )}
               </div>
             )}
 
             <SecureDroidButton
               onClick={handleToggle}
               isLight={isLight}
-              disabled={isBusy}
+              disabled={isBusy || isConnecting}
               variant={isActive ? 'danger' : 'primary'}
             >
               <span className="flex items-center gap-1.5">
-                <RefreshCw className={`w-4 h-4 ${isBusy ? 'animate-spin' : ''}`} />
-                {isActive ? 'Disconnect VPN' : 'Connect VPN'}
+                {isConnecting ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="w-4 h-4" />
+                )}
+                {isActive ? 'Disconnect VPN' : isConnecting ? 'Connecting...' : 'Connect VPN'}
               </span>
             </SecureDroidButton>
           </div>
@@ -170,6 +279,12 @@ export const NetworkControlScreen: React.FC<NetworkControlScreenProps> = ({
           <>
             <SecureDroidSectionHeader title="Connection Details" isLight={isLight} />
             <SecureDroidCard isLight={isLight} className="p-4 space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-zinc-500">Status</span>
+                <span className={isActive ? 'text-emerald-400' : 'text-zinc-400'}>
+                  {isActive ? 'Connected' : isConnecting ? 'Connecting...' : 'Disconnected'}
+                </span>
+              </div>
               <div className="flex justify-between">
                 <span className="text-zinc-500">DNS Server</span>
                 <span>{status.activeDns}</span>
@@ -191,3 +306,5 @@ export const NetworkControlScreen: React.FC<NetworkControlScreenProps> = ({
     </div>
   );
 };
+
+export default NetworkControlScreen;
