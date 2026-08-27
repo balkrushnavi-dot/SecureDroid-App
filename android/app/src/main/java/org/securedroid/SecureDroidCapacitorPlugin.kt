@@ -39,9 +39,9 @@ class SecureDroidCapacitorPlugin : Plugin() {
     private var loadError: String? = null
 
     override fun load() {
-        super.load()
-
         try {
+            super.load()
+
             val context = bridge.context
 
             appScanner = InstalledAppScanner(context)
