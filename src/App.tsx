@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import { ShieldCheck, ScrollText, LayoutGrid, Settings as SettingsIcon, ChevronRight, Info, Wifi } from 'lucide-react';
 import { useSecureDroid } from './hooks/useSecureDroid';
 import { ThreatModelCenterScreen } from './components/security/ThreatModelCenterScreen';
@@ -32,25 +32,6 @@ const NAV_ITEMS: NavItem[] = [
 function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
     const { apps, risks, loading, connected, error, score, reload } = useSecureDroid();
 
-    // Filter out system apps from risks
-    const userRisks = useMemo(() => {
-        // Create a set of user app package names
-        const userAppPackageNames = new Set(
-            apps
-                .filter(app => !app.isSystemApp)
-                .map(app => app.packageName)
-        );
-
-        // Filter risks to only include user apps
-        return risks.filter(risk => 
-            userAppPackageNames.has(risk.packageName)
-        );
-    }, [apps, risks]);
-
-    // Count high and medium risks
-    const highRiskCount = userRisks.filter(r => r.riskLevel === 'HIGH' || r.riskLevel === 'CRITICAL').length;
-    const mediumRiskCount = userRisks.filter(r => r.riskLevel === 'MEDIUM').length;
-
     const cards: { id: Screen; title: string; description: string; icon: React.ElementType }[] = [
         {
             id: 'app_auditor',
@@ -61,7 +42,7 @@ function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
         {
             id: 'threat_model',
             title: 'Threat Model Center',
-            description: `${userRisks.length} risky app${userRisks.length !== 1 ? 's' : ''} detected`,
+            description: `${risks.length} risky app${risks.length !== 1 ? 's' : ''} detected`,
             icon: ShieldCheck,
         },
         {
@@ -74,7 +55,7 @@ function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
             id: 'network',
             title: 'Network Protection',
             description: 'VPN tunnel status and control',
-            icon: ShieldCheck,
+            icon: Wifi,
         },
     ];
 
@@ -115,36 +96,16 @@ function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
                             <div className="text-lg font-semibold">{apps.length}</div>
                         </div>
                     </div>
-                    {userRisks.length > 0 && (
+                    {risks.length > 0 && (
                         <div className="mt-2 text-sm text-orange-400">
-                            ⚠️ {userRisks.length} risky app{userRisks.length !== 1 ? 's' : ''} found
+                            ⚠️ {risks.length} risky app{risks.length !== 1 ? 's' : ''} found
                         </div>
                     )}
-                    {userRisks.length === 0 && !loading && (
-                        <div className="mt-2 text-sm text-green-400">
-                            ✅ No risky apps found
-                        </div>
-                    )}
-                    {highRiskCount > 0 && (
-                        <div className="mt-1 text-xs text-red-400">
-                            🔴 {highRiskCount} high risk, 🟡 {mediumRiskCount} medium risk
-                        </div>
-                    )}
-                </div>
-            )}
-
-            {/* Loading State */}
-            {loading && (
-                <div className="bg-slate-900/50 p-8 rounded-xl border border-slate-800 text-center">
-                    <div className="animate-pulse">
-                        <div className="text-4xl mb-2">🔍</div>
-                        <div className="text-slate-400">Scanning your device...</div>
-                    </div>
                 </div>
             )}
 
             {/* Cards */}
-            {!loading && cards.map((card) => {
+            {cards.map((card) => {
                 const Icon = card.icon;
                 return (
                     <button
@@ -167,23 +128,6 @@ function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
                     </button>
                 );
             })}
-
-            {/* Debug Info */}
-            {process.env.NODE_ENV === 'development' && (
-                <div className="mt-4 p-3 bg-slate-900/50 rounded-xl border border-slate-800">
-                    <div className="text-xs text-slate-500 font-mono space-y-1">
-                        <div>🔍 Debug Info:</div>
-                        <div>• Total Apps: {apps.length}</div>
-                        <div>• User Apps: {apps.filter(a => !a.isSystemApp).length}</div>
-                        <div>• System Apps: {apps.filter(a => a.isSystemApp).length}</div>
-                        <div>• Total Risks: {risks.length}</div>
-                        <div>• User Risks: {userRisks.length}</div>
-                        <div>• High Risk: {highRiskCount}</div>
-                        <div>• Medium Risk: {mediumRiskCount}</div>
-                        <div>• Score: {score}</div>
-                    </div>
-                </div>
-            )}
         </div>
     );
 }
