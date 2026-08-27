@@ -60,6 +60,7 @@ export interface RiskInfo {
   }>;
   reason?: string;
   installSource?: string;
+  isSystemApp?: boolean;  // Added to filter system apps
 }
 
 export const useSecureDroid = () => {
@@ -141,6 +142,36 @@ export const useSecureDroid = () => {
           : [];
 
       /*
+       * ----------------------------------------------------------
+       * FILTER OUT SYSTEM APPS FROM RISK COUNT
+       * ----------------------------------------------------------
+       *
+       * System apps (Bluetooth, Phone Services, Google Play Services,
+       * System UI, etc.) legitimately require many permissions to function.
+       * They should NOT be counted as "risky apps" on the Home dashboard
+       * or in the Threat Model Center.
+       *
+       * We filter by checking if the app is a system app using either:
+       * 1. The isSystemApp flag if present in the risk data
+       * 2. Cross-referencing with the apps list
+       */
+      const userAppPackageNames = new Set(
+        appList
+          .filter(app => !app.isSystemApp)
+          .map(app => app.packageName)
+      );
+
+      const userAppRisks =
+        allRiskDetails.filter((risk) => {
+          // If the risk data has an isSystemApp flag, use it
+          if (risk.isSystemApp === true) {
+            return false;
+          }
+          // Otherwise cross-reference with the apps list
+          return userAppPackageNames.has(risk.packageName);
+        });
+
+      /*
        * Only MEDIUM/HIGH/CRITICAL findings count as
        * "risky apps" on the Home dashboard.
        *
@@ -148,7 +179,7 @@ export const useSecureDroid = () => {
        * but should not inflate the headline risk count.
        */
       const meaningfulRisks =
-        allRiskDetails.filter((risk) =>
+        userAppRisks.filter((risk) =>
           risk.riskLevel === 'MEDIUM' ||
           risk.riskLevel === 'HIGH' ||
           risk.riskLevel === 'CRITICAL'
@@ -165,6 +196,7 @@ export const useSecureDroid = () => {
        *
        * HIGH/CRITICAL = 8 points
        * MEDIUM         = 3 points
+       * LOW            = 1 point
        *
        * The result is bounded to 0..100.
        *
@@ -184,9 +216,16 @@ export const useSecureDroid = () => {
             risk.riskLevel === 'MEDIUM',
         ).length;
 
+      const lowRiskCount =
+        meaningfulRisks.filter(
+          (risk) =>
+            risk.riskLevel === 'LOW',
+        ).length;
+
       const penalty =
         (highRiskCount * 8) +
-        (mediumRiskCount * 3);
+        (mediumRiskCount * 3) +
+        (lowRiskCount * 1);
 
       const calculatedScore =
         Math.max(
