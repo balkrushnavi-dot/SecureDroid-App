@@ -1,11 +1,14 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
     ShieldCheck, 
     ScrollText, 
     ChevronRight,
     RefreshCw,
     ShieldAlert,
-    CheckCircle2
+    CheckCircle2,
+    Info,
+    AlertTriangle,
+    Shield
 } from 'lucide-react';
 import { useSecureDroid } from '../hooks/useSecureDroid';
 import { SecureDroidCard, SecureDroidSectionHeader } from './ui/designSystem';
@@ -18,9 +21,69 @@ interface HomeScreenProps {
 
 export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate }) => {
     const { apps, risks, loading, connected, error, score, reload } = useSecureDroid();
+    const [showScoreTooltip, setShowScoreTooltip] = useState(false);
 
     // Count high risk apps
     const highRiskCount = risks.filter(r => r.riskLevel === 'HIGH' || r.riskLevel === 'CRITICAL').length;
+    
+    // Count medium risk apps
+    const mediumRiskCount = risks.filter(r => r.riskLevel === 'MEDIUM').length;
+
+    // Determine if device score is meaningful (0 usually means hardware features not reported)
+    const isScoreMeaningful = score > 0;
+    const isScoreGood = score >= 50;
+
+    // Determine protection status based on both device score and app risks
+    const getProtectionStatus = () => {
+        if (loading) return { status: 'loading', label: 'Loading...', color: 'text-slate-400' };
+        if (!connected) return { status: 'unknown', label: 'Not Connected', color: 'text-red-400' };
+        
+        // If device score is 0 but we have no risks, device is probably fine but lacks hardware features
+        if (score === 0 && risks.length === 0) {
+            return { 
+                status: 'info', 
+                label: 'Basic Protection',
+                description: 'Device security features not fully reported',
+                color: 'text-amber-400'
+            };
+        }
+        
+        if (highRiskCount > 0) {
+            return { 
+                status: 'critical', 
+                label: 'Needs Immediate Attention',
+                description: `${highRiskCount} high-risk apps detected`,
+                color: 'text-red-400'
+            };
+        }
+        
+        if (risks.length > 0) {
+            return { 
+                status: 'warning', 
+                label: 'Needs Review',
+                description: `${risks.length} issues found`,
+                color: 'text-orange-400'
+            };
+        }
+        
+        if (isScoreGood) {
+            return { 
+                status: 'protected', 
+                label: 'Protected',
+                description: 'Device security is verified',
+                color: 'text-green-400'
+            };
+        }
+        
+        return { 
+            status: 'info', 
+            label: 'Basic Protection',
+            description: 'Review security recommendations',
+            color: 'text-amber-400'
+        };
+    };
+
+    const protection = getProtectionStatus();
 
     return (
         <div className="p-4 space-y-4">
@@ -50,13 +113,41 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate }) => {
                 )}
             </div>
 
-            {/* Security Score */}
+            {/* Security Score with Context */}
             {!loading && connected && (
                 <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-800">
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <div className="text-4xl font-bold text-sky-400">{score}</div>
-                            <div className="text-sm text-slate-400">Security Score</div>
+                    <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                                <div className="text-4xl font-bold text-sky-400">{score}</div>
+                                <span className="text-sm text-slate-500">/ 100</span>
+                                <button
+                                    onMouseEnter={() => setShowScoreTooltip(true)}
+                                    onMouseLeave={() => setShowScoreTooltip(false)}
+                                    onClick={() => setShowScoreTooltip(!showScoreTooltip)}
+                                    className="relative inline-flex items-center justify-center w-5 h-5 text-slate-500 hover:text-slate-300 transition-colors"
+                                >
+                                    <Info className="w-4 h-4" />
+                                    {showScoreTooltip && (
+                                        <div className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-slate-800 border border-slate-700 rounded-lg shadow-xl text-xs text-slate-300 text-left">
+                                            <div className="font-semibold text-slate-200 mb-1">Device Security Score</div>
+                                            <div className="space-y-1">
+                                                <div>• Measures hardware-level security features</div>
+                                                <div>• Includes virtualization, encryption, and boot integrity</div>
+                                                <div>• Some devices may not report all features</div>
+                                                <div className="text-slate-500 mt-1">Score of 0 may indicate features not reported</div>
+                                            </div>
+                                            <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-800" />
+                                        </div>
+                                    )}
+                                </button>
+                            </div>
+                            <div className="text-sm text-slate-400">Device Security Score</div>
+                            {score === 0 && (
+                                <div className="text-xs text-amber-400/70 mt-0.5">
+                                    ⓘ Security features not fully reported by this device
+                                </div>
+                            )}
                         </div>
                         <div className="text-right">
                             <div className="text-sm text-slate-400">Apps</div>
@@ -64,18 +155,40 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate }) => {
                         </div>
                     </div>
                     
-                    {/* Status indicator */}
-                    <div className="mt-3 flex items-center gap-2">
-                        {score >= 70 ? (
+                    {/* Protection Status */}
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                        {protection.status === 'protected' && (
                             <>
                                 <CheckCircle2 className="w-4 h-4 text-green-400" />
-                                <span className="text-sm text-green-400">Protected</span>
+                                <span className={`text-sm ${protection.color}`}>{protection.label}</span>
                             </>
-                        ) : (
+                        )}
+                        {protection.status === 'warning' && (
                             <>
-                                <ShieldAlert className="w-4 h-4 text-orange-400" />
-                                <span className="text-sm text-orange-400">Needs Attention</span>
+                                <AlertTriangle className="w-4 h-4 text-orange-400" />
+                                <span className={`text-sm ${protection.color}`}>{protection.label}</span>
                             </>
+                        )}
+                        {protection.status === 'critical' && (
+                            <>
+                                <ShieldAlert className="w-4 h-4 text-red-400" />
+                                <span className={`text-sm ${protection.color}`}>{protection.label}</span>
+                            </>
+                        )}
+                        {protection.status === 'info' && (
+                            <>
+                                <Shield className="w-4 h-4 text-amber-400" />
+                                <span className={`text-sm ${protection.color}`}>{protection.label}</span>
+                            </>
+                        )}
+                        {protection.status === 'unknown' && (
+                            <>
+                                <ShieldAlert className="w-4 h-4 text-red-400" />
+                                <span className={`text-sm ${protection.color}`}>{protection.label}</span>
+                            </>
+                        )}
+                        {protection.description && (
+                            <span className="text-xs text-slate-500 ml-1">— {protection.description}</span>
                         )}
                         {highRiskCount > 0 && (
                             <span className="ml-auto text-xs bg-red-500/20 text-red-400 px-2 py-1 rounded-full">
@@ -158,6 +271,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate }) => {
                                             <div className="text-sm text-slate-400">
                                                 {highRiskCount > 0 
                                                     ? `🔴 ${highRiskCount} high risk threats` 
+                                                    : mediumRiskCount > 0
+                                                    ? `🟡 ${mediumRiskCount} medium risk threats`
                                                     : '🟢 No high risk threats'}
                                             </div>
                                         </div>
@@ -195,6 +310,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate }) => {
                         <div>Debug Info:</div>
                         <div>• Apps: {apps.length}</div>
                         <div>• Risks: {risks.length}</div>
+                        <div>• High Risk: {highRiskCount}</div>
                         <div>• Connected: {connected ? 'Yes' : 'No'}</div>
                         <div>• Score: {score}</div>
                     </div>
