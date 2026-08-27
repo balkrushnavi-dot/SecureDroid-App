@@ -1,101 +1,100 @@
 package org.securedroid.logging
 
 import android.content.Context
-import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
+import android.content.SharedPreferences
+import org.json.JSONArray
+import org.json.JSONObject
 
-/**
- * Structured security event log.
- *
- * Per project policy, logs must never contain encryption keys,
- * passwords, authentication tokens, private user data, VPN
- * credentials, or sensitive network information. Callers are
- * responsible for ensuring the description/metadata they pass in
- * do not contain any of the above; this class does not attempt to
- * scrub content, it only persists and retrieves it safely.
- */
 class SecurityLogManager(
-    context: Context
+    private val context: Context
 ) {
 
-    companion object {
-        private const val PREFS_NAME = "securedroid_security_events"
-        private const val KEY_EVENTS = "events"
-        private const val MAX_EVENTS = 500
-    }
+    private val prefs: SharedPreferences = context.getSharedPreferences(
+        "securedroid_security_log",
+        Context.MODE_PRIVATE
+    )
 
-    private val prefs =
-        context.applicationContext.getSharedPreferences(
-            PREFS_NAME,
-            Context.MODE_PRIVATE
-        )
+    private val MAX_EVENTS = 1000
 
-    private val gson = Gson()
-
-    @Synchronized
     fun logEvent(event: SecurityEvent): Boolean {
-
         return try {
+            val events = getEventsInternal()
+            events.put(eventToJson(event))
 
-            val events = readAll().toMutableList()
+            // Keep only the most recent MAX_EVENTS
+            while (events.length() > MAX_EVENTS) {
+                events.remove(0)
+            }
 
-            events.add(0, event)
-
-            val trimmed =
-                if (events.size > MAX_EVENTS) {
-                    events.subList(0, MAX_EVENTS)
-                } else {
-                    events
-                }
-
-            prefs.edit()
-                .putString(KEY_EVENTS, gson.toJson(trimmed))
-                .apply()
-
+            prefs.edit().putString("events", events.toString()).apply()
             true
 
         } catch (_: Exception) {
-
             false
         }
     }
 
-    @Synchronized
-    fun getEvents(
-        limit: Int = 50,
-        category: String? = null
-    ): List<SecurityEvent> {
+    fun getEvents(limit: Int, category: String?): List<SecurityEvent> {
+        return try {
+            val events = getEventsInternal()
+            val result = mutableListOf<SecurityEvent>()
 
-        val all = readAll()
+            // Iterate in reverse (newest first)
+            for (i in (events.length() - 1) downTo 0) {
+                val json = events.getJSONObject(i)
+                val eventCategory = json.getString("category")
 
-        val filtered =
-            if (category != null) {
-                all.filter { it.category == category }
-            } else {
-                all
+                if (category == null || eventCategory == category) {
+                    result.add(jsonToEvent(json))
+                }
+
+                if (result.size >= limit) break
             }
 
-        return filtered.take(limit)
-    }
-
-    private fun readAll(): List<SecurityEvent> {
-
-        val raw =
-            prefs.getString(KEY_EVENTS, null)
-                ?: return emptyList()
-
-        return try {
-
-            val type =
-                object : TypeToken<List<SecurityEvent>>() {}.type
-
-            gson.fromJson(raw, type) ?: emptyList()
+            result
 
         } catch (_: Exception) {
-
-            // Corrupted log storage. Fail safe: return empty rather
-            // than crash or return partial/garbage data.
             emptyList()
         }
+    }
+
+    fun clearAll(): Boolean {
+        return try {
+            prefs.edit().remove("events").apply()
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun getEventsInternal(): JSONArray {
+        val jsonString = prefs.getString("events", "[]") ?: "[]"
+        return try {
+            JSONArray(jsonString)
+        } catch (_: Exception) {
+            JSONArray()
+        }
+    }
+
+    private fun eventToJson(event: SecurityEvent): JSONObject {
+        return JSONObject().apply {
+            put("id", event.id)
+            put("timestamp", event.timestamp)
+            put("category", event.category)
+            put("severity", event.severity)
+            put("description", event.description)
+            put("source", event.source)
+        }
+    }
+
+    private fun jsonToEvent(json: JSONObject): SecurityEvent {
+        return SecurityEvent(
+            id = json.getString("id"),
+            timestamp = json.getLong("timestamp"),
+            category = json.getString("category"),
+            severity = json.getString("severity"),
+            description = json.getString("description"),
+            source = json.getString("source")
+        )
     }
 }
