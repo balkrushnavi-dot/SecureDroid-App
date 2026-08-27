@@ -4,11 +4,16 @@ import type {
   NativeInstalledApp,
   NativeAppRiskReport,
   NativeSecurityEvent,
+  NativeVpnStatus,
 } from '../../types/native';
 
 export interface SecureDroidPlugin {
   getInstalledApps(): Promise<any>;
   getAppRiskReports(): Promise<any>;
+  requestVpnPermission(): Promise<any>;
+  getVpnStatus(): Promise<any>;
+  startVpn(): Promise<any>;
+  stopVpn(): Promise<any>;
   getSecurityLogs(options?: {
     limit?: number;
     category?: string;
@@ -700,6 +705,158 @@ class SecureDroidNativeService {
     return dangerousPermissions.has(
       permission
     );
+  }
+  // ===========================================================
+  // VPN
+  // ===========================================================
+
+  async requestVpnPermission(): Promise<
+    NativeResult<{ granted: boolean; permissionRequested?: boolean; state: string }>
+  > {
+    if (!this.isNative) {
+      return {
+        success: false,
+        errorCode: 'SERVICE_UNAVAILABLE',
+        message: 'VPN permission requires native Android execution.',
+        isSupported: false,
+        runtimePlatform: 'web_preview',
+      };
+    }
+
+    try {
+      const raw: any = await NativePlugin.requestVpnPermission();
+
+      if (!raw || raw.success === false) {
+        return {
+          success: false,
+          errorCode: raw?.errorCode || 'SERVICE_UNAVAILABLE',
+          message: raw?.message || 'Unable to request VPN permission.',
+          runtimePlatform: 'android_native',
+        };
+      }
+
+      return {
+        success: true,
+        data: {
+          granted: !!raw.granted,
+          permissionRequested: !!raw.permissionRequested,
+          state: raw.state,
+        },
+        message: raw.message,
+        runtimePlatform: 'android_native',
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        errorCode: 'SERVICE_UNAVAILABLE',
+        message: err?.message || 'Unable to request VPN permission.',
+      };
+    }
+  }
+
+  async getVpnStatus(): Promise<NativeResult<NativeVpnStatus>> {
+    if (!this.isNative) {
+      return {
+        success: false,
+        errorCode: 'SERVICE_UNAVAILABLE',
+        message: 'VPN status requires native Android execution.',
+        isSupported: false,
+        runtimePlatform: 'web_preview',
+      };
+    }
+
+    try {
+      const raw: any = await NativePlugin.getVpnStatus();
+
+      if (!raw || raw.success === false) {
+        return {
+          success: false,
+          errorCode: raw?.errorCode || 'SERVICE_UNAVAILABLE',
+          message: raw?.message || 'VPN status is unavailable on this device.',
+          runtimePlatform: 'android_native',
+        };
+      }
+
+      return {
+        success: true,
+        data: raw.data as NativeVpnStatus,
+        message: raw.message,
+        isSupported: true,
+        runtimePlatform: 'android_native',
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        errorCode: 'SERVICE_UNAVAILABLE',
+        message: err?.message || 'VPN status is unavailable on this device.',
+      };
+    }
+  }
+
+  async startVpn(): Promise<
+    NativeResult<{ state: string; permissionRequired?: boolean }>
+  > {
+    if (!this.isNative) {
+      return {
+        success: false,
+        errorCode: 'SERVICE_UNAVAILABLE',
+        message: 'Starting the VPN requires native Android execution.',
+        isSupported: false,
+        runtimePlatform: 'web_preview',
+      };
+    }
+
+    try {
+      const raw: any = await NativePlugin.startVpn();
+
+      return {
+        success: !!raw?.success,
+        data: {
+          state: raw?.state,
+          permissionRequired: !!raw?.permissionRequired,
+        },
+        errorCode: raw?.success ? undefined : 'SERVICE_UNAVAILABLE',
+        message: raw?.message,
+        isSupported: true,
+        runtimePlatform: 'android_native',
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        errorCode: 'SERVICE_UNAVAILABLE',
+        message: err?.message || 'Unable to start VPN.',
+      };
+    }
+  }
+
+  async stopVpn(): Promise<NativeResult<{ state: string }>> {
+    if (!this.isNative) {
+      return {
+        success: false,
+        errorCode: 'SERVICE_UNAVAILABLE',
+        message: 'Stopping the VPN requires native Android execution.',
+        isSupported: false,
+        runtimePlatform: 'web_preview',
+      };
+    }
+
+    try {
+      const raw: any = await NativePlugin.stopVpn();
+
+      return {
+        success: !!raw?.success,
+        data: { state: raw?.state },
+        message: raw?.message,
+        isSupported: true,
+        runtimePlatform: 'android_native',
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        errorCode: 'SERVICE_UNAVAILABLE',
+        message: err?.message || 'Unable to stop VPN.',
+      };
+    }
   }
 }
 
