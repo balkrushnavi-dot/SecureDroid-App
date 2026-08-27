@@ -18,9 +18,14 @@ import type {
  * - SELinux verification
  * - system-level firewall enforcement
  *
- * Ordinary CAMERA / LOCATION / MICROPHONE permissions are deliberately
+ * Ordinary CAMERA / LOCATION / MICROPHONE / CONTACTS permissions are deliberately
  * excluded from the risk rules because those permissions are common and
  * are not vulnerabilities by themselves.
+ *
+ * IMPORTANT: System apps (Bluetooth, Phone Services, Google Play Services,
+ * System UI, etc.) legitimately require many permissions to function.
+ * They are excluded from high-impact permission findings and from
+ * the "BROAD PERMS" metric.
  */
 export class ThreatDetectionEngine {
 
@@ -41,12 +46,15 @@ export class ThreatDetectionEngine {
   ]);
 
   private static readonly TRUSTED_INSTALLERS = new Set<string>([
-    'com.android.vending',
-    'com.amazon.venezia',
-    'com.sec.android.app.samsungapps',
-    'com.xiaomi.mipicks',
-    'com.xiaomi.market',
-    'com.huawei.appmarket',
+    'com.android.vending',                    // Google Play
+    'com.google.android.packageinstaller',    // Android Package Installer
+    'com.android.packageinstaller',           // Legacy Package Installer
+    'com.amazon.venezia',                     // Amazon Appstore
+    'com.sec.android.app.samsungapps',        // Galaxy Store
+    'com.xiaomi.mipicks',                     // Xiaomi GetApps
+    'com.xiaomi.market',                      // Xiaomi Market
+    'com.huawei.appmarket',                   // Huawei AppGallery
+    'com.xiaomi.discover',                    // Xiaomi System Apps Updater
   ]);
 
   private static readonly LEGACY_TARGET_SDK = 31;
@@ -62,16 +70,26 @@ export class ThreatDetectionEngine {
     let excessivePermissionApps = 0;
     let outdatedSdkCount = 0;
 
+    // Separate user apps for accurate metrics
+    const userApps = apps.filter(app => !app.isSystemApp);
+
     for (const app of apps) {
 
       /*
        * ----------------------------------------------------------
        * DEBUGGABLE
        * ----------------------------------------------------------
+       *
+       * Note: Debuggable check applies to ALL apps, including system apps,
+       * because a debuggable system app is also a security concern.
+       * However, we only count it in the metric for user apps.
        */
       if (app.isDebuggable) {
 
-        debuggableCount++;
+        // Only count debuggable user apps in the metric
+        if (!app.isSystemApp) {
+          debuggableCount++;
+        }
 
         findings.push({
           id: `threat_debuggable_${app.packageName}`,
@@ -97,6 +115,9 @@ export class ThreatDetectionEngine {
        * ----------------------------------------------------------
        * INSTALLATION SOURCE
        * ----------------------------------------------------------
+       *
+       * System apps are pre-installed and not evaluated for
+       * sideload/store-source risk.
        */
       if (!app.isSystemApp) {
 
@@ -108,6 +129,9 @@ export class ThreatDetectionEngine {
          * Do not silently turn UNKNOWN into "malicious sideload".
          */
         if (installer === undefined || installer === null || installer === '') {
+
+          // Count as sideloaded only if not from a known store
+          sideloadedCount++;
 
           findings.push({
             id: `threat_unknown_installer_${app.packageName}`,
@@ -153,52 +177,59 @@ export class ThreatDetectionEngine {
        * ----------------------------------------------------------
        * HIGH-IMPACT PERMISSIONS
        * ----------------------------------------------------------
-       */
-      const declaredPermissions =
-        Array.isArray(app.requestedPermissions)
-          ? app.requestedPermissions
-          : [];
-
-      const highImpactPermissions =
-        declaredPermissions
-          .filter((permission) =>
-            this.HIGH_IMPACT_PERMISSIONS.has(permission)
-          )
-          .filter(
-            (permission, index, array) =>
-              array.indexOf(permission) === index,
-          );
-
-      /*
-       * Three or more high-impact permissions constitutes a broad
-       * permission footprint.
        *
-       * Normal CAMERA / LOCATION / AUDIO / CONTACTS permissions are
-       * deliberately not included.
+       * IMPORTANT: System apps (Bluetooth, Phone Services, Google Play Services,
+       * System UI, etc.) legitimately require many permissions to function.
+       * They are EXCLUDED from this finding entirely.
        */
-      if (highImpactPermissions.length >= 3) {
+      if (!app.isSystemApp) {
 
-        excessivePermissionApps++;
+        const declaredPermissions =
+          Array.isArray(app.requestedPermissions)
+            ? app.requestedPermissions
+            : [];
 
-        const severity =
-          highImpactPermissions.length >= 5
-            ? 'HIGH'
-            : 'MEDIUM';
+        const highImpactPermissions =
+          declaredPermissions
+            .filter((permission) =>
+              this.HIGH_IMPACT_PERMISSIONS.has(permission)
+            )
+            .filter(
+              (permission, index, array) =>
+                array.indexOf(permission) === index,
+            );
 
-        findings.push({
-          id: `threat_high_impact_permissions_${app.packageName}`,
-          ruleId: 'RULE_HIGH_IMPACT_PERMISSIONS',
-          title: `High-Impact Permission Footprint: ${app.label}`,
-          description:
-            `The application declares ${highImpactPermissions.length} ` +
-            `high-impact permissions. Permission declaration alone does ` +
-            `not prove that the permissions are granted or abused.`,
-          severity,
-          affectedPackage: app.packageName,
-          evidence: highImpactPermissions,
-          recommendation:
-            'Review whether each high-impact permission is necessary for the application.',
-        });
+        /*
+         * Three or more high-impact permissions constitutes a broad
+         * permission footprint.
+         *
+         * Normal CAMERA / LOCATION / AUDIO / CONTACTS permissions are
+         * deliberately not included.
+         */
+        if (highImpactPermissions.length >= 3) {
+
+          excessivePermissionApps++;
+
+          const severity =
+            highImpactPermissions.length >= 5
+              ? 'HIGH'
+              : 'MEDIUM';
+
+          findings.push({
+            id: `threat_high_impact_permissions_${app.packageName}`,
+            ruleId: 'RULE_HIGH_IMPACT_PERMISSIONS',
+            title: `High-Impact Permission Footprint: ${app.label}`,
+            description:
+              `The application declares ${highImpactPermissions.length} ` +
+              `high-impact permissions. Permission declaration alone does ` +
+              `not prove that the permissions are granted or abused.`,
+            severity,
+            affectedPackage: app.packageName,
+            evidence: highImpactPermissions,
+            recommendation:
+              'Review whether each high-impact permission is necessary for the application.',
+          });
+        }
       }
 
       /*
