@@ -1,99 +1,219 @@
-// SAFETY: Hook never throws — all errors are caught and returned as state
-export const useSecureDroid = () => {
-    const [apps, setApps] = useState<AppInfo[]>([]);
-    const [risks, setRisks] = useState<RiskInfo[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [connected, setConnected] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const [score, setScore] = useState(0);
-    const [hardeningFindings, setHardeningFindings] = useState<any[]>([]);
-    const [usingMock, setUsingMock] = useState(false);
-    const isNative = Capacitor.isNativePlatform();
-
-    // ... rest of the hook, but wrap EVERYTHING in try/catch
-
 import { useState, useEffect, useCallback } from 'react';
 import { Capacitor } from '@capacitor/core';
-import { SecureDroidPlugin, ThreatItem, AppItem, AuditLogItem } from '../services/native/SecureDroidPlugin';
+import { SecureDroidNative } from '../services/native/SecureDroidNative';
+import type { NativeInstalledApp, NativeAppRiskReport } from '../types/native';
 
-export interface SecurityState {
-  deviceStatus: 'secure' | 'warning' | 'critical';
-  threatsCount: number;
-  appsCount: number;
-  vpnActive: boolean;
-  auditLogs: AuditLogItem[];
-  threats: ThreatItem[];
-  apps: AppItem[];
+export type AppInfo = NativeInstalledApp;
+
+export interface RiskInfo {
+    appName: string;
+    packageName: string;
+    riskLevel: string;
+    securityScore?: number;
+    findingCount?: number;
+    findings?: Array<{
+        code?: string;
+        title?: string;
+        description?: string;
+        severity?: string;
+        points?: number;
+    }>;
+    reason?: string;
+    installSource?: string;
+    isSystemApp?: boolean;
 }
 
-const FALLBACK_STATE: SecurityState = {
-  deviceStatus: 'secure',
-  threatsCount: 0,
-  appsCount: 0,
-  vpnActive: false,
-  auditLogs: [
-    { 
-      id: '1', 
-      timestamp: new Date().toISOString(), 
-      event: 'SecureDroid security state initialized', 
-      severity: 'low' 
-    }
-  ],
-  threats: [],
-  apps: [],
+// ----- MOCK DATA (used when native bridge fails) -----
+const MOCK_APPS: AppInfo[] = [
+    {
+        packageName: 'com.example.demo',
+        label: 'Demo App',
+        versionName: '1.0.0',
+        versionCode: 1,
+        targetSdk: 33,
+        minSdk: 21,
+        isSystemApp: false,
+        isLaunchable: true,
+        firstInstallTime: Date.now() - 86400000,
+        lastUpdateTime: Date.now(),
+        requestedPermissions: ['android.permission.CAMERA'],
+        grantedPermissions: ['android.permission.CAMERA'],
+        dangerousPermissions: ['android.permission.CAMERA'],
+        installerPackage: 'com.android.vending',
+        isDebuggable: false,
+        enabled: true,
+    },
+    {
+        packageName: 'com.android.chrome',
+        label: 'Chrome',
+        versionName: '120.0.0',
+        versionCode: 120,
+        targetSdk: 33,
+        minSdk: 21,
+        isSystemApp: true,
+        isLaunchable: true,
+        firstInstallTime: Date.now() - 86400000 * 30,
+        lastUpdateTime: Date.now() - 86400000,
+        requestedPermissions: ['android.permission.INTERNET'],
+        grantedPermissions: ['android.permission.INTERNET'],
+        dangerousPermissions: [],
+        installerPackage: 'com.android.vending',
+        isDebuggable: false,
+        enabled: true,
+    },
+];
+
+const MOCK_RISKS: RiskInfo[] = [
+    {
+        appName: 'Demo App',
+        packageName: 'com.example.demo',
+        riskLevel: 'HIGH',
+        findings: [{ code: 'CAMERA', title: 'Camera Permission', description: 'App has camera permission', severity: 'HIGH' }],
+    },
+];
+
+const MOCK_HARDENING = {
+    score: 60,
+    findings: [
+        { id: 'SCREEN_LOCK_ENABLED', level: 'GOOD', summary: 'Screen lock is configured.' },
+        { id: 'DEVICE_NOT_ENCRYPTED', level: 'WARNING', summary: 'Device storage is not encrypted.' },
+    ],
 };
 
-export function useSecureDroid() {
-  const [state, setState] = useState<SecurityState>(FALLBACK_STATE);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
+export const useSecureDroid = () => {
+    const [apps, setApps] = useState<AppInfo[]>(MOCK_APPS);
+    const [risks, setRisks] = useState<RiskInfo[]>(MOCK_RISKS);
+    const [loading, setLoading] = useState(false);
+    const [connected, setConnected] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [score, setScore] = useState(MOCK_HARDENING.score);
+    const [hardeningFindings, setHardeningFindings] = useState(MOCK_HARDENING.findings);
+    const [usingMock, setUsingMock] = useState(true);
+    const isNative = Capacitor.isNativePlatform();
 
-  const refreshSecurityData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+    const loadData = useCallback(async () => {
+        // If not native, use mock data (already set)
+        if (!isNative) {
+            setConnected(true);
+            setUsingMock(true);
+            setLoading(false);
+            return;
+        }
 
-    if (!Capacitor.isNativePlatform()) {
-      console.warn('Non-native environment detected. Using fallback security state.');
-      setState(FALLBACK_STATE);
-      setLoading(false);
-      return;
-    }
+        // Native path — try to fetch real data
+        setLoading(true);
+        setError(null);
 
-    try {
-      const [statusRes, threatsRes, appsRes, logsRes, netRes] = await Promise.allSettled([
-        SecureDroidPlugin.getDeviceStatus(),
-        SecureDroidPlugin.getThreats(),
-        SecureDroidPlugin.getScannedApps(),
-        SecureDroidPlugin.getAuditLogs(),
-        SecureDroidPlugin.getNetworkStatus(),
-      ]);
+        try {
+            // 1. Connection
+            let connResult;
+            try {
+                connResult = await SecureDroidNative.checkConnection();
+            } catch (e: any) {
+                // Fallback to mock
+                setUsingMock(true);
+                setError('Native bridge unavailable — using mock data.');
+                setLoading(false);
+                return;
+            }
 
-      setState({
-        deviceStatus: statusRes.status === 'fulfilled' ? statusRes.value.status ?? 'secure' : 'secure',
-        threatsCount: threatsRes.status === 'fulfilled' ? threatsRes.value.threats?.length ?? 0 : 0,
-        appsCount: appsRes.status === 'fulfilled' ? appsRes.value.apps?.length ?? 0 : 0,
-        vpnActive: netRes.status === 'fulfilled' ? netRes.value.vpnActive ?? false : false,
-        auditLogs: logsRes.status === 'fulfilled' ? logsRes.value.logs ?? FALLBACK_STATE.auditLogs : FALLBACK_STATE.auditLogs,
-        threats: threatsRes.status === 'fulfilled' ? threatsRes.value.threats ?? [] : [],
-        apps: appsRes.status === 'fulfilled' ? appsRes.value.apps ?? [] : [],
-      });
-    } catch (err: any) {
-      console.error('Failed to fetch native security data:', err);
-      setError(err.message || 'Unknown native communication error');
-      setState(FALLBACK_STATE);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+            if (!connResult.success || !connResult.data?.connected) {
+                setUsingMock(true);
+                setError('Native bridge unavailable — using mock data.');
+                setLoading(false);
+                return;
+            }
+            setConnected(true);
+            setUsingMock(false);
 
-  useEffect(() => {
-    refreshSecurityData();
-  }, [refreshSecurityData]);
+            // 2. Apps
+            let appsResult;
+            try {
+                appsResult = await SecureDroidNative.getInstalledApps();
+            } catch (e: any) {
+                // Keep mock apps
+                setUsingMock(true);
+                setLoading(false);
+                return;
+            }
 
-  return {
-    ...state,
-    loading,
-    error,
-    refresh: refreshSecurityData,
-  };
-}
+            if (appsResult.success && appsResult.data) {
+                setApps(appsResult.data);
+            }
+
+            // 3. Risks
+            let riskResult;
+            try {
+                riskResult = await SecureDroidNative.getAppRiskReports();
+            } catch (e: any) {
+                // Keep mock risks
+                setUsingMock(true);
+                setLoading(false);
+                return;
+            }
+
+            if (riskResult.success && riskResult.data) {
+                const appList = appsResult?.success && appsResult.data ? appsResult.data : MOCK_APPS;
+                const userAppPackageNames = new Set(
+                    appList.filter(app => !app.isSystemApp).map(app => app.packageName)
+                );
+                const allRiskDetails = riskResult.data.map((report: NativeAppRiskReport) => ({
+                    appName: report.label,
+                    packageName: report.packageName,
+                    riskLevel: report.overallRisk,
+                    findings: report.findings,
+                    isSystemApp: false,
+                }));
+                const userAppRisks = allRiskDetails.filter(risk =>
+                    userAppPackageNames.has(risk.packageName)
+                );
+                const meaningfulRisks = userAppRisks.filter(risk =>
+                    ['MEDIUM', 'HIGH', 'CRITICAL'].includes(risk.riskLevel.toUpperCase())
+                );
+                if (meaningfulRisks.length > 0) {
+                    setRisks(meaningfulRisks);
+                }
+            }
+
+            // 4. Hardening
+            let hardeningResult;
+            try {
+                hardeningResult = await SecureDroidNative.getHardeningReport();
+            } catch (e: any) {
+                // Keep mock hardening
+                setUsingMock(true);
+                setLoading(false);
+                return;
+            }
+
+            if (hardeningResult.success && hardeningResult.data) {
+                setScore(hardeningResult.data.score || 0);
+                setHardeningFindings(hardeningResult.data.findings || []);
+            }
+
+        } catch (err: unknown) {
+            console.error('SecureDroid data load failed:', err);
+            setUsingMock(true);
+            setError('Failed to load real data — using mock data.');
+        } finally {
+            setLoading(false);
+        }
+    }, [isNative]);
+
+    // Load once on mount
+    useEffect(() => {
+        loadData();
+    }, [loadData]);
+
+    return {
+        apps,
+        risks,
+        loading,
+        connected,
+        error,
+        score,
+        hardeningFindings,
+        usingMock,
+        reload: loadData,
+    };
+};
