@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   ShieldAlert,
   AlertTriangle,
@@ -22,158 +22,122 @@ import {
 } from '../../types/securedroid';
 
 import { THREAT_MODEL_SCENARIOS } from '../../data/threatModelReference';
-import { SecureDroidNative } from '../../services/native/SecureDroidNative';
-import { ThreatDetectionEngine } from '../../services/security/ThreatDetectionEngine';
-
-import type {
-  ThreatAssessmentReport,
-  NativeErrorCode,
-} from '../../types/native';
+import { useSecureDroid } from '../../hooks/useSecureDroid';
+import type { AppInfo, RiskInfo } from '../../hooks/useSecureDroid';
 
 interface ThreatModelCenterScreenProps {
   onBack: () => void;
   isLight?: boolean;
 }
 
-interface ScanError {
-  code?: NativeErrorCode;
-  message: string;
-}
+// Trusted installers (same as in native code)
+const TRUSTED_INSTALLERS = new Set([
+  'com.android.vending',
+  'com.google.android.packageinstaller',
+  'com.android.packageinstaller',
+  'com.amazon.venezia',
+  'com.sec.android.app.samsungapps',
+  'com.xiaomi.mipicks',
+  'com.xiaomi.market',
+  'com.huawei.appmarket',
+]);
 
 export const ThreatModelCenterScreen: React.FC<ThreatModelCenterScreenProps> = ({
   onBack,
   isLight = false,
 }) => {
-  const [selectedThreat, setSelectedThreat] =
-    useState<ThreatScenarioItem | null>(null);
+  const { apps, risks, loading, connected, error, reload } = useSecureDroid();
+  const [selectedThreat, setSelectedThreat] = useState<ThreatScenarioItem | null>(null);
+  const [scanTimestamp, setScanTimestamp] = useState<number>(Date.now());
 
-  const [report, setReport] =
-    useState<ThreatAssessmentReport | null>(null);
+  // Compute metrics from apps and risks
+  const userApps = apps.filter(app => !app.isSystemApp);
+  const totalApps = apps.length;
+  const userAppsCount = userApps.length;
 
-  const [isScanning, setIsScanning] =
-    useState(false);
+  // Compute debuggable count (only user apps)
+  const debuggableCount = userApps.filter(app => app.isDebuggable).length;
 
-  const [scanError, setScanError] =
-    useState<ScanError | null>(null);
+  // Compute sideloaded count (user apps with no installer or untrusted installer)
+  const sideloadedCount = userApps.filter(app =>
+    !app.installerPackage || !TRUSTED_INSTALLERS.has(app.installerPackage)
+  ).length;
 
-  const runLiveThreatScan = useCallback(async () => {
-    if (isScanning) return;
+  // Compute broad permissions count: apps with HIGH or CRITICAL risk
+  const highRiskCount = risks.filter(r => r.riskLevel === 'HIGH' || r.riskLevel === 'CRITICAL').length;
+  const mediumRiskCount = risks.filter(r => r.riskLevel === 'MEDIUM').length;
+  const lowRiskCount = risks.filter(r => r.riskLevel === 'LOW').length;
 
-    setIsScanning(true);
-    setScanError(null);
+  // Overall risk level
+  let overallRisk: 'SAFE' | 'LOW_RISK' | 'MODERATE_RISK' | 'HIGH_RISK' | 'CRITICAL_RISK' = 'SAFE';
+  if (risks.some(r => r.riskLevel === 'CRITICAL')) {
+    overallRisk = 'CRITICAL_RISK';
+  } else if (risks.some(r => r.riskLevel === 'HIGH')) {
+    overallRisk = 'HIGH_RISK';
+  } else if (risks.some(r => r.riskLevel === 'MEDIUM')) {
+    overallRisk = 'MODERATE_RISK';
+  } else if (risks.some(r => r.riskLevel === 'LOW')) {
+    overallRisk = 'LOW_RISK';
+  }
 
-    try {
-      const result = await SecureDroidNative.getInstalledApps();
+  // Legacy SDK count: user apps with targetSdk < 31 (Android 12)
+  const legacySdkCount = userApps.filter(app => app.targetSdk && app.targetSdk < 31).length;
 
-      if (!result.success || !result.data) {
-        setReport(null);
+  // For findings, we map risks to the expected structure
+  const findings = risks.map(risk => ({
+    id: `finding_${risk.packageName}`,
+    title: risk.findings && risk.findings.length > 0
+      ? risk.findings[0].title || `${risk.riskLevel} risk`
+      : `${risk.riskLevel} risk detected`,
+    description: risk.findings && risk.findings.length > 0
+      ? risk.findings[0].description || ''
+      : `Security risk identified in ${risk.appName}.`,
+    severity: risk.riskLevel,
+    affectedPackage: risk.packageName,
+    recommendation: risk.findings && risk.findings.length > 0
+      ? risk.findings[0].description || 'Review the application.'
+      : 'Review the application and its permissions.',
+  }));
 
-        setScanError({
-          code: result.errorCode,
-          message:
-            result.message ||
-            'Installed-app evidence is unavailable from the native Android bridge.',
-        });
+  // Map to the expected report structure for the UI
+  const report = {
+    scannedAppsCount: totalApps,
+    overallRiskLevel: overallRisk,
+    findings: findings,
+    integrityIndicators: {
+      debuggableAppsFound: debuggableCount,
+      sideloadedAppsFound: sideloadedCount,
+      excessivePermissionAppsFound: highRiskCount + mediumRiskCount, // broad perms
+      outdatedTargetSdkAppsFound: legacySdkCount,
+    },
+    timestamp: scanTimestamp,
+  };
 
-        return;
-      }
-
-      /*
-       * This is the legitimate evidence pipeline:
-       *
-       * Android PackageManager
-       *        ↓
-       * SecureDroidNative.getInstalledApps()
-       *        ↓
-       * ThreatDetectionEngine
-       *        ↓
-       * ThreatAssessmentReport
-       */
-      const assessment =
-        ThreatDetectionEngine.evaluate(result.data);
-
-      setReport(assessment);
-    } catch (error: any) {
-      setReport(null);
-
-      setScanError({
-        message:
-          error?.message ||
-          'Threat scan failed unexpectedly.',
-      });
-    } finally {
-      setIsScanning(false);
-    }
-  }, [isScanning]);
-
-  useEffect(() => {
-    void runLiveThreatScan();
-  }, []);
-
-  const getStatusBadge = (
-    status: ThreatProtectionStatus
-  ) => {
+  const getStatusBadge = (status: ThreatProtectionStatus) => {
     switch (status) {
       case 'PROTECTED':
-        return {
-          variant: 'SECURE' as const,
-          label: 'PROTECTED',
-        };
-
+        return { variant: 'SECURE' as const, label: 'PROTECTED' };
       case 'PARTIALLY PROTECTED':
-        return {
-          variant: 'ISOLATED' as const,
-          label: 'PARTIAL',
-        };
-
+        return { variant: 'ISOLATED' as const, label: 'PARTIAL' };
       case 'REQUIRES HARDWARE':
-        return {
-          variant: 'UNAVAILABLE' as const,
-          label: 'REQUIRES HARDWARE',
-        };
-
+        return { variant: 'UNAVAILABLE' as const, label: 'REQUIRES HARDWARE' };
       case 'REQUIRES SECUREDROID OS':
-        return {
-          variant: 'DEGRADED' as const,
-          label: 'REQUIRES OS',
-        };
-
+        return { variant: 'DEGRADED' as const, label: 'REQUIRES OS' };
       case 'NOT PROTECTED':
-        return {
-          variant: 'UNAVAILABLE' as const,
-          label: 'NOT PROTECTED',
-        };
-
-      case 'UNKNOWN':
+        return { variant: 'UNAVAILABLE' as const, label: 'NOT PROTECTED' };
       default:
-        return {
-          variant: 'UNAVAILABLE' as const,
-          label: 'UNKNOWN',
-        };
+        return { variant: 'UNAVAILABLE' as const, label: 'UNKNOWN' };
     }
   };
 
-  const getRiskLabel = (
-    level: ThreatAssessmentReport['overallRiskLevel']
-  ) => {
+  const getRiskLabel = (level: typeof report.overallRiskLevel) => {
     switch (level) {
-      case 'SAFE':
-        return 'SAFE';
-
-      case 'LOW_RISK':
-        return 'LOW RISK';
-
-      case 'MODERATE_RISK':
-        return 'MODERATE RISK';
-
-      case 'HIGH_RISK':
-        return 'HIGH RISK';
-
-      case 'CRITICAL_RISK':
-        return 'CRITICAL RISK';
-
-      default:
-        return 'UNKNOWN';
+      case 'SAFE': return 'SAFE';
+      case 'LOW_RISK': return 'LOW RISK';
+      case 'MODERATE_RISK': return 'MODERATE RISK';
+      case 'HIGH_RISK': return 'HIGH RISK';
+      case 'CRITICAL_RISK': return 'CRITICAL RISK';
+      default: return 'UNKNOWN';
     }
   };
 
@@ -183,6 +147,11 @@ export const ThreatModelCenterScreen: React.FC<ThreatModelCenterScreenProps> = (
       : report?.overallRiskLevel === 'CRITICAL_RISK'
         ? 'bg-rose-500/15 text-rose-300'
         : 'bg-amber-500/15 text-amber-300';
+
+  const handleScan = useCallback(() => {
+    reload();
+    setScanTimestamp(Date.now());
+  }, [reload]);
 
   return (
     <div
@@ -200,11 +169,7 @@ export const ThreatModelCenterScreen: React.FC<ThreatModelCenterScreenProps> = (
       />
 
       <div className="pt-4 space-y-4">
-
-        {/* ============================================================
-            LIVE EVIDENCE
-           ============================================================ */}
-
+        {/* Live Evidence Card */}
         <SecureDroidCard
           isLight={isLight}
           highlight
@@ -221,12 +186,10 @@ export const ThreatModelCenterScreen: React.FC<ThreatModelCenterScreenProps> = (
               >
                 <ShieldAlert className="w-5 h-5 text-amber-400" />
               </div>
-
               <div>
                 <h3 className="font-medium text-sm">
                   Live Installed-App Threat Assessment
                 </h3>
-
                 <p
                   className={`text-xs mt-0.5 ${
                     isLight
@@ -241,49 +204,39 @@ export const ThreatModelCenterScreen: React.FC<ThreatModelCenterScreenProps> = (
             </div>
 
             <button
-              onClick={() => void runLiveThreatScan()}
-              disabled={isScanning}
+              onClick={handleScan}
+              disabled={loading}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-mono text-slate-200 border border-slate-700 disabled:opacity-50"
             >
               <RefreshCw
                 className={`w-3.5 h-3.5 ${
-                  isScanning ? 'animate-spin' : ''
+                  loading ? 'animate-spin' : ''
                 }`}
               />
-
               <span>
-                {isScanning ? 'Scanning...' : 'Scan Now'}
+                {loading ? 'Scanning...' : 'Scan Now'}
               </span>
             </button>
           </div>
 
-          {scanError && (
+          {error && (
             <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20">
               <div className="flex items-start gap-2">
                 <XCircle className="w-4 h-4 text-rose-400 mt-0.5 shrink-0" />
-
                 <div>
                   <p className="text-xs font-semibold text-rose-300">
                     Live scan unavailable
                   </p>
-
                   <p className="text-[11px] text-rose-200/70 mt-1">
-                    {scanError.message}
+                    {error}
                   </p>
-
-                  {scanError.code && (
-                    <p className="text-[10px] font-mono text-rose-300/60 mt-1">
-                      {scanError.code}
-                    </p>
-                  )}
                 </div>
               </div>
             </div>
           )}
 
-          {report && (
+          {!loading && !error && (
             <div className="pt-2 border-t border-zinc-800/20 space-y-3">
-
               <div className="grid grid-cols-2 gap-2">
                 <div
                   className={`p-3 rounded-xl ${
@@ -295,9 +248,8 @@ export const ThreatModelCenterScreen: React.FC<ThreatModelCenterScreenProps> = (
                   <span className="block text-[10px] text-zinc-500 font-mono">
                     SCANNED PACKAGES
                   </span>
-
                   <strong className="text-lg">
-                    {report.scannedAppsCount}
+                    {report?.scannedAppsCount ?? 0}
                   </strong>
                 </div>
 
@@ -311,11 +263,10 @@ export const ThreatModelCenterScreen: React.FC<ThreatModelCenterScreenProps> = (
                   <span className="block text-[10px] text-zinc-500 font-mono">
                     OVERALL RESULT
                   </span>
-
                   <span
                     className={`inline-block mt-1 px-2 py-0.5 rounded text-xs font-bold ${riskClass}`}
                   >
-                    {getRiskLabel(report.overallRiskLevel)}
+                    {getRiskLabel(report?.overallRiskLevel || 'SAFE')}
                   </span>
                 </div>
               </div>
@@ -323,30 +274,27 @@ export const ThreatModelCenterScreen: React.FC<ThreatModelCenterScreenProps> = (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 <Metric
                   label="DEBUGGABLE"
-                  value={report.integrityIndicators.debuggableAppsFound}
+                  value={report?.integrityIndicators?.debuggableAppsFound ?? 0}
                   isLight={isLight}
                 />
-
                 <Metric
                   label="SIDELOADED"
-                  value={report.integrityIndicators.sideloadedAppsFound}
+                  value={report?.integrityIndicators?.sideloadedAppsFound ?? 0}
                   isLight={isLight}
                 />
-
                 <Metric
                   label="BROAD PERMS"
-                  value={report.integrityIndicators.excessivePermissionAppsFound}
+                  value={report?.integrityIndicators?.excessivePermissionAppsFound ?? 0}
                   isLight={isLight}
                 />
-
                 <Metric
                   label="LEGACY SDK"
-                  value={report.integrityIndicators.outdatedTargetSdkAppsFound}
+                  value={report?.integrityIndicators?.outdatedTargetSdkAppsFound ?? 0}
                   isLight={isLight}
                 />
               </div>
 
-              {report.findings.length > 0 ? (
+              {report?.findings && report.findings.length > 0 ? (
                 <div className="space-y-1.5 pt-1">
                   {report.findings.map((finding) => (
                     <div
@@ -358,22 +306,18 @@ export const ThreatModelCenterScreen: React.FC<ThreatModelCenterScreenProps> = (
                           <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                           {finding.title}
                         </span>
-
                         <span className="text-[10px] font-mono text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded">
                           {finding.severity}
                         </span>
                       </div>
-
                       <p className="text-slate-400 text-[11px]">
                         {finding.description}
                       </p>
-
                       {finding.affectedPackage && (
                         <p className="text-slate-500 text-[10px] font-mono">
                           Package: {finding.affectedPackage}
                         </p>
                       )}
-
                       <p className="text-emerald-400 text-[11px]">
                         Recommendation: {finding.recommendation}
                       </p>
@@ -383,7 +327,6 @@ export const ThreatModelCenterScreen: React.FC<ThreatModelCenterScreenProps> = (
               ) : (
                 <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 shrink-0" />
-
                   <span>
                     No findings were generated by the current ruleset.
                   </span>
@@ -392,16 +335,13 @@ export const ThreatModelCenterScreen: React.FC<ThreatModelCenterScreenProps> = (
 
               <p className="text-[10px] text-zinc-500 font-mono">
                 Scan timestamp:{' '}
-                {new Date(report.timestamp).toLocaleString()}
+                {new Date(scanTimestamp).toLocaleString()}
               </p>
             </div>
           )}
         </SecureDroidCard>
 
-        {/* ============================================================
-            STATIC THREAT MODEL
-           ============================================================ */}
-
+        {/* Threat Model Reference */}
         <SecureDroidSectionHeader
           title="Threat Model Reference"
           isLight={isLight}
@@ -437,14 +377,12 @@ export const ThreatModelCenterScreen: React.FC<ThreatModelCenterScreenProps> = (
                       <h4 className="font-medium text-sm">
                         {threat.title}
                       </h4>
-
                       <SecureDroidStatusChip
                         status={badge.variant}
                         label={badge.label}
                         isLight={isLight}
                       />
                     </div>
-
                     <p
                       className={`text-xs mt-1.5 leading-relaxed ${
                         isLight
@@ -454,7 +392,6 @@ export const ThreatModelCenterScreen: React.FC<ThreatModelCenterScreenProps> = (
                     >
                       {threat.scenario}
                     </p>
-
                     <p
                       className={`text-xs mt-2 font-medium ${
                         isLight
@@ -465,7 +402,6 @@ export const ThreatModelCenterScreen: React.FC<ThreatModelCenterScreenProps> = (
                       {threat.why}
                     </p>
                   </div>
-
                   <ChevronRight className="w-4 h-4 text-zinc-500 shrink-0 mt-1" />
                 </div>
 
@@ -489,10 +425,7 @@ export const ThreatModelCenterScreen: React.FC<ThreatModelCenterScreenProps> = (
         </div>
       </div>
 
-      {/* ==============================================================
-          DETAIL MODAL
-         ============================================================== */}
-
+      {/* Detail Modal */}
       {selectedThreat && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div
@@ -506,7 +439,6 @@ export const ThreatModelCenterScreen: React.FC<ThreatModelCenterScreenProps> = (
               <h3 className="font-semibold text-sm">
                 {selectedThreat.title}
               </h3>
-
               <button
                 onClick={() => setSelectedThreat(null)}
                 className={`text-xs px-2.5 py-1 rounded-lg ${
@@ -525,20 +457,17 @@ export const ThreatModelCenterScreen: React.FC<ThreatModelCenterScreenProps> = (
                 value={selectedThreat.scenario}
                 isLight={isLight}
               />
-
               <Detail
                 label="Defense & Rationale"
                 value={selectedThreat.why}
                 isLight={isLight}
               />
-
               <Detail
                 label="Technical Evidence"
                 value={selectedThreat.evidence}
                 isLight={isLight}
                 mono
               />
-
               <Detail
                 label="Threat Limitation"
                 value={selectedThreat.limitation}
@@ -546,7 +475,6 @@ export const ThreatModelCenterScreen: React.FC<ThreatModelCenterScreenProps> = (
                 mono
                 warning
               />
-
               <Detail
                 label="Enforcement Requirement"
                 value={selectedThreat.requirement}
@@ -571,6 +499,7 @@ export const ThreatModelCenterScreen: React.FC<ThreatModelCenterScreenProps> = (
   );
 };
 
+// Helper component for metrics
 function Metric({
   label,
   value,
@@ -589,7 +518,6 @@ function Metric({
       <span className="block text-[9px] text-zinc-500 font-mono">
         {label}
       </span>
-
       <span className="text-sm font-bold">
         {value}
       </span>
@@ -615,7 +543,6 @@ function Detail({
       <span className="font-semibold text-zinc-400 block mb-0.5">
         {label}
       </span>
-
       <p
         className={`p-2 rounded-lg ${
           mono ? 'font-mono text-[11px]' : ''
@@ -631,4 +558,6 @@ function Detail({
       </p>
     </div>
   );
-};
+}
+
+export default ThreatModelCenterScreen;
