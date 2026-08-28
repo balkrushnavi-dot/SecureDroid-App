@@ -13,7 +13,7 @@ data class WifiSecurityFinding(
 data class WifiSecurityReport(
     val isConnected: Boolean,
     val isWifi: Boolean,
-    val isSecure: Boolean?,
+    val isSecure: Boolean,
     val findings: List<WifiSecurityFinding>
 )
 
@@ -27,26 +27,54 @@ class WifiSecurityAnalyzer(
                 Context.CONNECTIVITY_SERVICE
             ) as? ConnectivityManager
 
-        val activeNetwork =
-            connectivityManager?.activeNetwork
-
-        val capabilities =
-            activeNetwork?.let {
-                connectivityManager.getNetworkCapabilities(it)
-            }
-
-        if (activeNetwork == null ||
-            capabilities == null
-        ) {
+        if (connectivityManager == null) {
             return WifiSecurityReport(
                 isConnected = false,
                 isWifi = false,
-                isSecure = null,
+                isSecure = false,
+                findings = listOf(
+                    WifiSecurityFinding(
+                        id = "CONNECTIVITY_SERVICE_UNAVAILABLE",
+                        level = "WARNING",
+                        summary = "Android connectivity information is unavailable."
+                    )
+                )
+            )
+        }
+
+        val activeNetwork =
+            connectivityManager.activeNetwork
+
+        if (activeNetwork == null) {
+            return WifiSecurityReport(
+                isConnected = false,
+                isWifi = false,
+                isSecure = true,
                 findings = listOf(
                     WifiSecurityFinding(
                         id = "NO_NETWORK",
                         level = "INFO",
                         summary = "No active network connection detected."
+                    )
+                )
+            )
+        }
+
+        val capabilities =
+            connectivityManager.getNetworkCapabilities(
+                activeNetwork
+            )
+
+        if (capabilities == null) {
+            return WifiSecurityReport(
+                isConnected = true,
+                isWifi = false,
+                isSecure = false,
+                findings = listOf(
+                    WifiSecurityFinding(
+                        id = "NETWORK_CAPABILITIES_UNKNOWN",
+                        level = "WARNING",
+                        summary = "The active network exists, but its capabilities could not be determined."
                     )
                 )
             )
@@ -72,18 +100,22 @@ class WifiSecurityAnalyzer(
                 NetworkCapabilities.NET_CAPABILITY_VALIDATED
             )
 
+        val hasVpn =
+            capabilities.hasTransport(
+                NetworkCapabilities.TRANSPORT_VPN
+            )
+
         val findings =
             mutableListOf<WifiSecurityFinding>()
 
         /*
-         * This analyzer can determine connectivity characteristics,
-         * but it cannot reliably determine the Wi-Fi encryption mode
-         * from NetworkCapabilities alone.
+         * This analyzer cannot determine Wi-Fi encryption
+         * (WPA2/WPA3/etc.) from NetworkCapabilities alone.
          *
-         * Therefore isSecure means "network validation state is
-         * acceptable", NOT "Wi-Fi encryption is guaranteed."
+         * Therefore "secure" means only that there is no
+         * directly observable network-condition problem.
          */
-        var secure: Boolean? = null
+        var isSecure = true
 
         if (isWifi) {
             findings.add(
@@ -91,6 +123,14 @@ class WifiSecurityAnalyzer(
                     id = "WIFI_CONNECTED",
                     level = "INFO",
                     summary = "Device is connected through Wi-Fi."
+                )
+            )
+
+            findings.add(
+                WifiSecurityFinding(
+                    id = "WIFI_ENCRYPTION_UNKNOWN",
+                    level = "WARNING",
+                    summary = "Wi-Fi link encryption cannot be verified by this analyzer."
                 )
             )
         } else if (isCellular) {
@@ -101,12 +141,14 @@ class WifiSecurityAnalyzer(
                     summary = "Device is connected through cellular data."
                 )
             )
-        } else {
+        }
+
+        if (hasVpn) {
             findings.add(
                 WifiSecurityFinding(
-                    id = "OTHER_TRANSPORT",
+                    id = "VPN_TRANSPORT_PRESENT",
                     level = "INFO",
-                    summary = "Device is connected through a non-Wi-Fi/non-cellular transport."
+                    summary = "A VPN transport is present on the active network."
                 )
             )
         }
@@ -116,35 +158,36 @@ class WifiSecurityAnalyzer(
                 WifiSecurityFinding(
                     id = "NO_INTERNET",
                     level = "INFO",
-                    summary = "The active network does not advertise internet capability."
+                    summary = "The active network does not currently advertise internet capability."
                 )
             )
-        } else if (!isValidated) {
+        }
+
+        if (hasInternet && !isValidated) {
+            /*
+             * This is a connectivity warning, not proof that
+             * the network is malicious or insecure.
+             */
             findings.add(
                 WifiSecurityFinding(
-                    id = "UNVALIDATED_NETWORK",
+                    id = "NETWORK_NOT_VALIDATED",
                     level = "WARNING",
-                    summary = "The network has internet capability but Android has not validated internet access."
+                    summary = "Android has not validated internet connectivity. This may indicate a captive portal or restricted network."
                 )
             )
+        }
 
-            secure = null
-        } else {
-            findings.add(
-                WifiSecurityFinding(
-                    id = "NETWORK_VALIDATED",
-                    level = "INFO",
-                    summary = "Android reports the active network as validated."
-                )
-            )
-
-            secure = true
+        /*
+         * Never claim Wi-Fi encryption security from this API.
+         */
+        if (isWifi && !isValidated) {
+            isSecure = false
         }
 
         return WifiSecurityReport(
             isConnected = true,
             isWifi = isWifi,
-            isSecure = secure,
+            isSecure = isSecure,
             findings = findings
         )
     }
