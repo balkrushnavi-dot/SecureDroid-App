@@ -8,6 +8,7 @@ import {
     Smartphone,
     Wifi,
     Lock,
+    Bell,          // ← added
 } from 'lucide-react';
 import {
     SecureDroidTopBar,
