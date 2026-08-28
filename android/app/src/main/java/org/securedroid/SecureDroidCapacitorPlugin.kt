@@ -18,6 +18,7 @@ import org.securedroid.apps.AppRiskAnalyzer
 import org.securedroid.apps.InstalledAppInfo
 import org.securedroid.apps.InstalledAppScanner
 import org.securedroid.diagnostics.HardeningAnalyzer
+import org.securedroid.diagnostics.WifiSecurityAnalyzer
 import org.securedroid.logging.SecurityEvent
 import org.securedroid.logging.SecurityLogManager
 import org.securedroid.vault.VaultStorage
@@ -36,6 +37,10 @@ class SecureDroidCapacitorPlugin : Plugin() {
 
     private val hardeningAnalyzer by lazy {
         HardeningAnalyzer(bridge.context.applicationContext)
+    }
+
+    private val wifiAnalyzer by lazy {
+        WifiSecurityAnalyzer(bridge.context.applicationContext)
     }
 
     private val vpnManager by lazy {
@@ -215,7 +220,7 @@ class SecureDroidCapacitorPlugin : Plugin() {
     }
 
     // =========================================================
-    // DEVICE HARDENING
+    // DEVICE HARDENING & WIFI SECURITY
     // =========================================================
 
     @PluginMethod
@@ -286,6 +291,39 @@ class SecureDroidCapacitorPlugin : Plugin() {
     @PluginMethod
     fun getDeviceHardening(call: PluginCall) {
         getHardeningReport(call)
+    }
+
+    @PluginMethod
+    fun getWifiSecurityReport(call: PluginCall) {
+        try {
+            val report = wifiAnalyzer.analyze()
+
+            val findings = JSONArray()
+            report.findings.forEach { finding ->
+                val json = JSObject()
+                json.put("id", finding.id)
+                json.put("level", finding.level)
+                json.put("summary", finding.summary)
+                findings.put(json)
+            }
+
+            val data = JSObject()
+            data.put("isConnected", report.isConnected)
+            data.put("isWifi", report.isWifi)
+            data.put("isSecure", report.isSecure)
+            data.put("findings", findings)
+
+            val result = JSObject()
+            result.put("success", true)
+            result.put("data", data)
+            result.put("isSupported", true)
+            result.put("runtimePlatform", "android_native")
+
+            call.resolve(result)
+        } catch (e: Exception) {
+            Log.e(TAG, "getWifiSecurityReport failed", e)
+            call.reject("Wifi security analysis failed: ${e.message}", e)
+        }
     }
 
     // =========================================================
