@@ -12,6 +12,7 @@ export interface AppItem {
   name: string;
   riskLevel: string;
   permissions: string[];
+  isSystemApp?: boolean;
 }
 
 export interface AuditLogItem {
@@ -59,3 +60,6 @@ const StubPlugin: SecureDroidPluginInterface = {
 export const SecureDroidPlugin = Capacitor.isNativePlatform()
   ? registerPlugin<SecureDroidPluginInterface>('SecureDroidPlugin')
   : StubPlugin;
+
+// Export SecureDroidNativePlugin alias to satisfy SecureDroidNative.ts imports
+export const SecureDroidNativePlugin = SecureDroidPlugin;
