@@ -18,19 +18,19 @@ class SecurityAuditManager(
     private val securityLogManager = SecurityLogManager(context)
 
     fun runAudit(): SecurityStatusReport {
-        val report = securityMonitor.collectStatus()
-
+        val report = securityMonitor.getSecurityStatus()
+        
         report.checks.forEach { check ->
             if (shouldLog(check)) {
                 logCheck(check)
             }
         }
-
+        
         return report
     }
 
     fun getCurrentStatus(): SecurityStatusReport {
-        return securityMonitor.collectStatus()
+        return securityMonitor.getSecurityStatus()
     }
 
     fun getEvents(
