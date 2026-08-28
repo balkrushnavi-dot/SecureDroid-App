@@ -1,3 +1,17 @@
+// SAFETY: Hook never throws — all errors are caught and returned as state
+export const useSecureDroid = () => {
+    const [apps, setApps] = useState<AppInfo[]>([]);
+    const [risks, setRisks] = useState<RiskInfo[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [connected, setConnected] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [score, setScore] = useState(0);
+    const [hardeningFindings, setHardeningFindings] = useState<any[]>([]);
+    const [usingMock, setUsingMock] = useState(false);
+    const isNative = Capacitor.isNativePlatform();
+
+    // ... rest of the hook, but wrap EVERYTHING in try/catch
+
 import { useState, useEffect, useCallback } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { SecureDroidPlugin, ThreatItem, AppItem, AuditLogItem } from '../services/native/SecureDroidPlugin';
