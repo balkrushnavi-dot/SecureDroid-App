@@ -101,10 +101,10 @@ function ErrorScreen({ message, onRetry }: { message: string; onRetry: () => voi
 }
 
 // ============================================================
-// HOME SCREEN (same as dummy but using real data)
+// HOME SCREEN
 // ============================================================
 function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
-    const { apps, risks, loading, connected, error, score, reload } = useSecureDroid();
+    const { apps, risks, loading, connected, error, score, reload, usingMock } = useSecureDroid();
 
     const highRiskCount = risks.filter(r => r.riskLevel === 'HIGH' || r.riskLevel === 'CRITICAL').length;
     const mediumRiskCount = risks.filter(r => r.riskLevel === 'MEDIUM').length;
@@ -153,6 +153,14 @@ function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
                     <RefreshCw className={`w-4 h-4 text-slate-400 ${loading ? 'animate-spin' : ''}`} />
                 </button>
             </div>
+
+            {/* Mock warning banner */}
+            {usingMock && (
+                <div className="p-3 rounded-xl bg-amber-950/30 border border-amber-700/50 text-amber-400 text-xs flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 shrink-0" />
+                    <span>Using demo data — native bridge unavailable. Real device data will appear once connected.</span>
+                </div>
+            )}
 
             <div className={`p-3 rounded-xl border ${connected ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-red-500/30 bg-red-500/5'}`}>
                 <div className="flex items-center gap-2">
@@ -357,12 +365,13 @@ export default function App() {
         return <LoadingScreen message="Loading security data..." />;
     }
 
-    // Show error screen if connection failed
-    if (!connected && error) {
+    // Show error screen only if we have a real error and we are not using mock data
+    // (mock errors are shown as warnings on the home screen)
+    if (!connected && error && !error.includes('mock data')) {
         return <ErrorScreen message={error} onRetry={reload} />;
     }
 
-    // Once connected, render the full app
+    // Once connected (or using mock), render the full app
     const navigateTo = (screen: Screen) => setCurrentScreen(screen);
     const handleBack = () => setCurrentScreen('home');
     const handleAppDetail = (packageName: string) => {
