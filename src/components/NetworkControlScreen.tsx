@@ -17,21 +17,30 @@ export function NetworkControlScreen({ onBack }: NetworkControlScreenProps) {
   const [inputAllowed, setInputAllowed] = useState('');
   const [activeTab, setActiveTab] = useState<'blocked' | 'allowed'>('blocked');
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [wifiReport, setWifiReport] = useState<any>(null);
 
-  const loadDomains = async () => {
+  const loadData = async () => {
     try {
-      const res = await SecureDroidNative.getBlockedDomains();
-      if (res.success && res.data) {
-        setBlockedDomains(res.data.blockedDomains || []);
-        setAllowedDomains(res.data.allowedDomains || []);
+      const [domainRes, wifiRes] = await Promise.all([
+        SecureDroidNative.getBlockedDomains(),
+        SecureDroidNative.getWifiSecurityReport()
+      ]);
+
+      if (domainRes.success && domainRes.data) {
+        setBlockedDomains(domainRes.data.blockedDomains || []);
+        setAllowedDomains(domainRes.data.allowedDomains || []);
+      }
+
+      if (wifiRes.success && wifiRes.data) {
+        setWifiReport(wifiRes.data);
       }
     } catch (e) {
-      console.error('Failed to load domain filters', e);
+      console.error('Failed to load network security data', e);
     }
   };
 
   useEffect(() => {
-    loadDomains();
+    loadData();
   }, []);
 
   const handleToggleVpn = async () => {
@@ -57,7 +66,7 @@ export function NetworkControlScreen({ onBack }: NetworkControlScreenProps) {
     const res = await SecureDroidNative.addBlockedDomain(inputBlocked.trim());
     if (res.success) {
       setInputBlocked('');
-      loadDomains();
+      loadData();
       setActionMessage('Domain added to blocklist');
       setTimeout(() => setActionMessage(null), 3000);
     }
@@ -66,7 +75,7 @@ export function NetworkControlScreen({ onBack }: NetworkControlScreenProps) {
   const handleRemoveBlocked = async (domain: string) => {
     const res = await SecureDroidNative.removeBlockedDomain(domain);
     if (res.success) {
-      loadDomains();
+      loadData();
     }
   };
 
@@ -76,7 +85,7 @@ export function NetworkControlScreen({ onBack }: NetworkControlScreenProps) {
     const res = await SecureDroidNative.addAllowedDomain(inputAllowed.trim());
     if (res.success) {
       setInputAllowed('');
-      loadDomains();
+      loadData();
       setActionMessage('Domain added to allowlist');
       setTimeout(() => setActionMessage(null), 3000);
     }
@@ -85,7 +94,7 @@ export function NetworkControlScreen({ onBack }: NetworkControlScreenProps) {
   const handleRemoveAllowed = async (domain: string) => {
     const res = await SecureDroidNative.removeAllowedDomain(domain);
     if (res.success) {
-      loadDomains();
+      loadData();
     }
   };
 
@@ -141,6 +150,41 @@ export function NetworkControlScreen({ onBack }: NetworkControlScreenProps) {
               <Power className="w-4 h-4" />
               <span>{toggling ? 'Updating...' : vpnActive ? 'Disconnect VPN' : 'Connect VPN'}</span>
             </button>
+          </div>
+
+          {/* Wi-Fi & Network Environment Security Card */}
+          <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800/80 space-y-3">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                <Wifi className="w-4 h-4 text-cyan-400" />
+                Network Environment Security
+              </h4>
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                wifiReport?.isSecure ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30' : 'bg-amber-500/10 text-amber-400 border border-amber-500/30'
+              }`}>
+                {wifiReport?.isSecure ? 'Secure' : 'Warning'}
+              </span>
+            </div>
+
+            <div className="space-y-2">
+              {!wifiReport?.findings || wifiReport.findings.length === 0 ? (
+                <p className="text-xs text-slate-500 text-center py-2">No active network security findings.</p>
+              ) : (
+                wifiReport.findings.map((finding: any, idx: number) => (
+                  <div key={idx} className="flex items-start space-x-2.5 p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/60">
+                    {finding.level === 'WARNING' || finding.level === 'CRITICAL' ? (
+                      <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                    ) : (
+                      <Shield className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
+                    )}
+                    <div className="flex-1 text-xs">
+                      <p className="text-slate-200 font-medium">{finding.summary}</p>
+                      <span className="text-[10px] text-slate-400 uppercase tracking-wider">{finding.id}</span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
 
           {/* Domain Filtering & Blocklist Section */}
