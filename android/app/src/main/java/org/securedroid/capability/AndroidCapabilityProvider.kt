@@ -8,13 +8,6 @@ import android.os.UserManager
 import android.provider.Settings
 import androidx.biometric.BiometricManager
 
-/**
- * Android-specific capability provider.
- *
- * This class only reports capabilities that can be evidenced through
- * public Android APIs. It does not assume root, system privileges,
- * kernel access, or undocumented OEM behavior.
- */
 class AndroidCapabilityProvider(
     private val context: Context
 ) {
@@ -23,15 +16,11 @@ class AndroidCapabilityProvider(
         context.packageManager
 
     private val userManager: UserManager? =
-        context.getSystemService(Context.USER_SERVICE)
+        context.getSystemService(Context.USER_SERVICE) as UserManager?
 
     private val keyguardManager: KeyguardManager? =
-        context.getSystemService(Context.KEYGUARD_SERVICE)
+        context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager?
 
-    /**
-     * Returns the Android platform capabilities that can be detected
-     * without elevated privileges.
-     */
     fun getCapabilities(): List<Capability> {
         return listOf(
             detectSecureLockScreen(),
@@ -45,12 +34,6 @@ class AndroidCapabilityProvider(
         )
     }
 
-    /**
-     * Secure lock screen.
-     *
-     * isKeyguardSecure means Android has a secure credential configured.
-     * It does NOT prove resistance to advanced physical attacks.
-     */
     private fun detectSecureLockScreen(): Capability {
 
         val secure = try {
@@ -96,9 +79,6 @@ class AndroidCapabilityProvider(
         )
     }
 
-    /**
-     * Modern biometric capability detection.
-     */
     private fun detectBiometric(): Capability {
 
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
@@ -210,12 +190,6 @@ class AndroidCapabilityProvider(
         )
     }
 
-    /**
-     * USB debugging state.
-     *
-     * This is informational only. SecureDroid does not disable ADB
-     * in Normal Mode.
-     */
     private fun detectUsbDebugging(): Capability {
 
         val enabled = try {
@@ -278,12 +252,6 @@ class AndroidCapabilityProvider(
         )
     }
 
-    /**
-     * Developer Options state.
-     *
-     * This is not automatically a vulnerability. It is an observable
-     * device configuration signal.
-     */
     private fun detectDeveloperOptions(): Capability {
 
         val enabled = try {
@@ -346,12 +314,6 @@ class AndroidCapabilityProvider(
         )
     }
 
-    /**
-     * Android security patch level.
-     *
-     * SecureDroid reports the actual patch string instead of inventing
-     * a binary secure/insecure result.
-     */
     private fun detectSecurityPatch(): Capability {
 
         val patch = try {
@@ -403,11 +365,6 @@ class AndroidCapabilityProvider(
         )
     }
 
-    /**
-     * User-unlocked state.
-     *
-     * This MUST NOT be interpreted as encryption status.
-     */
     private fun detectUserUnlocked(): Capability {
 
         val unlocked = try {
@@ -452,12 +409,6 @@ class AndroidCapabilityProvider(
         )
     }
 
-    /**
-     * Package visibility.
-     *
-     * SecureDroid may only see packages allowed by Android package
-     * visibility rules and manifest declarations.
-     */
     private fun detectPackageVisibility(): Capability {
 
         val canQueryPackages = try {
@@ -498,9 +449,6 @@ class AndroidCapabilityProvider(
         )
     }
 
-    /**
-     * Checks whether the platform exposes Android's VPN service.
-     */
     private fun detectVpnService(): Capability {
 
         val vpnAvailable = try {
@@ -538,32 +486,20 @@ class AndroidCapabilityProvider(
         )
     }
 
-    /**
-     * Returns a single capability by ID.
-     */
     fun getCapability(id: String): Capability? {
         return getCapabilities().firstOrNull {
             it.id == id
         }
     }
 
-    /**
-     * Returns the Android API level.
-     */
     fun getApiLevel(): Int {
         return Build.VERSION.SDK_INT
     }
 
-    /**
-     * Returns the Android release string.
-     */
     fun getAndroidRelease(): String {
         return Build.VERSION.RELEASE ?: "unknown"
     }
 
-    /**
-     * Returns the device security patch string.
-     */
     fun getSecurityPatchLevel(): String {
         return Build.VERSION.SECURITY_PATCH
     }
