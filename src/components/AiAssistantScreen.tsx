@@ -8,6 +8,7 @@ import {
     Shield,
     ShieldCheck,
     ShieldOff,
+    ShieldAlert,
     AlertTriangle,
     CheckCircle2,
     XCircle,
@@ -29,6 +30,15 @@ import {
     Lock,
     Wifi,
     Smartphone,
+    Globe,
+    Server,
+    Users,
+    Activity,
+    FileText,
+    Calendar,
+    Eye,
+    Package,
+    Settings,
 } from 'lucide-react';
 import {
     SecureDroidTopBar,
@@ -36,6 +46,8 @@ import {
     SecureDroidSectionHeader,
     SecureDroidStatusChip,
     SecureDroidButton,
+    SecureDroidBadge,
+    SecureDroidProgressRing,
 } from './ui/designSystem';
 import { useSecureDroid } from '../hooks/useSecureDroid';
 import { SecureDroidNative } from '../services/native/SecureDroidNative';
@@ -51,12 +63,7 @@ interface Message {
     content: string;
     timestamp: Date;
     type?: 'security' | 'privacy' | 'app' | 'network' | 'general' | 'error';
-}
-
-// Helper to get app names from package names for display
-function getAppName(packageName: string, apps: any[]): string {
-    const app = apps.find(a => a.packageName === packageName);
-    return app ? app.appName : packageName;
+    metadata?: Record<string, any>;
 }
 
 export const AiAssistantScreen: React.FC<AiAssistantScreenProps> = ({
@@ -81,7 +88,7 @@ export const AiAssistantScreen: React.FC<AiAssistantScreenProps> = ({
         'How many apps have dangerous permissions?',
         'What security events happened today?',
         'Is my device encrypted?',
-        'Tell me about my security patch status',
+        'Tell me about my security patch',
         'How many system apps are installed?',
     ]);
     const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -105,12 +112,14 @@ export const AiAssistantScreen: React.FC<AiAssistantScreenProps> = ({
     };
 
     const getTotalRisks = () => risks.length;
+    const getTotalApps = () => apps.length;
+    const getUserApps = () => apps.filter(a => !a.isSystemApp).length;
+    const getSystemApps = () => apps.filter(a => a.isSystemApp).length;
 
     const getDeviceIssues = () => {
         return hardeningFindings.filter(f => f.level === 'WARNING' || f.level === 'CRITICAL');
     };
 
-    // Get recent events (last 24h)
     const getRecentEvents = async () => {
         try {
             const result = await SecureDroidNative.getSecurityLogs(50);
@@ -127,10 +136,18 @@ export const AiAssistantScreen: React.FC<AiAssistantScreenProps> = ({
 
     // ---- Response generation ----
 
-    const generateResponse = async (userMessage: string): Promise<string> => {
+    const generateResponse = async (userMessage: string): Promise<{ content: string; type: Message['type'] }> => {
         const lower = userMessage.toLowerCase();
 
-        // Simple keyword matching
+        // Check if device is connected
+        if (!connected) {
+            return {
+                content: "⚠️ I'm unable to access your device's security data right now. Please make sure SecureDroid is properly connected and try again.",
+                type: 'error',
+            };
+        }
+
+        // Score questions
         if (lower.includes('score') || lower.includes('security score') || lower.includes('why is my score')) {
             const issues = getDeviceIssues();
             const high = getHighRiskApps().length;
@@ -143,7 +160,7 @@ export const AiAssistantScreen: React.FC<AiAssistantScreenProps> = ({
                 details += `• ${medium} medium-risk app${medium > 1 ? 's' : ''} detected.\n`;
             }
             if (issues.length > 0) {
-                details += `• ${issues.length} device security issue${issues.length > 1 ? 's' : ''} found (${issues.map(i => i.summary).join(', ')}).\n`;
+                details += `• ${issues.length} device security issue${issues.length > 1 ? 's' : ''} found.\n`;
             }
             if (high === 0 && medium === 0 && issues.length === 0) {
                 details += '• No significant issues found. Your device is in good shape.\n';
@@ -152,13 +169,17 @@ export const AiAssistantScreen: React.FC<AiAssistantScreenProps> = ({
                 (high > 0 ? `Review the ${high} high-risk apps first. ` : '') +
                 (issues.length > 0 ? 'Address the device security issues. ' : '') +
                 'Keep your device updated and review app permissions regularly.';
-            return details;
+            return { content: details, type: 'security' };
         }
 
+        // High-risk apps
         if (lower.includes('high-risk') || lower.includes('dangerous permissions') || lower.includes('risky app')) {
             const highRisk = getHighRiskApps();
             if (highRisk.length === 0) {
-                return 'No high-risk apps were found on your device. All apps appear to have normal permission footprints.';
+                return {
+                    content: '✅ No high-risk apps were found on your device. All apps appear to have normal permission footprints.',
+                    type: 'privacy',
+                };
             }
             let response = `I found **${highRisk.length} high-risk app${highRisk.length > 1 ? 's' : ''}** on your device:\n\n`;
             highRisk.forEach((r, i) => {
@@ -168,80 +189,120 @@ export const AiAssistantScreen: React.FC<AiAssistantScreenProps> = ({
                 }
             });
             response += '\n**Recommendation**: Review these apps and consider removing permissions they don\'t need, or uninstall if they are not trusted.';
-            return response;
+            return { content: response, type: 'app' };
         }
 
-        if (lower.includes('how many') && (lower.includes('app') || lower.includes('installed'))) {
-            const total = apps.length;
-            const userApps = apps.filter(a => !a.isSystemApp).length;
-            const systemApps = total - userApps;
-            return `Your device has **${total}** installed applications.\n- User apps: **${userApps}**\n- System apps: **${systemApps}**\n\n${risks.length > 0 ? `Among them, ${risks.length} have security risks.` : 'All apps appear safe.'}`;
+        // App count
+        if ((lower.includes('how many') && lower.includes('app')) || lower.includes('installed')) {
+            const total = getTotalApps();
+            const user = getUserApps();
+            const system = getSystemApps();
+            const risky = getTotalRisks();
+            return {
+                content: `Your device has **${total}** installed applications.\n- User apps: **${user}**\n- System apps: **${system}**\n\n${risky > 0 ? `Among them, ${risky} have security risks.` : 'All apps appear safe.'}`,
+                type: 'app',
+            };
         }
 
-        if (lower.includes('event') || lower.includes('activity') || lower.includes('what happened')) {
+        // Events
+        if (lower.includes('event') || lower.includes('activity') || lower.includes('what happened') || lower.includes('today')) {
             const events = await getRecentEvents();
             if (events.length === 0) {
-                return 'No security events were recorded in the last 24 hours. Your device has been quiet.';
+                return {
+                    content: 'No security events were recorded in the last 24 hours. Your device has been quiet.',
+                    type: 'general',
+                };
             }
             let response = `Here are the recent security events (last 24h):\n\n`;
             events.slice(0, 10).forEach((e) => {
                 const time = new Date(e.timestamp).toLocaleTimeString();
-                response += `• ${time} – ${e.description || e.category || 'Event'}\n`;
+                const severity = e.severity || 'INFO';
+                const emoji = severity === 'CRITICAL' ? '🔴' : severity === 'WARNING' ? '🟡' : '🟢';
+                response += `• ${emoji} ${time} – ${e.description || e.category || 'Event'}\n`;
             });
             if (events.length > 10) {
                 response += `\n... and ${events.length - 10} more events.`;
             }
-            return response;
+            return { content: response, type: 'network' };
         }
 
+        // Encryption
         if (lower.includes('encrypt') || lower.includes('encryption')) {
             const encrypted = hardeningFindings.some(f => f.id === 'DEVICE_ENCRYPTED');
             if (encrypted) {
-                return 'Your device storage is **encrypted**. This means your data is protected if your device is lost or stolen.';
+                return {
+                    content: '🔒 Your device storage is **encrypted**. This means your data is protected if your device is lost or stolen.',
+                    type: 'security',
+                };
             } else {
                 const notEncrypted = hardeningFindings.some(f => f.id === 'DEVICE_NOT_ENCRYPTED');
                 if (notEncrypted) {
-                    return '⚠️ Your device storage is **not encrypted**. Consider enabling encryption in your device settings (Settings → Security → Encryption) to protect your data.';
+                    return {
+                        content: '⚠️ Your device storage is **not encrypted**. Consider enabling encryption in your device settings (Settings → Security → Encryption) to protect your data.',
+                        type: 'security',
+                    };
                 } else {
-                    return 'Device encryption status is **unknown**. Android did not provide this information. Please check your device settings manually.';
+                    return {
+                        content: 'Device encryption status is **unknown**. Android did not provide this information. Please check your device settings manually.',
+                        type: 'security',
+                    };
                 }
             }
         }
 
+        // Security patch
         if (lower.includes('security patch') || lower.includes('patch')) {
             const patchFinding = hardeningFindings.find(f => f.id === 'SECURITY_PATCH_GOOD' || f.id === 'STALE_SECURITY_PATCH');
             if (patchFinding) {
-                return `Security patch status: **${patchFinding.summary}**\n\n${patchFinding.id === 'STALE_SECURITY_PATCH' ? '⚠️ Your security patch may be outdated. Check for system updates.' : '✅ Your security patch is up to date.'}`;
+                const isGood = patchFinding.id === 'SECURITY_PATCH_GOOD';
+                return {
+                    content: `Security patch status: **${patchFinding.summary}**\n\n${isGood ? '✅ Your security patch is up to date.' : '⚠️ Your security patch may be outdated. Check for system updates.'}`,
+                    type: 'security',
+                };
             } else {
-                return 'Security patch information is **not available**. Android may not expose this detail on your device.';
+                return {
+                    content: 'Security patch information is **not available**. Android may not expose this detail on your device.',
+                    type: 'security',
+                };
             }
         }
 
+        // System apps
         if (lower.includes('system app') || lower.includes('system apps')) {
-            const systemApps = apps.filter(a => a.isSystemApp);
-            return `Your device has **${systemApps.length}** system apps. These are pre-installed by the manufacturer or Google. They are typically not considered risky, but you can review them in the App Security Auditor if you wish.`;
+            const systemCount = getSystemApps();
+            return {
+                content: `Your device has **${systemCount}** system apps. These are pre-installed by the manufacturer or Google. They are typically not considered risky, but you can review them in the App Security Auditor if you wish.`,
+                type: 'app',
+            };
         }
 
+        // Help
         if (lower.includes('help') || lower.includes('what can you do') || lower.includes('capabilities')) {
-            return 'I can answer questions about:\n' +
-                '• Your overall security score\n' +
-                '• High-risk apps and their permissions\n' +
-                '• Device encryption and security patch status\n' +
-                '• Recent security events (app installs, VPN toggles, scans)\n' +
-                '• Number of installed apps (user and system)\n' +
-                '• Device security issues (USB debugging, developer options, etc.)\n\n' +
-                'Just ask me in plain English.';
+            return {
+                content: 'I can answer questions about:\n' +
+                    '• Your overall security score\n' +
+                    '• High-risk apps and their permissions\n' +
+                    '• Device encryption and security patch status\n' +
+                    '• Recent security events (app installs, VPN toggles, scans)\n' +
+                    '• Number of installed apps (user and system)\n' +
+                    '• Device security issues (USB debugging, developer options, etc.)\n\n' +
+                    'Just ask me in plain English.',
+                type: 'general',
+            };
         }
 
-        // If nothing matches
-        return "I'm sorry, I didn't understand that question. You can ask about:\n" +
-            "- Your security score\n" +
-            "- High-risk apps\n" +
-            "- Device encryption\n" +
-            "- Security patch\n" +
-            "- Recent security events\n" +
-            "- Number of installed apps\n" +
-            "- Or type 'help' to see all my capabilities.";
+        // Unknown
+        return {
+            content: "I'm sorry, I didn't understand that question. You can ask about:\n" +
+                "- Your security score\n" +
+                "- High-risk apps\n" +
+                "- Device encryption\n" +
+                "- Security patch\n" +
+                "- Recent security events\n" +
+                "- Number of installed apps\n" +
+                "- Or type 'help' to see all my capabilities.",
+            type: 'general',
+        };
     };
 
     // ---- Send message ----
@@ -265,9 +326,9 @@ export const AiAssistantScreen: React.FC<AiAssistantScreenProps> = ({
             const assistantMessage: Message = {
                 id: (Date.now() + 1).toString(),
                 role: 'assistant',
-                content: reply,
+                content: reply.content,
                 timestamp: new Date(),
-                type: 'general',
+                type: reply.type,
             };
             setMessages(prev => [...prev, assistantMessage]);
         } catch (err) {
@@ -283,9 +344,30 @@ export const AiAssistantScreen: React.FC<AiAssistantScreenProps> = ({
         }
     };
 
-    // ---- Suggestion click ----
     const handleSuggestion = (suggestion: string) => {
         setInput(suggestion);
+    };
+
+    const getTypeColor = (type?: string) => {
+        switch (type) {
+            case 'security': return 'text-emerald-400 bg-emerald-500/10';
+            case 'privacy': return 'text-amber-400 bg-amber-500/10';
+            case 'app': return 'text-sky-400 bg-sky-500/10';
+            case 'network': return 'text-blue-400 bg-blue-500/10';
+            case 'error': return 'text-rose-400 bg-rose-500/10';
+            default: return 'text-slate-400 bg-slate-500/10';
+        }
+    };
+
+    const getTypeLabel = (type?: string) => {
+        switch (type) {
+            case 'security': return 'Security';
+            case 'privacy': return 'Privacy';
+            case 'app': return 'App';
+            case 'network': return 'Network';
+            case 'error': return 'Error';
+            default: return 'General';
+        }
     };
 
     return (
@@ -297,7 +379,7 @@ export const AiAssistantScreen: React.FC<AiAssistantScreenProps> = ({
                 isLight={isLight}
             />
 
-            <div className="flex flex-col h-[calc(100vh-180px)]">
+            <div className="flex flex-col h-[calc(100vh-180px)] max-w-7xl mx-auto">
                 {/* Messages */}
                 <div className="flex-1 overflow-y-auto p-4 space-y-4">
                     {messages.map((message) => (
@@ -305,36 +387,36 @@ export const AiAssistantScreen: React.FC<AiAssistantScreenProps> = ({
                             key={message.id}
                             className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
                         >
-                            <div className={`max-w-[85%] ${message.role === 'user' ? 'items-end' : 'items-start'}`}>
+                            <div className={`max-w-[85%] sm:max-w-[70%] ${message.role === 'user' ? 'items-end' : 'items-start'}`}>
                                 <div className="flex items-center gap-2 mb-1">
                                     {message.role === 'assistant' ? (
-                                        <Bot className="w-4 h-4 text-sky-400" />
+                                        <div className="w-5 h-5 rounded-full bg-sky-500/20 flex items-center justify-center">
+                                            <Bot className="w-3.5 h-3.5 text-sky-400" />
+                                        </div>
                                     ) : (
-                                        <User className="w-4 h-4 text-slate-400" />
+                                        <div className="w-5 h-5 rounded-full bg-slate-700/50 flex items-center justify-center">
+                                            <User className="w-3.5 h-3.5 text-slate-400" />
+                                        </div>
                                     )}
-                                    <span className="text-xs text-slate-400">
-                                        {message.role === 'assistant' ? 'Security Assistant' : 'You'}
+                                    <span className="text-xs font-medium text-slate-400">
+                                        {message.role === 'assistant' ? 'Assistant' : 'You'}
                                     </span>
                                     <span className="text-[10px] text-slate-500">
                                         {message.timestamp.toLocaleTimeString()}
                                     </span>
                                     {message.type && message.type !== 'general' && (
-                                        <span className={`px-1.5 py-0.5 rounded-full text-[8px] font-medium ${
-                                            message.type === 'error'
-                                                ? 'bg-red-500/10 text-red-400'
-                                                : 'bg-emerald-500/10 text-emerald-400'
-                                        }`}>
-                                            {message.type}
+                                        <span className={`px-1.5 py-0.5 rounded-full text-[8px] font-medium ${getTypeColor(message.type)}`}>
+                                            {getTypeLabel(message.type)}
                                         </span>
                                     )}
                                 </div>
                                 <div
-                                    className={`p-3 rounded-2xl ${
+                                    className={`p-3.5 rounded-2xl ${
                                         message.role === 'user'
-                                            ? 'bg-sky-500/20 border border-sky-500/30 text-slate-100'
+                                            ? 'bg-sky-500/15 border border-sky-500/30 text-zinc-100'
                                             : message.type === 'error'
-                                                ? 'bg-red-500/10 border border-red-500/30 text-red-300'
-                                                : 'bg-slate-800/50 border border-slate-700/50 text-slate-200'
+                                                ? 'bg-rose-950/30 border border-rose-700/40 text-rose-200'
+                                                : 'bg-slate-800/50 border border-slate-700/50 text-zinc-200'
                                     }`}
                                 >
                                     <div className="text-sm whitespace-pre-wrap leading-relaxed">
@@ -348,7 +430,7 @@ export const AiAssistantScreen: React.FC<AiAssistantScreenProps> = ({
                     {isTyping && (
                         <div className="flex justify-start">
                             <div className="bg-slate-800/50 p-4 rounded-2xl border border-slate-700/50">
-                                <div className="flex gap-1">
+                                <div className="flex gap-1.5">
                                     <span className="w-2 h-2 bg-sky-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
                                     <span className="w-2 h-2 bg-sky-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
                                     <span className="w-2 h-2 bg-sky-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
@@ -368,7 +450,7 @@ export const AiAssistantScreen: React.FC<AiAssistantScreenProps> = ({
                                 <button
                                     key={index}
                                     onClick={() => handleSuggestion(suggestion)}
-                                    className="px-3 py-1.5 rounded-full bg-slate-800/50 border border-slate-700 text-xs text-slate-300 whitespace-nowrap hover:border-slate-500 transition-colors"
+                                    className="px-3 py-1.5 rounded-full bg-slate-800/50 border border-slate-700 text-xs text-slate-300 whitespace-nowrap hover:border-slate-500 transition-colors hover:bg-slate-700/50"
                                 >
                                     {suggestion}
                                 </button>
@@ -387,7 +469,7 @@ export const AiAssistantScreen: React.FC<AiAssistantScreenProps> = ({
                                 onChange={(e) => setInput(e.target.value)}
                                 onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
                                 placeholder="Ask about security..."
-                                className="w-full p-3 pr-12 rounded-xl bg-slate-800/50 border border-slate-700 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-sky-500/50 text-sm"
+                                className="w-full p-3 pr-12 rounded-xl bg-slate-800/50 border border-slate-700 text-zinc-100 placeholder-slate-500 focus:outline-none focus:border-sky-500/50 text-sm"
                             />
                             <button
                                 onClick={() => setInput('')}
@@ -403,11 +485,14 @@ export const AiAssistantScreen: React.FC<AiAssistantScreenProps> = ({
                         >
                             <Send className="w-4 h-4" />
                         </button>
-                        <button className="p-3 rounded-xl bg-slate-800/50 border border-slate-700 hover:border-slate-500 transition-colors">
+                        <button
+                            onClick={() => alert('Voice input is coming soon.')}
+                            className="p-3 rounded-xl bg-slate-800/50 border border-slate-700 hover:border-slate-500 transition-colors"
+                        >
                             <Mic className="w-4 h-4 text-slate-400" />
                         </button>
                     </div>
-                    <div className="mt-1 text-[10px] text-slate-500 text-center">
+                    <div className="mt-1.5 text-[10px] text-slate-500 text-center">
                         All answers are based on real data from your device. This is a rule‑based assistant, not generative AI.
                     </div>
                 </div>
