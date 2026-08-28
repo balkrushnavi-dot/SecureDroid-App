@@ -5,7 +5,6 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
-import android.net.NetworkCapabilities
 import android.net.VpnService
 import android.os.Build
 import android.os.IBinder
@@ -13,6 +12,8 @@ import android.os.ParcelFileDescriptor
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import org.securedroid.MainActivity
+import java.io.FileInputStream
+import java.io.FileOutputStream
 import java.io.IOException
 
 class SecureVpnService : VpnService() {
@@ -34,6 +35,7 @@ class SecureVpnService : VpnService() {
     }
 
     private var vpnInterface: ParcelFileDescriptor? = null
+    private var vpnThread: Thread? = null
 
     @Volatile
     private var isRunning = false
@@ -104,7 +106,6 @@ class SecureVpnService : VpnService() {
                 .addAddress("10.0.0.2", 32)
                 .addRoute("0.0.0.0", 0)
                 .addDnsServer(dnsServer)
-                // Add a fallback DNS server for reliability
                 .addDnsServer("1.0.0.1")
                 .setConfigureIntent(pendingIntent)
 
@@ -123,8 +124,7 @@ class SecureVpnService : VpnService() {
                 }
             }
 
-            vpnInterface?.close()
-            vpnInterface = null
+            stopVpnInterface()
 
             Log.d(TAG, "Establishing VPN interface...")
             vpnInterface = builder.establish()
@@ -135,6 +135,7 @@ class SecureVpnService : VpnService() {
                 VpnStateStore.set(VpnState.CONNECTED)
                 Log.d(TAG, "VPN established successfully, state: CONNECTED")
                 startForeground(NOTIFICATION_ID, createNotification("VPN protection is active"))
+                startPacketProcessor()
             } else {
                 isRunning = false
                 isEstablishing = false
@@ -147,42 +148,50 @@ class SecureVpnService : VpnService() {
         } catch (e: SecurityException) {
             val errorMsg = "Security exception: ${e.message}"
             Log.e(TAG, "VPN establishment failed: SecurityException", e)
-            isRunning = false
-            isEstablishing = false
-            VpnStateStore.set(VpnState.ERROR)
-            sendErrorBroadcast(errorMsg)
-
-            try {
-                vpnInterface?.close()
-            } catch (_: Exception) {}
-            vpnInterface = null
-
+            handleVpnFailure(errorMsg)
         } catch (e: IOException) {
             val errorMsg = "IO exception: ${e.message}"
             Log.e(TAG, "VPN establishment failed: IOException", e)
-            isRunning = false
-            isEstablishing = false
-            VpnStateStore.set(VpnState.ERROR)
-            sendErrorBroadcast(errorMsg)
-
-            try {
-                vpnInterface?.close()
-            } catch (_: Exception) {}
-            vpnInterface = null
-
+            handleVpnFailure(errorMsg)
         } catch (e: Exception) {
             val errorMsg = "${e.javaClass.simpleName}: ${e.message}"
-            Log.e(TAG, "VPN establishment failed: ${e.javaClass.simpleName} - ${e.message}", e)
-            isRunning = false
-            isEstablishing = false
-            VpnStateStore.set(VpnState.ERROR)
-            sendErrorBroadcast(errorMsg)
-
-            try {
-                vpnInterface?.close()
-            } catch (_: Exception) {}
-            vpnInterface = null
+            Log.e(TAG, "VPN establishment failed: $errorMsg", e)
+            handleVpnFailure(errorMsg)
         }
+    }
+
+    private fun startPacketProcessor() {
+        vpnThread = Thread({
+            try {
+                val descriptor = vpnInterface?.fileDescriptor ?: return@Thread
+                val inputStream = FileInputStream(descriptor)
+                val outputStream = FileOutputStream(descriptor)
+                val buffer = ByteArray(32767)
+
+                while (isRunning) {
+                    val length = inputStream.read(buffer)
+                    if (length > 0) {
+                        // Process or pass through local IP packets to keep the tunnel unblocked
+                        outputStream.write(buffer, 0, length)
+                    }
+                }
+            } catch (e: IOException) {
+                if (isRunning) {
+                    Log.e(TAG, "Packet processor IO error: ${e.message}", e)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Packet processor error: ${e.message}", e)
+            }
+        }, "SecureVpnPacketThread")
+        vpnThread?.start()
+    }
+
+    private fun handleVpnFailure(errorMsg: String) {
+        isRunning = false
+        isEstablishing = false
+        VpnStateStore.set(VpnState.ERROR)
+        sendErrorBroadcast(errorMsg)
+        stopVpnInterface()
     }
 
     private fun sendErrorBroadcast(errorMessage: String) {
@@ -197,11 +206,13 @@ class SecureVpnService : VpnService() {
         }
     }
 
-    private fun stopVpn() {
-        Log.d(TAG, "Stopping VPN")
-
-        isRunning = false
-        isEstablishing = false
+    private fun stopVpnInterface() {
+        try {
+            vpnThread?.interrupt()
+            vpnThread = null
+        } catch (e: Exception) {
+            Log.e(TAG, "Error interrupting VPN thread", e)
+        }
 
         try {
             vpnInterface?.close()
@@ -210,6 +221,14 @@ class SecureVpnService : VpnService() {
             Log.e(TAG, "Error closing VPN interface", e)
         }
         vpnInterface = null
+    }
+
+    private fun stopVpn() {
+        Log.d(TAG, "Stopping VPN")
+        isRunning = false
+        isEstablishing = false
+
+        stopVpnInterface()
 
         VpnStateStore.set(VpnState.DISCONNECTED)
         Log.d(TAG, "VPN state: DISCONNECTED")
