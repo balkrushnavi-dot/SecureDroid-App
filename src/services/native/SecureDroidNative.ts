@@ -635,6 +635,65 @@ class SecureDroidNativeService {
   }
 
   // ============================================================
+  // WIFI SECURITY REPORT
+  // ============================================================
+
+  async getWifiSecurityReport(): Promise<NativeResult<any>> {
+    if (!this.isNative) {
+      return {
+        success: true,
+        data: {
+          isConnected: true,
+          isWifi: true,
+          isSecure: true,
+          findings: [
+            {
+              id: 'WEB_PREVIEW_WIFI',
+              level: 'INFO',
+              summary: 'Running in web preview mode.',
+            },
+          ],
+        },
+        isSupported: false,
+        runtimePlatform: 'web_preview',
+      };
+    }
+
+    try {
+      const raw = await SecureDroidNativePlugin.getWifiSecurityReport();
+
+      if (!raw || raw.success === false) {
+        return {
+          success: false,
+          errorCode: raw?.errorCode || 'SERVICE_UNAVAILABLE',
+          message: raw?.message || 'Wi-Fi security report is unavailable.',
+          isSupported: true,
+          runtimePlatform: 'android_native',
+        };
+      }
+
+      const data = raw.data || raw;
+
+      return {
+        success: true,
+        data,
+        message: raw.message,
+        isSupported: true,
+        runtimePlatform: 'android_native',
+      };
+    } catch (error: any) {
+      console.error('[SecureDroid] getWifiSecurityReport failed:', error);
+      return {
+        success: false,
+        errorCode: 'SERVICE_UNAVAILABLE',
+        message: error?.message || 'Wi-Fi security report is unavailable.',
+        isSupported: false,
+        runtimePlatform: 'android_native',
+      };
+    }
+  }
+
+  // ============================================================
   // VPN PERMISSION
   // ============================================================
 
