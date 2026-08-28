@@ -6,24 +6,6 @@ import org.securedroid.capability.providers.CapabilityProvider
 import org.securedroid.capability.providers.ManagedDeviceProvider
 import org.securedroid.capability.providers.NormalModeProvider
 
-/**
- * Central capability orchestration engine for SecureDroid.
- *
- * Responsibilities:
- * - Detect SecureDroid operating mode.
- * - Execute the appropriate real capability providers.
- * - Merge provider results.
- * - Remove duplicate capability IDs.
- * - Produce one authoritative CapabilitySnapshot.
- *
- * This class does NOT perform individual capability detection.
- *
- * Detection must remain inside the appropriate provider.
- *
- * Security rule:
- * Never report a capability as SUPPORTED unless a provider
- * has real evidence for it.
- */
 class CapabilityEngine(
     private val context: Context
 ) {
@@ -37,36 +19,18 @@ class CapabilityEngine(
     private val managedDeviceProvider: CapabilityProvider =
         ManagedDeviceProvider(context)
 
-    /**
-     * Performs a complete capability scan.
-     */
     fun detect(): CapabilitySnapshot {
 
         val mode = detectMode()
 
         val capabilities = mutableListOf<Capability>()
 
-        /*
-         * Android platform capabilities are relevant in every mode.
-         */
         capabilities += safelyEvaluate(androidProvider)
 
-        /*
-         * Normal-mode capabilities are evaluated only when
-         * SecureDroid is operating without Android Enterprise
-         * management authority.
-         */
         if (mode == SecureDroidMode.NORMAL) {
             capabilities += safelyEvaluate(normalModeProvider)
         }
 
-        /*
-         * Managed-device capabilities are evaluated when Android
-         * Enterprise management state is present.
-         *
-         * The provider itself verifies whether Device Owner or
-         * managed-profile authority actually exists.
-         */
         if (
             mode == SecureDroidMode.DEVICE_OWNER ||
             mode == SecureDroidMode.MANAGED_PROFILE
@@ -74,10 +38,6 @@ class CapabilityEngine(
             capabilities += safelyEvaluate(managedDeviceProvider)
         }
 
-        /*
-         * Remove duplicate IDs while preserving the first
-         * authoritative result.
-         */
         val deduplicated = deduplicateCapabilities(capabilities)
 
         return CapabilitySnapshot(
@@ -88,21 +48,6 @@ class CapabilityEngine(
         )
     }
 
-    /**
-     * Detects the strongest actual management mode available
-     * to this SecureDroid installation.
-     *
-     * Priority:
-     *
-     * DEVICE_OWNER
-     *      ↓
-     * MANAGED_PROFILE
-     *      ↓
-     * NORMAL
-     *
-     * UNKNOWN is reserved for cases where the management provider
-     * cannot reliably determine the state.
-     */
     fun detectMode(): SecureDroidMode {
 
         val managedMode = try {
@@ -124,24 +69,11 @@ class CapabilityEngine(
                 SecureDroidMode.NORMAL
 
             SecureDroidMode.UNKNOWN -> {
-
-                /*
-                 * If the managed provider cannot determine the
-                 * management state, do not invent management authority.
-                 *
-                 * For the application itself, absence of confirmed
-                 * Device Owner/Profile Owner authority means we can
-                 * safely operate under the normal application boundary.
-                 */
                 SecureDroidMode.NORMAL
             }
         }
     }
 
-    /**
-     * Executes a provider without allowing one provider failure
-     * to crash the entire capability scan.
-     */
     private fun safelyEvaluate(
         provider: CapabilityProvider
     ): List<Capability> {
@@ -165,18 +97,6 @@ class CapabilityEngine(
         }
     }
 
-    /**
-     * Removes duplicate capability IDs.
-     *
-     * Provider order is intentional:
-     *
-     * Android provider
-     * → mode-specific provider
-     *
-     * Therefore generic platform observations remain authoritative
-     * unless the capability is uniquely provided by a mode-specific
-     * provider.
-     */
     private fun deduplicateCapabilities(
         capabilities: List<Capability>
     ): List<Capability> {
@@ -198,25 +118,15 @@ class CapabilityEngine(
         return result.values.toList()
     }
 
-    /**
-     * Selects the stronger/evidence-backed result when two providers
-     * expose the same capability.
-     */
     private fun selectMoreAuthoritative(
         first: Capability,
         second: Capability
     ): Capability {
 
-        /*
-         * A real capability always wins over a non-real result.
-         */
         if (first.isReal != second.isReal) {
             return if (first.isReal) first else second
         }
 
-        /*
-         * Prefer results with stronger state evidence.
-         */
         val firstRank = stateRank(first.state)
         val secondRank = stateRank(second.state)
 
@@ -227,13 +137,6 @@ class CapabilityEngine(
         return first
     }
 
-    /**
-     * Ranking used only for merging duplicate observations.
-     *
-     * SUPPORTED is strongest because it contains positive evidence.
-     * LIMITED follows because the capability exists but is restricted.
-     * UNKNOWN is preferred over falsely claiming availability.
-     */
     private fun stateRank(
         state: CapabilityState
     ): Int {
@@ -271,10 +174,6 @@ class CapabilityEngine(
         }
     }
 
-    /**
-     * Converts an unexpected provider failure into an explicit
-     * capability result instead of silently hiding the failure.
-     */
     private fun createProviderErrorCapability(
         provider: CapabilityProvider,
         reason: String
@@ -313,12 +212,6 @@ class CapabilityEngine(
     }
 }
 
-/**
- * Internal helper used by CapabilityEngine.
- *
- * ManagedDeviceProvider owns the actual Android Enterprise
- * detection logic. The engine only orchestrates it.
- */
 private fun CapabilityProvider.getModeSafely(): SecureDroidMode {
 
     return when (this) {
