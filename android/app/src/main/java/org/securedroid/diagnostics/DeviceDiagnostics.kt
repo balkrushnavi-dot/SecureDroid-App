@@ -1,9 +1,9 @@
 package org.securedroid.diagnostics
 
 import android.app.KeyguardManager
+import android.app.admin.DevicePolicyManager
 import android.content.Context
 import android.os.Build
-import android.os.storage.StorageManager
 import android.provider.Settings
 import androidx.biometric.BiometricManager
 import java.security.KeyStore
@@ -93,14 +93,16 @@ class DeviceDiagnostics(
     }
 
     private fun getEncryptionStatus(): Pair<Boolean, Boolean> {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
-            return false to false
-        }
+        val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as? DevicePolicyManager
+            ?: return false to false
 
         return try {
-            @Suppress("DEPRECATION")
-            val encrypted = StorageManager.isEncrypted(context.filesDir)
-            encrypted to true
+            val status = dpm.storageEncryptionStatus
+            val isEncrypted = status == DevicePolicyManager.ENCRYPTION_STATUS_ACTIVE ||
+                    status == DevicePolicyManager.ENCRYPTION_STATUS_ACTIVE_DEFAULT_KEY ||
+                    status == DevicePolicyManager.ENCRYPTION_STATUS_ACTIVE_PER_USER
+            val isKnown = status != DevicePolicyManager.ENCRYPTION_STATUS_UNSUPPORTED
+            isEncrypted to isKnown
         } catch (_: Exception) {
             false to false
         }

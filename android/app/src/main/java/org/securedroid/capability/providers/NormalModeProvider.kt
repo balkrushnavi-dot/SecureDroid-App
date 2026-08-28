@@ -4,7 +4,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.net.VpnService
 import android.os.Build
-import android.security.keystore.KeyStoreException
+import java.security.KeyStoreException
 import org.securedroid.capability.Capability
 import org.securedroid.capability.CapabilityCategory
 import org.securedroid.capability.CapabilityIds
