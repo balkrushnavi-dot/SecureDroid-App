@@ -1,31 +1,26 @@
 import React, { useState } from 'react';
 import {
     Shield,
-    LayoutGrid,
-    Settings as SettingsIcon,
-    ChevronRight,
-    Info,
-    Wifi,
+    ShieldCheck,
     AlertTriangle,
     ScrollText,
     Home,
-    ShieldCheck,
     Lock,
-    Activity,
-    RefreshCw,
+    Wifi,
     Eye,
     Zap,
+    RefreshCw,
     CheckCircle2,
     XCircle,
-    Clock,
-    Database,
-    Users,
+    Settings as SettingsIcon,
+    ChevronRight,
+    Smartphone,
+    Globe,
+    Info,
     Bell,
     Moon,
-    Globe,
-    ShieldOff,
-    Server,
-    Smartphone,
+    ArrowRight,
+    FileText,
 } from 'lucide-react';
 import { useSecureDroid } from './hooks/useSecureDroid';
 import { ThreatModelCenterScreen } from './components/security/ThreatModelCenterScreen';
@@ -42,18 +37,15 @@ import {
     SecureDroidTopBar,
     SecureDroidCard,
     SecureDroidSectionHeader,
-    SecureDroidStatusChip,
-    SecureDroidButton,
-    SecureDroidBadge,
     SecureDroidProgressRing,
 } from './components/ui/designSystem';
 
-type Screen =
+export type Screen =
     | 'home'
-    | 'threat_model'
     | 'app_auditor'
-    | 'security_log'
+    | 'threat_model'
     | 'network'
+    | 'security_log'
     | 'device_security'
     | 'privacy_radar'
     | 'security_report'
@@ -67,32 +59,11 @@ type Screen =
 // ============================================================
 function LoadingScreen({ message }: { message?: string }) {
     return (
-        <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center">
-            <div className="text-center space-y-4">
-                <div className="w-16 h-16 rounded-full border-4 border-sky-400/30 border-t-sky-400 animate-spin mx-auto" />
-                <h1 className="text-3xl font-bold text-white">SecureDroid</h1>
-                <p className="text-slate-400 text-sm">{message || 'Loading security data...'}</p>
-            </div>
-        </div>
-    );
-}
-
-// ============================================================
-// ERROR SCREEN
-// ============================================================
-function ErrorScreen({ message, onRetry }: { message: string; onRetry: () => void }) {
-    return (
-        <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4">
-            <div className="text-center max-w-sm space-y-4">
-                <XCircle className="w-16 h-16 text-rose-400 mx-auto" />
-                <h2 className="text-xl font-bold text-white">Connection Error</h2>
-                <p className="text-slate-400 text-sm">{message}</p>
-                <button
-                    onClick={onRetry}
-                    className="px-6 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-600 text-white font-medium transition-colors"
-                >
-                    Retry
-                </button>
+        <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 text-center">
+            <div className="space-y-4">
+                <div className="w-14 h-14 rounded-full border-3 border-sky-400/20 border-t-sky-400 animate-spin mx-auto" />
+                <h1 className="text-2xl font-bold text-zinc-100 tracking-tight">SecureDroid</h1>
+                <p className="text-slate-400 text-sm">{message || 'Initializing security engine...'}</p>
             </div>
         </div>
     );
@@ -102,199 +73,323 @@ function ErrorScreen({ message, onRetry }: { message: string; onRetry: () => voi
 // HOME SCREEN
 // ============================================================
 function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
-    const { apps, risks, loading, connected, error, score, reload, usingMock } = useSecureDroid();
+    const {
+        apps,
+        risks,
+        loading,
+        connected,
+        error,
+        score,
+        securityLogs,
+        vpnStatus,
+        reload,
+        usingMock,
+    } = useSecureDroid();
+
+    const [isScanning, setIsScanning] = useState(false);
+
+    const handleScan = async () => {
+        setIsScanning(true);
+        try {
+            await reload();
+        } finally {
+            setIsScanning(false);
+        }
+    };
 
     const safeApps = Array.isArray(apps) ? apps : [];
     const safeRisks = Array.isArray(risks) ? risks : [];
+    const safeLogs = Array.isArray(securityLogs) ? securityLogs : [];
 
-    const highRiskCount = safeRisks.filter(r => r.riskLevel === 'HIGH' || r.riskLevel === 'CRITICAL').length;
-    const mediumRiskCount = safeRisks.filter(r => r.riskLevel === 'MEDIUM').length;
+    const highRiskCount = safeRisks.filter(
+        (r) => r.riskLevel === 'HIGH' || r.riskLevel === 'CRITICAL'
+    ).length;
+    const mediumRiskCount = safeRisks.filter((r) => r.riskLevel === 'MEDIUM').length;
     const totalRisks = safeRisks.length;
-    const userApps = safeApps.filter(a => !a.isSystemApp).length;
-    const systemApps = safeApps.length - userApps;
+    const userRisks = safeRisks.filter((r) => !r.isSystemApp).length;
+    const systemRisks = safeRisks.filter((r) => r.isSystemApp).length;
 
-    const protectionStatus = (() => {
-        if (!connected) return { label: 'Offline', color: 'text-rose-400', icon: XCircle };
-        if (loading) return { label: 'Loading', color: 'text-amber-400', icon: RefreshCw };
-        if (highRiskCount > 0) return { label: 'At Risk', color: 'text-rose-400', icon: AlertTriangle };
-        if (totalRisks > 0) return { label: 'Needs Attention', color: 'text-amber-400', icon: AlertTriangle };
-        if (score >= 70) return { label: 'Protected', color: 'text-emerald-400', icon: ShieldCheck };
-        return { label: 'Needs Review', color: 'text-amber-400', icon: Shield };
-    })();
-
-    const quickActions = [
-        { id: 'scan', label: 'Scan Device', icon: Zap, color: 'bg-sky-500/10 text-sky-400' },
-        { id: 'network', label: 'Network Protection', icon: Wifi, color: 'bg-emerald-500/10 text-emerald-400' },
-        { id: 'app_auditor', label: 'App Security', icon: ShieldCheck, color: 'bg-purple-500/10 text-purple-400' },
-        { id: 'privacy_radar', label: 'Privacy Radar', icon: Eye, color: 'bg-amber-500/10 text-amber-400' },
+    // Quick Security Areas List
+    const securityAreas = [
+        {
+            id: 'device_security' as Screen,
+            title: 'Device Security',
+            description: 'Screen lock, encryption, security patch',
+            icon: Smartphone,
+            color: 'text-sky-400 bg-sky-500/10',
+        },
+        {
+            id: 'network' as Screen,
+            title: 'Network Protection',
+            description: vpnStatus?.isActive
+                ? 'VPN active & network protected'
+                : 'VPN status & network security',
+            icon: Wifi,
+            color: 'text-emerald-400 bg-emerald-500/10',
+        },
+        {
+            id: 'privacy_radar' as Screen,
+            title: 'Privacy Radar',
+            description: 'Apps accessing your data',
+            icon: Eye,
+            color: 'text-amber-400 bg-amber-500/10',
+        },
+        {
+            id: 'app_auditor' as Screen,
+            title: 'App Security',
+            description: 'Analyze installed apps for risks',
+            icon: ShieldCheck,
+            color: 'text-indigo-400 bg-indigo-500/10',
+        },
+        {
+            id: 'threat_model' as Screen,
+            title: 'Threat Model',
+            description: 'Security threats and recommendations',
+            icon: AlertTriangle,
+            color: 'text-rose-400 bg-rose-500/10',
+        },
     ];
 
-    const cards = [
-        { id: 'app_auditor' as Screen, title: 'App Security Auditor', description: `${safeApps.length} apps analyzed`, icon: ShieldCheck, badge: totalRisks },
-        { id: 'threat_model' as Screen, title: 'Threat Model Center', description: `${highRiskCount} high, ${mediumRiskCount} medium`, icon: AlertTriangle, badge: totalRisks },
-        { id: 'device_security' as Screen, title: 'Device Security', description: 'Screen lock, encryption, patch', icon: Lock },
-        { id: 'network' as Screen, title: 'Network Protection', description: 'VPN status & control', icon: Wifi },
-        { id: 'privacy_radar' as Screen, title: 'Privacy Radar', description: 'Apps accessing your data', icon: Eye },
-        { id: 'security_log' as Screen, title: 'Security Audit Log', description: 'View security timeline', icon: ScrollText },
-    ];
+    const isBusy = loading || isScanning;
 
     return (
-        <div className="p-4 space-y-4 pb-24 max-w-7xl mx-auto">
-            {/* Header */}
-            <div className="flex items-center justify-between">
+        <div className="p-4 space-y-4 pb-28 max-w-xl mx-auto">
+            {/* Top App Bar */}
+            <div className="flex items-center justify-between pt-1">
                 <div>
-                    <h1 className="text-2xl font-bold text-zinc-100">SecureDroid</h1>
-                    <p className="text-sm text-slate-400">Security for your phone</p>
+                    <h1 className="text-2xl font-bold text-zinc-100 tracking-tight">SecureDroid</h1>
+                    <p className="text-xs text-slate-400 mt-0.5">Security for your phone</p>
                 </div>
-                <button
-                    onClick={reload}
-                    disabled={loading}
-                    className="p-2.5 rounded-xl bg-slate-800/50 hover:bg-slate-700/50 transition-colors disabled:opacity-50"
-                >
-                    <RefreshCw className={`w-4 h-4 text-slate-400 ${loading ? 'animate-spin' : ''}`} />
-                </button>
-            </div>
-
-            {/* Mock warning */}
-            {usingMock && (
-                <div className="p-3 rounded-xl bg-amber-950/30 border border-amber-700/50 text-amber-400 text-xs flex items-center gap-2">
-                    <AlertTriangle className="w-4 h-4 shrink-0" />
-                    <span>Using demo data — native bridge unavailable. Real data appears once connected.</span>
-                </div>
-            )}
-
-            {/* Connection Status */}
-            <div className={`p-2.5 rounded-xl border ${connected ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-rose-500/30 bg-rose-500/5'}`}>
                 <div className="flex items-center gap-2">
-                    <div className={`w-2 h-2 rounded-full ${connected ? 'bg-emerald-500' : 'bg-rose-500'}`} />
-                    <span className="text-xs font-medium">{connected ? 'Connected' : 'Disconnected'}</span>
-                    {loading && <span className="text-xs text-slate-500">Loading...</span>}
-                    {error && <span className="text-xs text-rose-400 ml-2">{error}</span>}
+                    <button
+                        onClick={() => onNavigate('settings')}
+                        className="p-2.5 rounded-xl bg-slate-900 border border-slate-800/80 hover:bg-slate-800 text-slate-300 transition-colors"
+                        aria-label="Open Settings"
+                        title="Settings"
+                    >
+                        <SettingsIcon className="w-4 h-4" />
+                    </button>
                 </div>
             </div>
 
-            {/* Security Score Card */}
-            <div className="bg-gradient-to-br from-slate-900 to-slate-800/50 p-6 rounded-2xl border border-slate-700/50 relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-32 h-32 bg-sky-500/5 rounded-full -translate-y-1/2 translate-x-1/2" />
-                <div className="absolute bottom-0 left-0 w-24 h-24 bg-emerald-500/5 rounded-full translate-y-1/2 -translate-x-1/2" />
-
-                <div className="flex items-center justify-between relative">
-                    <div className="flex items-center gap-6">
-                        <SecureDroidProgressRing value={score} size={80} strokeWidth={6} isLight={false}>
-                            <span className="text-2xl font-bold text-zinc-100">{score}</span>
-                        </SecureDroidProgressRing>
-                        <div>
-                            <div className="flex items-center gap-2">
-                                <protectionStatus.icon className={`w-4 h-4 ${protectionStatus.color}`} />
-                                <span className={`text-sm font-semibold ${protectionStatus.color}`}>
-                                    {protectionStatus.label}
-                                </span>
-                            </div>
-                            <div className="flex items-center gap-2 mt-1">
-                                <span className="text-xs text-slate-400">Defense Index</span>
-                                <span className="px-2 py-0.5 rounded-full bg-slate-800 text-[10px] text-slate-400">
-                                    {totalRisks} issues
-                                </span>
-                            </div>
-                            <div className="flex items-center gap-3 mt-2 text-xs text-slate-500">
-                                <span className="flex items-center gap-1">
-                                    <Database className="w-3 h-3" />
-                                    {safeApps.length} apps
-                                </span>
-                                <span className="flex items-center gap-1">
-                                    <Users className="w-3 h-3" />
-                                    {userApps} user
-                                </span>
-                                <span className="flex items-center gap-1">
-                                    <Server className="w-3 h-3" />
-                                    {systemApps} system
-                                </span>
-                            </div>
+            {/* Connection / Monitoring Status Row */}
+            <div className="px-3.5 py-2.5 rounded-xl bg-slate-900/90 border border-slate-800 flex items-center justify-between">
+                <div className="flex items-center gap-2.5 min-w-0">
+                    <span className="relative flex h-2.5 w-2.5 shrink-0">
+                        {connected && !isBusy && (
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                        )}
+                        <span
+                            className={`relative inline-flex rounded-full h-2.5 w-2.5 ${
+                                isBusy
+                                    ? 'bg-amber-400'
+                                    : connected
+                                    ? 'bg-emerald-400'
+                                    : 'bg-rose-400'
+                            }`}
+                        />
+                    </span>
+                    <div className="min-w-0">
+                        <div className="text-xs font-semibold text-zinc-200">
+                            {isBusy
+                                ? 'Connecting...'
+                                : connected
+                                ? 'Connected'
+                                : 'Disconnected'}
+                        </div>
+                        <div className="text-[11px] text-slate-400 truncate">
+                            {isBusy
+                                ? 'Scanning device...'
+                                : connected
+                                ? 'Real-time protection active'
+                                : 'Protection offline'}
                         </div>
                     </div>
                 </div>
+
+                <button
+                    onClick={handleScan}
+                    disabled={isBusy}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors disabled:opacity-50"
+                    aria-label="Refresh status"
+                    title="Refresh status"
+                >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isBusy ? 'animate-spin' : ''}`} />
+                </button>
             </div>
 
-            {/* Quick Stats */}
-            <div className="grid grid-cols-4 gap-2">
-                <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-800 text-center">
-                    <div className="text-lg font-bold text-zinc-100">{safeApps.length}</div>
-                    <div className="text-[10px] text-slate-500 uppercase tracking-wider">Total</div>
+            {/* Notice banner if plugin/bridge error */}
+            {error && !connected && (
+                <div className="p-3 rounded-xl bg-rose-950/30 border border-rose-800/40 text-rose-300 text-xs flex items-start gap-2.5">
+                    <XCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-rose-200">SecureDroid Service Unavailable</div>
+                        <div className="text-[11px] text-rose-300/80 mt-0.5 leading-relaxed">
+                            {error}
+                        </div>
+                    </div>
+                    <button
+                        onClick={handleScan}
+                        className="px-2 py-1 bg-rose-900/60 hover:bg-rose-800/80 border border-rose-700/50 rounded-lg text-[10px] font-medium text-rose-100 shrink-0"
+                    >
+                        Retry
+                    </button>
                 </div>
-                <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-800 text-center">
-                    <div className={`text-lg font-bold ${totalRisks > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
+            )}
+
+            {/* Main Security Score: Defense Index */}
+            <div className="bg-slate-900/90 rounded-2xl border border-slate-800 p-5 text-center relative overflow-hidden">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-3">
+                    Defense Index
+                </div>
+
+                <div className="my-2 flex justify-center">
+                    <SecureDroidProgressRing
+                        value={score}
+                        size={104}
+                        strokeWidth={7}
+                        isLight={false}
+                    >
+                        <span className="text-3xl font-bold text-zinc-100">{score}</span>
+                    </SecureDroidProgressRing>
+                </div>
+
+                <div className="mt-3 text-sm font-semibold text-zinc-100">
+                    {totalRisks === 0
+                        ? 'No issues detected'
+                        : `${totalRisks} ${totalRisks === 1 ? 'issue' : 'issues'} detected`}
+                </div>
+
+                <div className="text-xs text-slate-400 mt-0.5">
+                    {totalRisks === 0
+                        ? 'Device configuration matches baseline security rules'
+                        : `${highRiskCount} high · ${mediumRiskCount} medium risk findings`}
+                </div>
+            </div>
+
+            {/* Security Summary (Compact 4-metric grid) */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-3 text-center">
+                    <div
+                        className={`text-lg font-bold ${
+                            totalRisks > 0 ? 'text-amber-400' : 'text-emerald-400'
+                        }`}
+                    >
                         {totalRisks}
                     </div>
-                    <div className="text-[10px] text-slate-500 uppercase tracking-wider">Risks</div>
+                    <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wider mt-0.5">
+                        Issues
+                    </div>
                 </div>
-                <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-800 text-center">
-                    <div className="text-lg font-bold text-emerald-400">{userApps}</div>
-                    <div className="text-[10px] text-slate-500 uppercase tracking-wider">User</div>
+
+                <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-3 text-center">
+                    <div className="text-lg font-bold text-zinc-100">{safeApps.length}</div>
+                    <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wider mt-0.5">
+                        Apps
+                    </div>
                 </div>
-                <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-800 text-center">
-                    <div className="text-lg font-bold text-sky-400">{systemApps}</div>
-                    <div className="text-[10px] text-slate-500 uppercase tracking-wider">System</div>
+
+                <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-3 text-center">
+                    <div
+                        className={`text-lg font-bold ${
+                            userRisks > 0 ? 'text-amber-400' : 'text-zinc-300'
+                        }`}
+                    >
+                        {userRisks}
+                    </div>
+                    <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wider mt-0.5">
+                        User risks
+                    </div>
+                </div>
+
+                <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-3 text-center">
+                    <div
+                        className={`text-lg font-bold ${
+                            systemRisks > 0 ? 'text-rose-400' : 'text-zinc-300'
+                        }`}
+                    >
+                        {systemRisks}
+                    </div>
+                    <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wider mt-0.5">
+                        System risks
+                    </div>
                 </div>
             </div>
 
-            {/* Quick Actions */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {quickActions.map((action) => {
-                    const Icon = action.icon;
-                    return (
-                        <button
-                            key={action.id}
-                            onClick={() => {
-                                if (action.id === 'scan') reload();
-                                else onNavigate(action.id as Screen);
-                            }}
-                            className="p-3 rounded-xl bg-slate-900/50 border border-slate-800 hover:border-slate-600 transition-all text-center group"
-                        >
-                            <div className={`w-9 h-9 rounded-full ${action.color} flex items-center justify-center mx-auto mb-1.5 group-hover:scale-105 transition-transform`}>
-                                <Icon className="w-4 h-4" />
-                            </div>
-                            <span className="text-[10px] text-slate-400 font-medium">{action.label}</span>
-                        </button>
-                    );
-                })}
-            </div>
+            {/* Primary Action Button: Scan Device */}
+            <button
+                onClick={handleScan}
+                disabled={isBusy}
+                className="w-full py-3.5 px-4 bg-zinc-100 hover:bg-white active:bg-zinc-200 text-zinc-950 font-semibold rounded-xl flex items-center justify-center gap-2.5 transition-all shadow-sm disabled:opacity-50"
+            >
+                <Zap className={`w-4 h-4 text-zinc-950 ${isBusy ? 'animate-bounce' : ''}`} />
+                <span>{isBusy ? 'Scanning Device...' : 'Scan Device'}</span>
+            </button>
 
-            {/* Security Tools */}
-            <SecureDroidSectionHeader title="Security Tools" />
-
-            <div className="space-y-2.5">
-                {cards.map((card) => {
-                    const Icon = card.icon;
-                    return (
-                        <button
-                            key={card.id}
-                            onClick={() => onNavigate(card.id)}
-                            className="w-full text-left"
-                        >
-                            <SecureDroidCard className="p-4 hover:border-slate-600 transition-all">
-                                <div className="flex items-center gap-4">
-                                    <div className="rounded-xl bg-slate-800/50 p-2.5">
-                                        <Icon className="w-5 h-5 text-sky-400" />
+            {/* Quick Security Areas */}
+            <div className="pt-2">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2 px-1">
+                    Security Areas
+                </div>
+                <div className="space-y-2">
+                    {securityAreas.map((area) => {
+                        const Icon = area.icon;
+                        return (
+                            <button
+                                key={area.id}
+                                onClick={() => onNavigate(area.id)}
+                                className="w-full bg-slate-900/80 hover:bg-slate-850 active:bg-slate-800 border border-slate-800 rounded-xl p-3.5 flex items-center justify-between text-left transition-all group"
+                            >
+                                <div className="flex items-center gap-3.5 min-w-0 pr-2">
+                                    <div
+                                        className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${area.color}`}
+                                    >
+                                        <Icon className="w-4 h-4" />
                                     </div>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-2">
-                                            <span className="font-semibold text-zinc-100">{card.title}</span>
-                                            {card.badge !== undefined && card.badge > 0 && (
-                                                <SecureDroidBadge count={card.badge} isLight={false} />
-                                            )}
+                                    <div className="min-w-0">
+                                        <div className="text-sm font-semibold text-zinc-100 group-hover:text-white truncate">
+                                            {area.title}
                                         </div>
-                                        <div className="text-sm text-slate-400 truncate">{card.description}</div>
+                                        <div className="text-xs text-slate-400 truncate mt-0.5">
+                                            {area.description}
+                                        </div>
                                     </div>
-                                    <ChevronRight className="w-4 h-4 text-slate-600" />
                                 </div>
-                            </SecureDroidCard>
-                        </button>
-                    );
-                })}
+                                <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-slate-300 shrink-0" />
+                            </button>
+                        );
+                    })}
+                </div>
             </div>
 
-            <div className="text-center text-[10px] text-slate-500 pt-2 pb-1">
-                v1.0.0 • Real-time security monitoring
+            {/* Security Audit Log Activity Preview */}
+            <div className="pt-2">
+                <div className="bg-slate-900/60 border border-slate-800/80 rounded-xl p-3.5 flex items-center justify-between">
+                    <div className="flex items-center gap-3 min-w-0">
+                        <ScrollText className="w-4 h-4 text-slate-400 shrink-0" />
+                        <div className="min-w-0">
+                            <div className="text-xs font-semibold text-zinc-200">Recent Activity</div>
+                            <div className="text-[11px] text-slate-400 truncate">
+                                {safeLogs.length === 0
+                                    ? 'No security events recorded'
+                                    : `${safeLogs.length} ${
+                                          safeLogs.length === 1 ? 'event' : 'events'
+                                      } recorded in timeline`}
+                            </div>
+                        </div>
+                    </div>
+                    <button
+                        onClick={() => onNavigate('security_log')}
+                        className="text-xs font-semibold text-sky-400 hover:text-sky-300 flex items-center gap-1 shrink-0 ml-2 py-1 px-2 rounded-lg hover:bg-slate-800/50 transition-colors"
+                    >
+                        <span>View log</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                </div>
+            </div>
+
+            <div className="text-center text-[10px] text-slate-500 pt-3 pb-1">
+                SecureDroid Security Engine • v1.0.0
             </div>
         </div>
     );
@@ -303,26 +398,33 @@ function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
 // ============================================================
 // SETTINGS SCREEN
 // ============================================================
-function SettingsScreen() {
+function SettingsScreen({ onBack }: { onBack: () => void }) {
     const [darkMode, setDarkMode] = useState(true);
     const [notifications, setNotifications] = useState(true);
 
     return (
-        <div className="p-4 pb-24 space-y-4 max-w-7xl mx-auto">
-            <SecureDroidSectionHeader title="Settings" />
-
+        <div className="p-4 pb-28 space-y-4 max-w-xl mx-auto">
             <div className="space-y-2.5">
                 <SecureDroidCard className="p-4">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
                             <Moon className="w-4 h-4 text-slate-400" />
-                            <span className="text-sm text-zinc-200">Dark Mode</span>
+                            <div>
+                                <span className="text-sm font-medium text-zinc-200">Dark Theme</span>
+                                <p className="text-xs text-slate-400">High-contrast security palette</p>
+                            </div>
                         </div>
                         <button
                             onClick={() => setDarkMode(!darkMode)}
-                            className={`w-11 h-6 rounded-full transition-colors ${darkMode ? 'bg-sky-500' : 'bg-slate-600'}`}
+                            className={`w-11 h-6 rounded-full transition-colors ${
+                                darkMode ? 'bg-sky-500' : 'bg-slate-600'
+                            }`}
                         >
-                            <div className={`w-5 h-5 rounded-full bg-white transition-transform ${darkMode ? 'translate-x-5' : 'translate-x-0'}`} />
+                            <div
+                                className={`w-5 h-5 rounded-full bg-white transition-transform ${
+                                    darkMode ? 'translate-x-5' : 'translate-x-0.5'
+                                }`}
+                            />
                         </button>
                     </div>
                 </SecureDroidCard>
@@ -331,13 +433,22 @@ function SettingsScreen() {
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
                             <Bell className="w-4 h-4 text-slate-400" />
-                            <span className="text-sm text-zinc-200">Notifications</span>
+                            <div>
+                                <span className="text-sm font-medium text-zinc-200">Security Notifications</span>
+                                <p className="text-xs text-slate-400">Alerts for critical risk detections</p>
+                            </div>
                         </div>
                         <button
                             onClick={() => setNotifications(!notifications)}
-                            className={`w-11 h-6 rounded-full transition-colors ${notifications ? 'bg-sky-500' : 'bg-slate-600'}`}
+                            className={`w-11 h-6 rounded-full transition-colors ${
+                                notifications ? 'bg-sky-500' : 'bg-slate-600'
+                            }`}
                         >
-                            <div className={`w-5 h-5 rounded-full bg-white transition-transform ${notifications ? 'translate-x-5' : 'translate-x-0'}`} />
+                            <div
+                                className={`w-5 h-5 rounded-full bg-white transition-transform ${
+                                    notifications ? 'translate-x-5' : 'translate-x-0.5'
+                                }`}
+                            />
                         </button>
                     </div>
                 </SecureDroidCard>
@@ -348,13 +459,13 @@ function SettingsScreen() {
             <div className="space-y-2.5">
                 <SecureDroidCard className="p-4">
                     <div className="flex items-start gap-3">
-                        <Info className="w-4 h-4 text-slate-400 mt-0.5" />
+                        <Info className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />
                         <div>
-                            <div className="font-semibold text-zinc-100">About SecureDroid</div>
-                            <div className="text-sm text-slate-400 mt-1 leading-relaxed">
+                            <div className="font-semibold text-zinc-100 text-sm">About SecureDroid</div>
+                            <div className="text-xs text-slate-400 mt-1 leading-relaxed">
                                 SecureDroid reports on real, checkable signals about your device and installed
-                                apps. It does not perform malware scanning, hardware attestation, or bootloader
-                                verification, and does not claim capabilities it does not have.
+                                apps. It adheres strictly to Android platform APIs and does not claim capabilities
+                                it does not have.
                             </div>
                         </div>
                     </div>
@@ -362,12 +473,12 @@ function SettingsScreen() {
 
                 <SecureDroidCard className="p-4">
                     <div className="flex items-start gap-3">
-                        <Shield className="w-4 h-4 text-slate-400 mt-0.5" />
+                        <Shield className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />
                         <div>
-                            <div className="font-semibold text-zinc-100">Privacy Policy</div>
-                            <div className="text-sm text-slate-400 mt-1 leading-relaxed">
-                                All security analysis is performed locally on your device. No data is sent
-                                to external servers unless explicitly configured.
+                            <div className="font-semibold text-zinc-100 text-sm">Privacy Commitment</div>
+                            <div className="text-xs text-slate-400 mt-1 leading-relaxed">
+                                All security evaluations are performed locally on your device. No telemetry or
+                                application inventories are transmitted to external servers.
                             </div>
                         </div>
                     </div>
@@ -375,10 +486,10 @@ function SettingsScreen() {
 
                 <SecureDroidCard className="p-4">
                     <div className="flex items-start gap-3">
-                        <Globe className="w-4 h-4 text-slate-400 mt-0.5" />
+                        <Globe className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />
                         <div>
-                            <div className="font-semibold text-zinc-100">Version</div>
-                            <div className="text-sm text-slate-400 mt-1">v1.0.0 • Built with ❤️</div>
+                            <div className="font-semibold text-zinc-100 text-sm">Version</div>
+                            <div className="text-xs text-slate-400 mt-1">v1.0.0 • Production Build</div>
                         </div>
                     </div>
                 </SecureDroidCard>
@@ -388,7 +499,7 @@ function SettingsScreen() {
 }
 
 // ============================================================
-// MAIN APP
+// MAIN APP COMPONENT
 // ============================================================
 export default function App() {
     const { loading, connected, error, reload } = useSecureDroid();
@@ -401,31 +512,33 @@ export default function App() {
 
     const navigateTo = (screen: Screen) => setCurrentScreen(screen);
     const handleBack = () => setCurrentScreen('home');
+
     const handleAppDetail = (packageName: string) => {
         setSelectedApp(packageName);
         setCurrentScreen('app_detail');
     };
+
     const handleAppDetailBack = () => {
         setSelectedApp(null);
         setCurrentScreen('app_auditor');
     };
 
-    const NAV_ITEMS = [
-        { id: 'home' as Screen, label: 'HOME', icon: Home },
-        { id: 'app_auditor' as Screen, label: 'APPS', icon: ShieldCheck },
-        { id: 'threat_model' as Screen, label: 'THREATS', icon: AlertTriangle },
-        { id: 'network' as Screen, label: 'NETWORK', icon: Wifi },
-        { id: 'security_log' as Screen, label: 'LOG', icon: ScrollText },
-        { id: 'settings' as Screen, label: 'SETTINGS', icon: SettingsIcon },
+    // Exactly 5 Primary Destinations for Fixed Bottom Bar
+    const PRIMARY_NAV_ITEMS = [
+        { id: 'home' as Screen, label: 'Home', icon: Home },
+        { id: 'app_auditor' as Screen, label: 'Apps', icon: ShieldCheck },
+        { id: 'threat_model' as Screen, label: 'Threats', icon: AlertTriangle },
+        { id: 'network' as Screen, label: 'Network', icon: Wifi },
+        { id: 'security_log' as Screen, label: 'Log', icon: ScrollText },
     ];
 
     const getTitle = () => {
         const titles: Record<Screen, string> = {
             home: 'SecureDroid',
-            threat_model: 'Threat Model Center',
-            app_auditor: 'App Security Auditor',
-            security_log: 'Security Audit Log',
-            network: 'Network Protection',
+            app_auditor: 'Apps',
+            threat_model: 'Threats',
+            network: 'Network',
+            security_log: 'Log',
             device_security: 'Device Security',
             privacy_radar: 'Privacy Radar',
             security_report: 'Security Report',
@@ -437,48 +550,94 @@ export default function App() {
         return titles[currentScreen] || 'SecureDroid';
     };
 
+    const isSubScreen = ![
+        'home',
+        'app_auditor',
+        'threat_model',
+        'network',
+        'security_log',
+    ].includes(currentScreen);
+
     return (
-        <div className="min-h-screen bg-slate-950 text-zinc-100 flex flex-col max-w-7xl mx-auto">
-            <SecureDroidTopBar
-                title={getTitle()}
-                onBack={currentScreen !== 'home' ? handleBack : undefined}
-            />
+        <div className="min-h-screen bg-slate-950 text-zinc-100 flex flex-col max-w-2xl mx-auto relative font-sans antialiased">
+            {/* Top Bar for sub-screens or non-home tabs */}
+            {currentScreen !== 'home' && (
+                <SecureDroidTopBar
+                    title={getTitle()}
+                    onBack={handleBack}
+                />
+            )}
 
             <main className="flex-1 overflow-y-auto">
                 {currentScreen === 'home' && <HomeScreen onNavigate={navigateTo} />}
-                {currentScreen === 'threat_model' && <ThreatModelCenterScreen onBack={handleBack} />}
                 {currentScreen === 'app_auditor' && (
-                    <AppSecurityAuditorScreen onBack={handleBack} onAppSelect={handleAppDetail} />
+                    <AppSecurityAuditorScreen
+                        onBack={handleBack}
+                        onAppSelect={handleAppDetail}
+                    />
                 )}
-                {currentScreen === 'security_log' && <SecurityAuditLogScreen onBack={handleBack} />}
-                {currentScreen === 'network' && <NetworkControlScreen onBack={handleBack} />}
-                {currentScreen === 'device_security' && <DeviceSecurityScreen onBack={handleBack} />}
-                {currentScreen === 'privacy_radar' && <PrivacyRadarScreen onBack={handleBack} />}
-                {currentScreen === 'security_report' && <SecurityReportScreen onBack={handleBack} />}
+                {currentScreen === 'threat_model' && (
+                    <ThreatModelCenterScreen onBack={handleBack} />
+                )}
+                {currentScreen === 'network' && (
+                    <NetworkControlScreen onBack={handleBack} />
+                )}
+                {currentScreen === 'security_log' && (
+                    <SecurityAuditLogScreen onBack={handleBack} />
+                )}
+                {currentScreen === 'device_security' && (
+                    <DeviceSecurityScreen onBack={handleBack} />
+                )}
+                {currentScreen === 'privacy_radar' && (
+                    <PrivacyRadarScreen onBack={handleBack} />
+                )}
+                {currentScreen === 'security_report' && (
+                    <SecurityReportScreen onBack={handleBack} />
+                )}
                 {currentScreen === 'app_detail' && selectedApp && (
-                    <AppDetailScreen onBack={handleAppDetailBack} packageName={selectedApp} />
+                    <AppDetailScreen
+                        onBack={handleAppDetailBack}
+                        packageName={selectedApp}
+                    />
                 )}
-                {currentScreen === 'ai_assistant' && <AiAssistantScreen onBack={handleBack} />}
-                {currentScreen === 'family' && <FamilyScreen onBack={handleBack} />}
-                {currentScreen === 'settings' && <SettingsScreen />}
+                {currentScreen === 'ai_assistant' && (
+                    <AiAssistantScreen onBack={handleBack} />
+                )}
+                {currentScreen === 'family' && (
+                    <FamilyScreen onBack={handleBack} />
+                )}
+                {currentScreen === 'settings' && (
+                    <SettingsScreen onBack={handleBack} />
+                )}
             </main>
 
-            {/* Bottom Navigation */}
-            <nav className="fixed bottom-0 left-0 right-0 z-40 bg-slate-950/95 backdrop-blur-lg border-t border-slate-800/80 max-w-7xl mx-auto">
-                <div className="flex items-center justify-around h-16 px-2">
-                    {NAV_ITEMS.map((item) => {
+            {/* Fixed Bottom Navigation (Exactly 5 Items: Home, Apps, Threats, Network, Log) */}
+            <nav className="fixed bottom-0 left-0 right-0 z-40 bg-slate-950/95 backdrop-blur-md border-t border-slate-800/80 max-w-2xl mx-auto pb-safe">
+                <div className="flex items-center justify-around h-16 px-1">
+                    {PRIMARY_NAV_ITEMS.map((item) => {
                         const Icon = item.icon;
-                        const isActive = currentScreen === item.id;
+                        const isActive =
+                            currentScreen === item.id ||
+                            (item.id === 'app_auditor' && currentScreen === 'app_detail');
                         return (
                             <button
                                 key={item.id}
                                 onClick={() => setCurrentScreen(item.id)}
-                                className={`flex-1 flex flex-col items-center justify-center h-full min-h-[48px] py-1 transition-all relative ${
-                                    isActive ? 'text-sky-400' : 'text-slate-400 hover:text-slate-200'
+                                className={`flex-1 flex flex-col items-center justify-center h-full min-h-[48px] py-1 transition-colors relative ${
+                                    isActive
+                                        ? 'text-sky-400'
+                                        : 'text-slate-400 hover:text-slate-200'
                                 }`}
+                                aria-label={item.label}
                             >
-                                <Icon className="w-5 h-5" />
-                                <span className="text-[10px] font-bold tracking-wider mt-0.5">{item.label}</span>
+                                <Icon className="w-5 h-5 shrink-0" />
+                                <span
+                                    className={`text-[11px] mt-1 font-medium tracking-tight ${
+                                        isActive ? 'text-sky-400 font-semibold' : 'text-slate-400'
+                                    }`}
+                                >
+                                    {item.label}
+                                </span>
                                 {isActive && (
                                     <div className="absolute top-0 w-8 h-0.5 bg-sky-400 rounded-full" />
                                 )}
