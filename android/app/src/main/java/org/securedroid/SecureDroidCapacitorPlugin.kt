@@ -21,6 +21,7 @@ import org.securedroid.diagnostics.HardeningAnalyzer
 import org.securedroid.logging.SecurityEvent
 import org.securedroid.logging.SecurityLogManager
 import org.securedroid.vault.VaultStorage
+import org.securedroid.vpn.DomainBlocklistManager
 import org.securedroid.vpn.SecureVpnManager
 import org.securedroid.vpn.VpnState
 
@@ -39,6 +40,10 @@ class SecureDroidCapacitorPlugin : Plugin() {
 
     private val vpnManager by lazy {
         SecureVpnManager(bridge.context.applicationContext)
+    }
+
+    private val blocklistManager by lazy {
+        DomainBlocklistManager(bridge.context.applicationContext)
     }
 
     private val vaultStorage by lazy {
@@ -334,7 +339,7 @@ class SecureDroidCapacitorPlugin : Plugin() {
             data.put("establishedTime", if (active) System.currentTimeMillis() else null)
             data.put("bytesReceived", 0)
             data.put("bytesTransmitted", 0)
-            data.put("blockedDomainsCount", 0)
+            data.put("blockedDomainsCount", blocklistManager.getBlockedDomains().size)
             data.put("activeDns", "1.1.1.1")
             data.put("filterMode", "BLOCKLIST")
 
@@ -419,6 +424,106 @@ class SecureDroidCapacitorPlugin : Plugin() {
         } catch (e: Exception) {
             Log.e(TAG, "stopVpn failed", e)
             call.reject("Unable to stop VPN: ${e.message}", e)
+        }
+    }
+
+    // =========================================================
+    // DOMAIN BLOCKLIST & ALLOWLIST MANAGEMENT
+    // =========================================================
+
+    @PluginMethod
+    fun getBlockedDomains(call: PluginCall) {
+        try {
+            val blocked = blocklistManager.getBlockedDomains()
+            val allowed = blocklistManager.getAllowedDomains()
+
+            val data = JSObject()
+            data.put("blockedDomains", JSONArray(blocked))
+            data.put("allowedDomains", JSONArray(allowed))
+
+            val result = JSObject()
+            result.put("success", true)
+            result.put("data", data)
+            call.resolve(result)
+        } catch (e: Exception) {
+            Log.e(TAG, "getBlockedDomains failed", e)
+            call.reject("Unable to retrieve blocklists: ${e.message}", e)
+        }
+    }
+
+    @PluginMethod
+    fun addBlockedDomain(call: PluginCall) {
+        try {
+            val domain = call.getString("domain")
+            if (domain.isNullOrBlank()) {
+                call.reject("Missing required 'domain'")
+                return
+            }
+            val added = blocklistManager.addBlockedDomain(domain)
+            val result = JSObject()
+            result.put("success", true)
+            result.put("added", added)
+            call.resolve(result)
+        } catch (e: Exception) {
+            Log.e(TAG, "addBlockedDomain failed", e)
+            call.reject("Unable to add domain to blocklist: ${e.message}", e)
+        }
+    }
+
+    @PluginMethod
+    fun removeBlockedDomain(call: PluginCall) {
+        try {
+            val domain = call.getString("domain")
+            if (domain.isNullOrBlank()) {
+                call.reject("Missing required 'domain'")
+                return
+            }
+            val removed = blocklistManager.removeBlockedDomain(domain)
+            val result = JSObject()
+            result.put("success", true)
+            result.put("removed", removed)
+            call.resolve(result)
+        } catch (e: Exception) {
+            Log.e(TAG, "removeBlockedDomain failed", e)
+            call.reject("Unable to remove domain from blocklist: ${e.message}", e)
+        }
+    }
+
+    @PluginMethod
+    fun addAllowedDomain(call: PluginCall) {
+        try {
+            val domain = call.getString("domain")
+            if (domain.isNullOrBlank()) {
+                call.reject("Missing required 'domain'")
+                return
+            }
+            val added = blocklistManager.addAllowedDomain(domain)
+            val result = JSObject()
+            result.put("success", true)
+            result.put("added", added)
+            call.resolve(result)
+        } catch (e: Exception) {
+            Log.e(TAG, "addAllowedDomain failed", e)
+            call.reject("Unable to add domain to allowlist: ${e.message}", e)
+        }
+    }
+
+    @PluginMethod
+    fun removeAllowedDomain(call: PluginCall) {
+        try {
+            val domain = call.getString("domain")
+            if (domain.isNullOrBlank()) {
+                call.reject("Missing required 'domain'")
+                return
+            }
+            val removed = blocklistManager.removeAllowedDomain(domain)
+            val result = JSObject()
+            result.put("success", true)
+            result.put("removed", removed)
+            call.resolve(result)
+        } catch (e: Exception) {
+            Log.e(TAG, "removeAllowedDomain failed", e)
+            call.reject("Unable to remove domain from allowlist: ${e.message}", e)
         }
     }
 
