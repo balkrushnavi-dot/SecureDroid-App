@@ -1,20 +1,17 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { SecureDroidNative } from '../services/native/SecureDroidNative';
+
 import type {
     NativeInstalledApp,
     NativeAppRiskReport,
+    NativeHardeningReport,
+    NativeSecurityEvent,
+    NativeVpnStatus,
+    SecureDroidMode,
 } from '../types/native';
 
 export type AppInfo = NativeInstalledApp;
-
-export interface RiskFinding {
-    code?: string;
-    title?: string;
-    description?: string;
-    severity?: string;
-    points?: number;
-}
 
 export interface RiskInfo {
     appName: string;
@@ -22,349 +19,368 @@ export interface RiskInfo {
     riskLevel: string;
     securityScore?: number;
     findingCount?: number;
-    findings?: RiskFinding[];
+    findings?: Array<{
+        id?: string;
+        code?: string;
+        title?: string;
+        description?: string;
+        severity?: string;
+        level?: string;
+        summary?: string;
+        points?: number;
+    }>;
     reason?: string;
     installSource?: string;
     isSystemApp?: boolean;
-}
-
-export type SecurityDataState =
-    | 'LOADING'
-    | 'AVAILABLE'
-    | 'UNAVAILABLE'
-    | 'ERROR';
-
-export interface HardeningFinding {
-    id?: string;
-    code?: string;
-    level?: string;
-    severity?: string;
-    summary?: string;
-    title?: string;
-    description?: string;
-    points?: number;
-}
-
-export interface SecurityDataStatus {
-    state: SecurityDataState;
     isReal: boolean;
-    message: string;
+}
+
+export interface HardeningInfo {
+    score: number;
+    findings: NativeHardeningReport['findings'];
+    timestamp?: number;
+    isReal: boolean;
+}
+
+export interface SecureDroidHookState {
+    apps: AppInfo[];
+    risks: RiskInfo[];
+
+    loading: boolean;
+    connected: boolean;
+
+    error: string | null;
+
+    score: number;
+    hardeningFindings: NativeHardeningReport['findings'];
+
+    usingMock: boolean;
+
+    mode: SecureDroidMode;
+
+    vpnStatus: NativeVpnStatus | null;
+
+    securityLogs: NativeSecurityEvent[];
+
+    dataVerified: boolean;
+
+    reload: () => Promise<void>;
 }
 
 /**
- * SecureDroid data hook.
+ * SecureDroid application data hook.
  *
- * Production rules:
- * - Never fabricate installed apps.
- * - Never fabricate risk reports.
- * - Never fabricate security scores.
- * - Native bridge failure is exposed as an error/unavailable state.
- * - Empty native results remain empty.
+ * SECURITY RULE:
+ * This hook NEVER substitutes fabricated security data for native data.
+ *
+ * Web preview:
+ *   - No security claims
+ *   - Empty datasets
+ *   - usingMock = false
+ *   - dataVerified = false
+ *
+ * Native Android:
+ *   - Native bridge is queried
+ *   - Failed calls remain failed
+ *   - Unknown/unavailable capabilities are represented explicitly
+ *   - No fake apps, risks, scores, or hardening findings are injected
  */
-export const useSecureDroid = () => {
-    const [apps, setApps] = useState<AppInfo[]>([]);
-    const [risks, setRisks] = useState<RiskInfo[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [connected, setConnected] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-
-    const [score, setScore] = useState<number | null>(null);
-    const [hardeningFindings, setHardeningFindings] = useState<
-        HardeningFinding[]
-    >([]);
-
-    const [dataStatus, setDataStatus] = useState<SecurityDataStatus>({
-        state: 'LOADING',
-        isReal: false,
-        message: 'Loading native security data...',
-    });
-
+export const useSecureDroid = (): SecureDroidHookState => {
     const isNative = Capacitor.isNativePlatform();
 
-    const resetToUnavailable = useCallback((message: string) => {
-        setConnected(false);
-        setApps([]);
-        setRisks([]);
-        setScore(null);
-        setHardeningFindings([]);
-        setError(message);
+    const [apps, setApps] = useState<AppInfo[]>([]);
+    const [risks, setRisks] = useState<RiskInfo[]>([]);
 
-        setDataStatus({
-            state: 'UNAVAILABLE',
-            isReal: false,
-            message,
-        });
-    }, []);
+    const [loading, setLoading] = useState(false);
+    const [connected, setConnected] = useState(false);
 
-    const resetToError = useCallback((message: string) => {
-        setConnected(false);
-        setApps([]);
-        setRisks([]);
-        setScore(null);
-        setHardeningFindings([]);
-        setError(message);
+    const [error, setError] = useState<string | null>(null);
 
-        setDataStatus({
-            state: 'ERROR',
-            isReal: false,
-            message,
-        });
-    }, []);
+    const [score, setScore] = useState(0);
+    const [hardeningFindings, setHardeningFindings] =
+        useState<NativeHardeningReport['findings']>([]);
+
+    const [mode, setMode] = useState<SecureDroidMode>('UNKNOWN');
+
+    const [vpnStatus, setVpnStatus] =
+        useState<NativeVpnStatus | null>(null);
+
+    const [securityLogs, setSecurityLogs] =
+        useState<NativeSecurityEvent[]>([]);
+
+    const [dataVerified, setDataVerified] = useState(false);
 
     const loadData = useCallback(async () => {
         setLoading(true);
         setError(null);
-
-        setDataStatus({
-            state: 'LOADING',
-            isReal: false,
-            message: 'Loading native security data...',
-        });
+        setDataVerified(false);
 
         /*
-         * Browser/PWA builds do not have access to Android security APIs.
-         * Do NOT substitute mock security information.
+         * WEB PREVIEW
+         *
+         * Do not inject fake Android data.
          */
         if (!isNative) {
-            resetToUnavailable(
-                'Native Android security services are unavailable in this environment.'
-            );
+            setApps([]);
+            setRisks([]);
+            setScore(0);
+            setHardeningFindings([]);
+            setSecurityLogs([]);
+            setVpnStatus(null);
+            setConnected(false);
+            setMode('UNKNOWN');
             setLoading(false);
+
+            setError(
+                'Android native security services are unavailable in web preview.'
+            );
+
             return;
         }
 
+        /*
+         * Clear previous state before a fresh native scan.
+         *
+         * This prevents stale data from being presented as current.
+         */
+        setApps([]);
+        setRisks([]);
+        setScore(0);
+        setHardeningFindings([]);
+        setSecurityLogs([]);
+        setVpnStatus(null);
+        setConnected(false);
+        setMode('UNKNOWN');
+
         try {
-            // ========================================================
-            // 1. VERIFY NATIVE CONNECTION
-            // ========================================================
+            // ====================================================
+            // 1. NATIVE CONNECTION
+            // ====================================================
 
-            const connection = await SecureDroidNative.checkConnection();
+            const connectionResult =
+                await SecureDroidNative.checkConnection();
 
-            if (!connection.success || !connection.data?.connected) {
-                resetToUnavailable(
-                    connection.message ||
-                        'SecureDroid native security service is unavailable.'
+            if (!connectionResult.success) {
+                setError(
+                    connectionResult.message ||
+                    'SecureDroid native security service is unavailable.'
                 );
+
+                return;
+            }
+
+            if (!connectionResult.data.connected) {
+                setError(
+                    connectionResult.data.message ||
+                    'SecureDroid native bridge is not connected.'
+                );
+
                 return;
             }
 
             setConnected(true);
 
-            // ========================================================
-            // 2. INSTALLED APPLICATIONS
-            // ========================================================
+            if (connectionResult.data.mode) {
+                setMode(connectionResult.data.mode);
+            }
 
-            const appsResult = await SecureDroidNative.getInstalledApps();
+
+            // ====================================================
+            // 2. INSTALLED APPLICATIONS
+            // ====================================================
+
+            const appsResult =
+                await SecureDroidNative.getInstalledApps();
 
             if (!appsResult.success) {
-                resetToError(
+                setError(
                     appsResult.message ||
-                        'Unable to retrieve installed applications.'
+                    'Unable to retrieve installed applications.'
                 );
+
                 return;
             }
 
-            const realApps = Array.isArray(appsResult.data)
-                ? appsResult.data
-                : [];
+            const nativeApps = appsResult.data || [];
 
-            setApps(realApps);
+            setApps(nativeApps);
 
-            // ========================================================
+
+            // ====================================================
             // 3. APPLICATION RISK ANALYSIS
-            // ========================================================
+            // ====================================================
 
             const riskResult =
                 await SecureDroidNative.getAppRiskReports();
 
             if (!riskResult.success) {
-                resetToError(
+                setError(
                     riskResult.message ||
-                        'Unable to retrieve application risk analysis.'
+                    'Application risk analysis is unavailable.'
                 );
-                return;
+
+                /*
+                 * App inventory is still valid, so do not discard it.
+                 */
+            } else {
+                const userAppPackageNames = new Set(
+                    nativeApps
+                        .filter(app => !app.isSystemApp)
+                        .map(app => app.packageName)
+                );
+
+                const realRiskReports: RiskInfo[] =
+                    (riskResult.data || [])
+                        .filter(report => {
+                            /*
+                             * Keep the report associated with an installed
+                             * application actually observed by Android.
+                             */
+                            return userAppPackageNames.has(
+                                report.packageName
+                            );
+                        })
+                        .map((report: NativeAppRiskReport) => ({
+                            appName: report.label,
+                            packageName: report.packageName,
+                            riskLevel: report.overallRisk,
+                            securityScore: report.securityScore,
+                            findingCount:
+                                report.findingCount ??
+                                report.findings.length,
+                            findings: report.findings,
+                            reason: report.reason,
+                            installSource: report.installSource,
+                            isSystemApp: report.isSystemApp ?? false,
+                            isReal: report.isReal === true,
+                        }))
+                        .filter(report => report.isReal);
+
+                setRisks(realRiskReports);
             }
 
-            const realReports = Array.isArray(riskResult.data)
-                ? riskResult.data
-                : [];
 
-            /*
-             * Build a lookup from the actual installed-app inventory.
-             * This prevents a native risk report for an unknown package
-             * from being displayed as a currently installed application.
-             */
-            const installedAppsByPackage = new Map(
-                realApps.map((app) => [
-                    app.packageName,
-                    app,
-                ])
-            );
-
-            const normalizedRisks: RiskInfo[] = realReports
-                .filter((report: NativeAppRiskReport) =>
-                    installedAppsByPackage.has(report.packageName)
-                )
-                .map((report: NativeAppRiskReport) => {
-                    const installedApp =
-                        installedAppsByPackage.get(report.packageName);
-
-                    return {
-                        appName:
-                            report.label ||
-                            installedApp?.label ||
-                            report.packageName,
-
-                        packageName: report.packageName,
-
-                        riskLevel:
-                            report.overallRisk || 'UNKNOWN',
-
-                        findings: Array.isArray(report.findings)
-                            ? report.findings
-                            : [],
-
-                        findingCount: Array.isArray(report.findings)
-                            ? report.findings.length
-                            : 0,
-
-                        securityScore:
-                            typeof report.securityScore === 'number'
-                                ? report.securityScore
-                                : undefined,
-
-                        isSystemApp:
-                            installedApp?.isSystemApp === true,
-                    };
-                });
-
-            /*
-             * Keep only actionable risk levels for the dashboard.
-             * LOW/SAFE applications remain part of the installed-app
-             * inventory but are not counted as active security risks.
-             */
-            const actionableRisks = normalizedRisks.filter((risk) =>
-                ['MEDIUM', 'HIGH', 'CRITICAL'].includes(
-                    risk.riskLevel.toUpperCase()
-                )
-            );
-
-            setRisks(actionableRisks);
-
-            // ========================================================
+            // ====================================================
             // 4. DEVICE HARDENING
-            // ========================================================
+            // ====================================================
 
             const hardeningResult =
                 await SecureDroidNative.getHardeningReport();
 
             if (!hardeningResult.success) {
-                resetToError(
+                setError(prev =>
+                    prev ||
                     hardeningResult.message ||
-                        'Unable to retrieve device hardening information.'
+                    'Device hardening assessment is unavailable.'
                 );
-                return;
-            }
+            } else if (hardeningResult.data?.isReal === true) {
+                const report = hardeningResult.data;
 
-            const hardening = hardeningResult.data;
-
-            if (!hardening) {
-                resetToError(
-                    'Native service returned no hardening report.'
-                );
-                return;
-            }
-
-            const nativeScore = hardening.score;
-
-            /*
-             * A score of 0 is valid.
-             * Therefore do not use `score || 0`, because that can
-             * silently turn missing/invalid values into a real-looking 0.
-             */
-            if (
-                typeof nativeScore !== 'number' ||
-                !Number.isFinite(nativeScore)
-            ) {
-                setScore(null);
-            } else {
                 setScore(
-                    Math.min(
-                        100,
-                        Math.max(0, Math.round(nativeScore))
+                    Number.isFinite(report.score)
+                        ? Math.max(0, Math.min(100, report.score))
+                        : 0
+                );
+
+                setHardeningFindings(
+                    (report.findings || []).filter(
+                        finding => finding.isReal === true
                     )
                 );
             }
 
-            const nativeFindings = Array.isArray(
-                hardening.findings
-            )
-                ? hardening.findings
-                : [];
 
-            setHardeningFindings(nativeFindings);
+            // ====================================================
+            // 5. VPN STATUS
+            // ====================================================
 
-            // ========================================================
-            // 5. DATA IS NOW VERIFIED AS NATIVE-SOURCED
-            // ========================================================
+            const vpnResult =
+                await SecureDroidNative.getVpnStatus();
 
-            setError(null);
+            if (vpnResult.success) {
+                setVpnStatus(vpnResult.data);
+            }
 
-            setDataStatus({
-                state: 'AVAILABLE',
-                isReal: true,
-                message:
-                    'Security data loaded from the SecureDroid native Android layer.',
-            });
-        } catch (err: unknown) {
+
+            // ====================================================
+            // 6. SECURITY AUDIT LOG
+            // ====================================================
+
+            const logsResult =
+                await SecureDroidNative.getSecurityLogs(50);
+
+            if (logsResult.success) {
+                setSecurityLogs(logsResult.data || []);
+            }
+
+
+            // ====================================================
+            // 7. VERIFIED DATA STATE
+            // ====================================================
+
+            /*
+             * The connection itself must be real before the hook
+             * can claim that native data was successfully collected.
+             */
+            setDataVerified(true);
+
+        } catch (nativeError: unknown) {
             const message =
-                err instanceof Error
-                    ? err.message
+                nativeError instanceof Error
+                    ? nativeError.message
                     : 'Unexpected native security service failure.';
 
-            resetToError(message);
+            setConnected(false);
+            setDataVerified(false);
+
+            setError(message);
         } finally {
             setLoading(false);
         }
-    }, [
-        isNative,
-        resetToUnavailable,
-        resetToError,
-    ]);
+    }, [isNative]);
+
+
+    // ============================================================
+    // INITIAL LOAD
+    // ============================================================
 
     useEffect(() => {
         void loadData();
     }, [loadData]);
 
-    return {
-        // Actual native application inventory.
-        apps,
 
-        // Actual native risk reports.
+    // ============================================================
+    // PUBLIC API
+    // ============================================================
+
+    return {
+        apps,
         risks,
 
-        // Native connection state.
+        loading,
         connected,
 
-        // Loading state.
-        loading,
-
-        // Native error.
         error,
 
-        // Null means no verified score is available.
         score,
-
-        // Native hardening findings.
         hardeningFindings,
 
-        // Explicit truth state for UI.
-        dataStatus,
+        /*
+         * Kept for compatibility with existing screens.
+         *
+         * IMPORTANT:
+         * This is NEVER true because of mock fallback.
+         */
+        usingMock: false,
 
-        // Native environment flag.
-        isNative,
+        mode,
 
-        // Reload native security data.
+        vpnStatus,
+
+        securityLogs,
+
+        dataVerified,
+
         reload: loadData,
     };
 };
