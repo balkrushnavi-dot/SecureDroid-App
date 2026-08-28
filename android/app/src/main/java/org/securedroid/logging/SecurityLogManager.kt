@@ -4,71 +4,140 @@ import android.content.Context
 import android.content.SharedPreferences
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 
 class SecurityLogManager(
-    private val context: Context
+    context: Context
 ) {
 
-    private val prefs: SharedPreferences = context.getSharedPreferences(
-        "securedroid_security_log",
-        Context.MODE_PRIVATE
-    )
+    companion object {
+        private const val PREFS_NAME =
+            "securedroid_security_log"
 
-    private val MAX_EVENTS = 1000
+        private const val EVENTS_KEY =
+            "events"
 
-    fun logEvent(event: SecurityEvent): Boolean {
-        return try {
-            val events = getEventsInternal()
-            events.put(eventToJson(event))
+        private const val MAX_EVENTS =
+            1000
+    }
 
-            // Keep only the most recent MAX_EVENTS
-            while (events.length() > MAX_EVENTS) {
-                events.remove(0)
+    private val prefs: SharedPreferences =
+        context.getSharedPreferences(
+            PREFS_NAME,
+            Context.MODE_PRIVATE
+        )
+
+    private val lock =
+        ReentrantLock()
+
+    fun logEvent(
+        event: SecurityEvent
+    ): Boolean {
+        return lock.withLock {
+            try {
+                val events =
+                    getEventsInternal()
+
+                events.put(
+                    eventToJson(event)
+                )
+
+                while (
+                    events.length() > MAX_EVENTS
+                ) {
+                    events.remove(0)
+                }
+
+                prefs.edit()
+                    .putString(
+                        EVENTS_KEY,
+                        events.toString()
+                    )
+                    .commit()
+
+            } catch (_: Exception) {
+                false
             }
-
-            prefs.edit().putString("events", events.toString()).apply()
-            true
-
-        } catch (_: Exception) {
-            false
         }
     }
 
-    fun getEvents(limit: Int, category: String?): List<SecurityEvent> {
-        return try {
-            val events = getEventsInternal()
-            val result = mutableListOf<SecurityEvent>()
+    fun getEvents(
+        limit: Int,
+        category: String?
+    ): List<SecurityEvent> {
+        if (limit <= 0) {
+            return emptyList()
+        }
 
-            // Iterate in reverse (newest first)
-            for (i in (events.length() - 1) downTo 0) {
-                val json = events.getJSONObject(i)
-                val eventCategory = json.getString("category")
+        return lock.withLock {
+            try {
+                val events =
+                    getEventsInternal()
 
-                if (category == null || eventCategory == category) {
-                    result.add(jsonToEvent(json))
+                val result =
+                    mutableListOf<SecurityEvent>()
+
+                for (
+                    index in
+                    events.length() - 1 downTo 0
+                ) {
+                    val json =
+                        events.optJSONObject(index)
+                            ?: continue
+
+                    val eventCategory =
+                        json.optString(
+                            "category",
+                            ""
+                        )
+
+                    if (
+                        category == null ||
+                        eventCategory == category
+                    ) {
+                        jsonToEvent(
+                            json
+                        )?.let {
+                            result.add(it)
+                        }
+                    }
+
+                    if (
+                        result.size >= limit
+                    ) {
+                        break
+                    }
                 }
 
-                if (result.size >= limit) break
+                result
+
+            } catch (_: Exception) {
+                emptyList()
             }
-
-            result
-
-        } catch (_: Exception) {
-            emptyList()
         }
     }
 
     fun clearAll(): Boolean {
-        return try {
-            prefs.edit().remove("events").apply()
-            true
-        } catch (_: Exception) {
-            false
+        return lock.withLock {
+            try {
+                prefs.edit()
+                    .remove(EVENTS_KEY)
+                    .commit()
+
+            } catch (_: Exception) {
+                false
+            }
         }
     }
 
     private fun getEventsInternal(): JSONArray {
-        val jsonString = prefs.getString("events", "[]") ?: "[]"
+        val jsonString =
+            prefs.getString(
+                EVENTS_KEY,
+                "[]"
+            ) ?: "[]"
+
         return try {
             JSONArray(jsonString)
         } catch (_: Exception) {
@@ -76,7 +145,9 @@ class SecurityLogManager(
         }
     }
 
-    private fun eventToJson(event: SecurityEvent): JSONObject {
+    private fun eventToJson(
+        event: SecurityEvent
+    ): JSONObject {
         return JSONObject().apply {
             put("id", event.id)
             put("timestamp", event.timestamp)
@@ -87,14 +158,20 @@ class SecurityLogManager(
         }
     }
 
-    private fun jsonToEvent(json: JSONObject): SecurityEvent {
-        return SecurityEvent(
-            id = json.getString("id"),
-            timestamp = json.getLong("timestamp"),
-            category = json.getString("category"),
-            severity = json.getString("severity"),
-            description = json.getString("description"),
-            source = json.getString("source")
-        )
+    private fun jsonToEvent(
+        json: JSONObject
+    ): SecurityEvent? {
+        return try {
+            SecurityEvent(
+                id = json.getString("id"),
+                timestamp = json.getLong("timestamp"),
+                category = json.getString("category"),
+                severity = json.getString("severity"),
+                description = json.getString("description"),
+                source = json.getString("source")
+            )
+        } catch (_: Exception) {
+            null
+        }
     }
 }
