@@ -1,6 +1,13 @@
+import type { CapacitorConfig } from '@capacitor/cli';
+
 const config: CapacitorConfig = {
-  appId: 'org.securedroid.app',
-  appName: 'SecureDroid',
-  webDir: 'dist',
-  // Make sure there is NO "server: { url: '...' }" block here for standalone builds!
+    appId: 'com.securedroid.app',
+    appName: 'SecureDroid',
+    webDir: 'dist',
+
+    server: {
+        androidScheme: 'https',
+    },
 };
+
+export default config;
