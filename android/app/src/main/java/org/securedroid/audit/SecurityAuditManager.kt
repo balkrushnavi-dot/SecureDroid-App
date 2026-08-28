@@ -47,6 +47,19 @@ class SecurityAuditManager(
         return securityLogManager.clearAll()
     }
 
+    fun clearAll(): Boolean {
+        return securityLogManager.clearAll()
+    }
+
+    fun log(
+        category: String,
+        severity: String,
+        description: String,
+        source: String
+    ): Boolean {
+        return recordEvent(category, severity, description, source)
+    }
+
     fun recordEvent(
         category: String,
         severity: String,

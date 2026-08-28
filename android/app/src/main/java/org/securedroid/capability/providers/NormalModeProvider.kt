@@ -100,14 +100,12 @@ class NormalModeProvider(
         val packageManager = context.packageManager
 
         val canQueryPackages = try {
-            packageManager.getInstalledPackages(
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    PackageManager.PackageInfoFlags.of(0)
-                } else {
-                    @Suppress("DEPRECATION")
-                    0
-                }
-            )
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                packageManager.getInstalledPackages(PackageManager.PackageInfoFlags.of(0L))
+            } else {
+                @Suppress("DEPRECATION")
+                packageManager.getInstalledPackages(0)
+            }
             true
         } catch (_: SecurityException) {
             false

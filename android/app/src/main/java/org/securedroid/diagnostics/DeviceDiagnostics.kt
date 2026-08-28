@@ -98,20 +98,9 @@ class DeviceDiagnostics(
         }
 
         return try {
-            val storageManager =
-                context.getSystemService(
-                    Context.STORAGE_SERVICE
-                ) as? StorageManager
-
-            if (storageManager == null) {
-                false to false
-            } else {
-                @Suppress("DEPRECATION")
-                val encrypted =
-                    storageManager.isEncrypted
-
-                encrypted to true
-            }
+            @Suppress("DEPRECATION")
+            val encrypted = StorageManager.isEncrypted(context.filesDir)
+            encrypted to true
         } catch (_: Exception) {
             false to false
         }

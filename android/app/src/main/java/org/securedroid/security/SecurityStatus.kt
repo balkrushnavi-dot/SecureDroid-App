@@ -14,22 +14,24 @@ enum class SecuritySeverity {
     LOW,
     MEDIUM,
     HIGH,
-    CRITICAL;
+    CRITICAL
 }
 
 data class SecurityCheck(
     val id: String,
     val name: String,
     val status: SecurityStatus,
-    val severity: SecuritySeverity,
+    val severity: SecuritySeverity = SecuritySeverity.INFO,
     val summary: String,
+    val scoreImpact: Int = 0,
     val evidence: String? = null,
+    val limitation: String? = null,
     val remediation: String? = null,
     val isReal: Boolean = true
 )
 
 data class SecurityStatusReport(
-    val timestamp: Long,
+    val timestamp: Long = System.currentTimeMillis(),
     val overallStatus: SecurityStatus,
     val score: Int,
     val checks: List<SecurityCheck>,
@@ -58,3 +60,4 @@ data class SecurityStatusReport(
                         )
             }
 }
+

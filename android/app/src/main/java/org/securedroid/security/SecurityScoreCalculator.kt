@@ -5,133 +5,156 @@ import org.securedroid.apps.AppRiskReport
 import org.securedroid.apps.RiskLevel
 
 /**
+ * Calculates SecureDroid's measurable security score.
+ * 
+ * Important:
+ * - This score only uses evidence available to the application.
+ * - It does not claim kernel, firmware, Verified Boot, SELinux,
+ *   or other system-level security that the app cannot verify.
+ * - Score is normalized to 0..100.
+ */
+object SecurityScoreCalculator {
 
-* Calculates SecureDroid's measurable security score.
+    data class ScoreResult(
+        val score: Int,
+        val grade: String,
+        val reasons: List<String>
+    )
 
-* 
+    fun calculate(
+        hardeningReport: HardeningReport? = null,
+        appRiskReports: List<AppRiskReport> = emptyList(),
+        vpnConnected: Boolean = false
+    ): ScoreResult {
 
-* Important:
+        var score = 100
+        val reasons = mutableListOf<String>()
 
-* - This score only uses evidence available to the application.
+        /*
+         * Device hardening
+         */
+        hardeningReport?.let { report ->
 
-* - It does not claim kernel, firmware, Verified Boot, SELinux,
+            /*
+             * Use the hardening analyzer's measurable score,
+             * but do not subtract the same findings again.
+             */
+            score = report.score.coerceIn(0, 100)
 
-* or other system-level security that the app cannot verify.
+            report.findings
+                .filter { it.level.name == "CRITICAL" }
+                .forEach {
+                    reasons.add(it.summary)
+                }
 
-* - Score is normalized to 0..100.
-    */
-    object SecurityScoreCalculator {
-  
-  data class ScoreResult(
-  val score: Int,
-  val grade: String,
-  val reasons: List<String>
-  )
-  
-  fun calculate(
-  hardeningReport: HardeningReport? = null,
-  appRiskReports: List<AppRiskReport> = emptyList(),
-  vpnConnected: Boolean = false
-  ): ScoreResult {
-  
-   var score = 100
- val reasons = mutableListOf<String>()
+            report.findings
+                .filter { it.level.name == "WARNING" }
+                .forEach {
+                    reasons.add(it.summary)
+                }
+        }
 
- /*
-  * Device hardening
-  */
- hardeningReport?.let { report ->
+        /*
+         * Application risk.
+         *
+         * Do not count every risky app equally.
+         * Multiple low-risk apps should not destroy the score.
+         */
+        val highRiskApps =
+            appRiskReports.count {
+                it.overallRisk == RiskLevel.HIGH
+            }
 
-     /*
-      * Use the hardening analyzer's measurable score,
-      * but do not subtract the same findings again.
-      */
-     score = report.score.coerceIn(0, 100)
+        val mediumRiskApps =
+            appRiskReports.count {
+                it.overallRisk == RiskLevel.MEDIUM
+            }
 
-     report.findings
-         .filter { it.level.name == "CRITICAL" }
-         .forEach {
-             reasons.add(it.summary)
-         }
+        when {
+            highRiskApps > 0 -> {
+                val deduction = (highRiskApps * 8).coerceAtMost(30)
+                score -= deduction
 
-     report.findings
-         .filter { it.level.name == "WARNING" }
-         .forEach {
-             reasons.add(it.summary)
-         }
- }
+                reasons.add(
+                    "$highRiskApps installed app(s) have high assessed risk."
+                )
+            }
 
- /*
-  * Application risk.
-  *
-  * Do not count every risky app equally.
-  * Multiple low-risk apps should not destroy the score.
-  */
- val highRiskApps =
-     appRiskReports.count {
-         it.overallRisk == RiskLevel.HIGH
-     }
+            mediumRiskApps > 0 -> {
+                val deduction = (mediumRiskApps * 3).coerceAtMost(15)
+                score -= deduction
 
- val mediumRiskApps =
-     appRiskReports.count {
-         it.overallRisk == RiskLevel.MEDIUM
-     }
+                reasons.add(
+                    "$mediumRiskApps installed app(s) have medium assessed risk."
+                )
+            }
+        }
 
- when {
-     highRiskApps > 0 -> {
-         val deduction = (highRiskApps * 8).coerceAtMost(30)
-         score -= deduction
+        /*
+         * Application-level VPN protection.
+         *
+         * VPN status is treated as an additional protection signal,
+         * not proof that all traffic is secure.
+         */
+        if (vpnConnected) {
+            reasons.add(
+                "SecureDroid application-level VPN protection is connected."
+            )
+        } else {
+            score -= 10
 
-         reasons.add(
-             "$highRiskApps installed app(s) have high assessed risk."
-         )
-     }
+            reasons.add(
+                "SecureDroid application-level VPN protection is not connected."
+            )
+        }
 
-     mediumRiskApps > 0 -> {
-         val deduction = (mediumRiskApps * 3).coerceAtMost(15)
-         score -= deduction
+        score = score.coerceIn(0, 100)
 
-         reasons.add(
-             "$mediumRiskApps installed app(s) have medium assessed risk."
-         )
-     }
- }
+        return ScoreResult(
+            score = score,
+            grade = gradeFor(score),
+            reasons = reasons.distinct()
+        )
+    }
 
- /*
-  * Application-level VPN protection.
-  *
-  * VPN status is treated as an additional protection signal,
-  * not proof that all traffic is secure.
-  */
- if (vpnConnected) {
-     reasons.add(
-         "SecureDroid application-level VPN protection is connected."
-     )
- } else {
-     score -= 10
+    fun calculate(checks: List<SecurityCheck>): ScoreResult {
+        var score = 100
+        val reasons = mutableListOf<String>()
+        checks.forEach { check ->
+            score += check.scoreImpact
+            if (check.scoreImpact < 0) {
+                reasons.add(check.summary)
+            }
+        }
+        val finalScore = score.coerceIn(0, 100)
+        return ScoreResult(
+            score = finalScore,
+            grade = gradeFor(finalScore),
+            reasons = reasons
+        )
+    }
 
-     reasons.add(
-         "SecureDroid application-level VPN protection is not connected."
-     )
- }
+    fun calculate(status: SecurityStatusReport): Int {
+        return status.score
+    }
 
- score = score.coerceIn(0, 100)
+    fun calculate(report: SecurityReport): Int {
+        return report.score
+    }
 
- return ScoreResult(
-     score = score,
-     grade = gradeFor(score),
-     reasons = reasons.distinct()
- )
-  
-  }
-  
-  private fun gradeFor(score: Int): String {
-  return when {
-  score >= 90 -> "EXCELLENT"
-  score >= 80 -> "GOOD"
-  score >= 70 -> "FAIR"
-  score >= 50 -> "WEAK"
-  else -> "CRITICAL"
-  }
-  }
-  }
+    fun calculate(status: SecurityStatus): Int {
+        return when (status) {
+            SecurityStatus.VERIFIED -> 100
+            SecurityStatus.SUPPORTED -> 85
+            SecurityStatus.UNKNOWN -> 65
+            SecurityStatus.WARNING -> 50
+            SecurityStatus.UNAVAILABLE -> 40
+            SecurityStatus.ERROR -> 20
+        }
+    }
+
+    fun gradeFor(score: Int): String {
+        return SecurityScorePolicy.gradeFor(score)
+    }
+}
+

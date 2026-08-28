@@ -10,9 +10,10 @@ import org.securedroid.privacy.PrivacyMonitor
 import org.securedroid.security.SecurityMonitor
 import org.securedroid.security.SecurityScoreCalculator
 import org.securedroid.security.SecurityStatus
+import org.securedroid.security.SecurityStatusReport
 
 data class SecureDroidSecuritySnapshot(
-    val status: SecurityStatus,
+    val status: SecurityStatusReport,
     val score: Int,
     val appSecurity: Any?,
     val networkSecurity: Any?,
@@ -40,7 +41,7 @@ class SecureDroidSecurityManager(
         SecurityAuditManager(context)
 
     private val scoreCalculator =
-        SecurityScoreCalculator()
+        SecurityScoreCalculator
 
     /**
      * Performs a complete local security assessment.
@@ -100,8 +101,12 @@ class SecureDroidSecurityManager(
     /**
      * Refreshes only the device security status.
      */
-    fun getSecurityStatus(): SecurityStatus {
+    fun getSecurityStatus(): SecurityStatusReport {
         return securityMonitor.getSecurityStatus()
+    }
+
+    fun getSecurityScore(status: SecurityStatusReport): Int {
+        return scoreCalculator.calculate(status)
     }
 
     fun getSecurityScore(status: SecurityStatus): Int {
@@ -183,18 +188,10 @@ class SecureDroidSecurityManager(
     }
 
     private fun calculateScore(
-        status: SecurityStatus,
+        status: SecurityStatusReport,
         appSecurity: Any?,
         networkSecurity: Any?
     ): Int {
-
-        /*
-         * Device score is calculated by the dedicated calculator.
-         *
-         * Application/network findings are intentionally not
-         * converted here through unsafe casts. The calculator
-         * remains the single owner of scoring rules.
-         */
         return try {
             scoreCalculator.calculate(status)
         } catch (_: Exception) {
@@ -202,3 +199,4 @@ class SecureDroidSecurityManager(
         }.coerceIn(0, 100)
     }
 }
+
