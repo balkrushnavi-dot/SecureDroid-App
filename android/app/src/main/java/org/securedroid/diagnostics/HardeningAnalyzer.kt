@@ -1,8 +1,10 @@
 package org.securedroid.diagnostics
 
-import java.time.LocalDate
-import java.time.Period
+import android.content.Context
 import java.time.YearMonth
+import java.time.format.DateTimeFormatter
+import java.time.format.DateTimeParseException
+import java.time.temporal.ChronoUnit
 
 data class HardeningFinding(
     val id: String,
@@ -22,7 +24,7 @@ data class HardeningReport(
 )
 
 class HardeningAnalyzer(
-    private val context: android.content.Context
+    context: Context
 ) {
 
     private val diagnostics =
@@ -37,16 +39,15 @@ class HardeningAnalyzer(
 
         var score = 100
 
-        // ---------------------------------------------------------
-        // Screen lock
-        // ---------------------------------------------------------
-
+        /*
+         * Screen lock
+         */
         if (status.hasScreenLock) {
             findings.add(
                 HardeningFinding(
                     id = "SCREEN_LOCK_ENABLED",
                     level = HardeningLevel.GOOD,
-                    summary = "Screen lock is configured."
+                    summary = "A secure screen lock is configured."
                 )
             )
         } else {
@@ -61,48 +62,9 @@ class HardeningAnalyzer(
             score -= 25
         }
 
-        // ---------------------------------------------------------
-        // Encryption
-        // ---------------------------------------------------------
-
-        when (status.encryptionState) {
-            DiagnosticState.YES -> {
-                findings.add(
-                    HardeningFinding(
-                        id = "DEVICE_ENCRYPTED",
-                        level = HardeningLevel.GOOD,
-                        summary = "Device encryption is reported as active."
-                    )
-                )
-            }
-
-            DiagnosticState.NO -> {
-                findings.add(
-                    HardeningFinding(
-                        id = "DEVICE_NOT_ENCRYPTED",
-                        level = HardeningLevel.CRITICAL,
-                        summary = "Device encryption is reported as inactive."
-                    )
-                )
-
-                score -= 20
-            }
-
-            DiagnosticState.UNKNOWN -> {
-                findings.add(
-                    HardeningFinding(
-                        id = "ENCRYPTION_STATUS_UNKNOWN",
-                        level = HardeningLevel.WARNING,
-                        summary = "Device encryption status could not be reliably verified."
-                    )
-                )
-            }
-        }
-
-        // ---------------------------------------------------------
-        // USB debugging
-        // ---------------------------------------------------------
-
+        /*
+         * USB debugging
+         */
         if (status.usbDebuggingEnabled) {
             findings.add(
                 HardeningFinding(
@@ -123,10 +85,9 @@ class HardeningAnalyzer(
             )
         }
 
-        // ---------------------------------------------------------
-        // Developer options
-        // ---------------------------------------------------------
-
+        /*
+         * Developer options
+         */
         if (status.developerOptionsEnabled) {
             findings.add(
                 HardeningFinding(
@@ -136,7 +97,7 @@ class HardeningAnalyzer(
                 )
             )
 
-            score -= 10
+            score -= 5
         } else {
             findings.add(
                 HardeningFinding(
@@ -147,95 +108,103 @@ class HardeningAnalyzer(
             )
         }
 
-        // ---------------------------------------------------------
-        // Unknown sources
-        // ---------------------------------------------------------
+        /*
+         * Unknown sources
+         *
+         * DeviceDiagnostics deliberately does not claim a
+         * global state on modern Android.
+         */
+        findings.add(
+            HardeningFinding(
+                id = "UNKNOWN_SOURCES_STATUS_UNAVAILABLE",
+                level = HardeningLevel.WARNING,
+                summary = "Global unknown-source installation status cannot be reliably determined by this app on modern Android."
+            )
+        )
 
-        when (status.unknownSourcesState) {
-            DiagnosticState.YES -> {
-                findings.add(
-                    HardeningFinding(
-                        id = "UNKNOWN_SOURCES_ENABLED",
-                        level = HardeningLevel.WARNING,
-                        summary = "Unknown-source installation capability is enabled."
-                    )
-                )
-
-                score -= 10
-            }
-
-            DiagnosticState.NO -> {
-                findings.add(
-                    HardeningFinding(
-                        id = "UNKNOWN_SOURCES_DISABLED",
-                        level = HardeningLevel.GOOD,
-                        summary = "Unknown-source installation capability is restricted."
-                    )
-                )
-            }
-
-            DiagnosticState.UNKNOWN -> {
-                findings.add(
-                    HardeningFinding(
-                        id = "UNKNOWN_SOURCES_STATUS_UNKNOWN",
-                        level = HardeningLevel.WARNING,
-                        summary = "A device-wide unknown-sources status cannot be reliably determined by this app."
-                    )
-                )
-            }
-        }
-
-        // ---------------------------------------------------------
-        // Security patch
-        // ---------------------------------------------------------
-
+        /*
+         * Security patch
+         */
         evaluateSecurityPatch(
             status.securityPatchLevel,
             findings
-        ) { deduction ->
-            score -= deduction
-        }
+        )
 
-        // ---------------------------------------------------------
-        // Biometrics
-        // ---------------------------------------------------------
-
-        if (status.biometricAvailable &&
-            status.biometricEnrolled
-        ) {
+        /*
+         * Encryption
+         *
+         * Unknown != unencrypted.
+         */
+        if (!status.encryptionStatusKnown) {
             findings.add(
                 HardeningFinding(
-                    id = "BIOMETRIC_AVAILABLE",
-                    level = HardeningLevel.GOOD,
-                    summary = "Biometric authentication is available and enrolled."
+                    id = "ENCRYPTION_STATUS_UNKNOWN",
+                    level = HardeningLevel.WARNING,
+                    summary = "Device encryption status could not be verified."
                 )
             )
-        } else if (status.biometricAvailable) {
+        } else if (status.isDeviceEncrypted) {
             findings.add(
                 HardeningFinding(
-                    id = "BIOMETRIC_NOT_ENROLLED",
-                    level = HardeningLevel.WARNING,
-                    summary = "Biometric hardware is available but no biometric is enrolled."
+                    id = "DEVICE_ENCRYPTED",
+                    level = HardeningLevel.GOOD,
+                    summary = "Android reports device storage as encrypted."
                 )
             )
         } else {
             findings.add(
                 HardeningFinding(
-                    id = "BIOMETRIC_UNAVAILABLE",
-                    level = HardeningLevel.WARNING,
-                    summary = "No usable biometric authentication was detected."
+                    id = "DEVICE_NOT_ENCRYPTED",
+                    level = HardeningLevel.CRITICAL,
+                    summary = "Android reports that device storage is not encrypted."
                 )
             )
+
+            score -= 20
         }
 
-        // ---------------------------------------------------------
-        // Android Keystore
-        // ---------------------------------------------------------
+        /*
+         * Biometric authentication
+         */
+        when {
+            status.biometricEnrolled -> {
+                findings.add(
+                    HardeningFinding(
+                        id = "BIOMETRIC_ENROLLED",
+                        level = HardeningLevel.GOOD,
+                        summary = "Biometric authentication is available and enrolled."
+                    )
+                )
+            }
 
+            status.biometricAvailable -> {
+                findings.add(
+                    HardeningFinding(
+                        id = "BIOMETRIC_NOT_ENROLLED",
+                        level = HardeningLevel.WARNING,
+                        summary = "Biometric hardware is available but no supported biometric is enrolled."
+                    )
+                )
+            }
+
+            else -> {
+                findings.add(
+                    HardeningFinding(
+                        id = "BIOMETRIC_UNAVAILABLE",
+                        level = HardeningLevel.WARNING,
+                        summary = "Supported biometric authentication is unavailable."
+                    )
+                )
+            }
+        }
+
+        /*
+         * Android Keystore
+         */
         if (status.keyStoreAvailable) {
             findings.add(
                 HardeningFinding(
-                    id = "ANDROID_KEYSTORE_AVAILABLE",
+                    id = "KEYSTORE_AVAILABLE",
                     level = HardeningLevel.GOOD,
                     summary = "Android Keystore is available."
                 )
@@ -243,7 +212,7 @@ class HardeningAnalyzer(
         } else {
             findings.add(
                 HardeningFinding(
-                    id = "ANDROID_KEYSTORE_UNAVAILABLE",
+                    id = "KEYSTORE_UNAVAILABLE",
                     level = HardeningLevel.CRITICAL,
                     summary = "Android Keystore could not be accessed."
                 )
@@ -252,10 +221,9 @@ class HardeningAnalyzer(
             score -= 20
         }
 
-        // ---------------------------------------------------------
-        // StrongBox
-        // ---------------------------------------------------------
-
+        /*
+         * StrongBox
+         */
         if (status.strongBoxAvailable) {
             findings.add(
                 HardeningFinding(
@@ -269,7 +237,7 @@ class HardeningAnalyzer(
                 HardeningFinding(
                     id = "STRONGBOX_UNAVAILABLE",
                     level = HardeningLevel.WARNING,
-                    summary = "StrongBox-backed key generation was not detected."
+                    summary = "StrongBox-backed key generation could not be verified."
                 )
             )
         }
@@ -282,73 +250,79 @@ class HardeningAnalyzer(
 
     private fun evaluateSecurityPatch(
         patchLevel: String,
-        findings: MutableList<HardeningFinding>,
-        deduct: (Int) -> Unit
+        findings: MutableList<HardeningFinding>
     ) {
-        if (patchLevel.isBlank() ||
-            patchLevel.startsWith("1970")
-        ) {
+        if (patchLevel.isBlank()) {
             findings.add(
                 HardeningFinding(
                     id = "PATCH_DATE_UNKNOWN",
                     level = HardeningLevel.WARNING,
-                    summary = "Security patch level could not be determined."
+                    summary = "Android security patch level is unavailable."
                 )
             )
-
             return
         }
 
-        val patchDate =
+        val patch =
             try {
-                LocalDate.parse(
-                    "$patchLevel-01"
+                YearMonth.parse(
+                    patchLevel,
+                    DateTimeFormatter.ofPattern("yyyy-MM")
                 )
-            } catch (_: Exception) {
-                try {
-                    YearMonth.parse(patchLevel)
-                        .atDay(1)
-                } catch (_: Exception) {
-                    null
-                }
+            } catch (_: DateTimeParseException) {
+                null
             }
 
-        if (patchDate == null) {
+        if (patch == null) {
             findings.add(
                 HardeningFinding(
                     id = "PATCH_DATE_INVALID",
                     level = HardeningLevel.WARNING,
-                    summary = "Security patch level format is not recognized: $patchLevel"
+                    summary = "Android reported an unrecognized security patch level: $patchLevel"
                 )
             )
-
             return
         }
 
-        findings.add(
-            HardeningFinding(
-                id = "SECURITY_PATCH_DETECTED",
-                level = HardeningLevel.GOOD,
-                summary = "Security patch level: $patchLevel"
+        val current =
+            YearMonth.now()
+
+        val age =
+            ChronoUnit.MONTHS.between(
+                patch,
+                current
             )
-        )
 
-        val monthsOld =
-            Period.between(
-                patchDate,
-                LocalDate.now()
-            ).toTotalMonths()
-
-        if (monthsOld >= 6) {
-            deduct(15)
-
-            findings.add(
-                HardeningFinding(
-                    id = "STALE_SECURITY_PATCH",
-                    level = HardeningLevel.WARNING,
-                    summary = "Security patch is approximately $monthsOld months old."
+        when {
+            age <= 6 -> {
+                findings.add(
+                    HardeningFinding(
+                        id = "SECURITY_PATCH_CURRENT",
+                        level = HardeningLevel.GOOD,
+                        summary = "Security patch level: $patchLevel"
+                    )
                 )
-            )
+            }
+
+            age <= 12 -> {
+                findings.add(
+                    HardeningFinding(
+                        id = "SECURITY_PATCH_AGING",
+                        level = HardeningLevel.WARNING,
+                        summary = "Security patch is approximately $age months old ($patchLevel)."
+                    )
+                )
+            }
+
+            else -> {
+                findings.add(
+                    HardeningFinding(
+                        id = "STALE_SECURITY_PATCH",
+                        level = HardeningLevel.WARNING,
+                        summary = "Security patch is approximately $age months old ($patchLevel). Update Android if an update is available."
+                    )
+                )
+            }
         }
     }
 }
