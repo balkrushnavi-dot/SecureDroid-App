@@ -214,7 +214,7 @@ export const AppSecurityAuditorScreen: React.FC<AppSecurityAuditorScreenProps> =
                         <SecureDroidSearchBar
                             value={searchQuery}
                             onChange={setSearchQuery}
-                            placeholder="Search apps..."
+                            placeholder="Search installed apps by name or package..."
                             isLight={isLight}
                             onClear={() => setSearchQuery('')}
                         />
@@ -236,14 +236,34 @@ export const AppSecurityAuditorScreen: React.FC<AppSecurityAuditorScreenProps> =
                     </div>
                 </div>
 
+                {searchQuery && (
+                    <div className="flex items-center justify-between text-xs text-slate-400 px-1">
+                        <span>Showing {filteredApps.length} of {userApps.length} applications</span>
+                        <button
+                            onClick={() => setSearchQuery('')}
+                            className="text-cyan-400 hover:text-cyan-300 transition-colors text-[11px]"
+                        >
+                            Reset filter
+                        </button>
+                    </div>
+                )}
+
                 {/* App List */}
                 <div className="space-y-2.5">
                     {filteredApps.length === 0 ? (
-                        <div className="p-8 text-center">
-                            <Package className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-                            <p className="text-slate-400">No apps found</p>
+                        <div className="p-8 text-center space-y-3 bg-slate-900/40 rounded-2xl border border-slate-800/60">
+                            <Package className="w-10 h-10 text-slate-600 mx-auto" />
+                            <div>
+                                <p className="text-sm font-semibold text-slate-200">No applications match "{searchQuery}"</p>
+                                <p className="text-xs text-slate-400 mt-1">Try checking for typos or clear your search query.</p>
+                            </div>
                             {searchQuery && (
-                                <p className="text-sm text-slate-500">Try adjusting your search</p>
+                                <button
+                                    onClick={() => setSearchQuery('')}
+                                    className="px-4 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 border border-slate-700 transition-colors inline-block"
+                                >
+                                    Clear search
+                                </button>
                             )}
                         </div>
                     ) : (

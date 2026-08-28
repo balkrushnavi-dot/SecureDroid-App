@@ -2,7 +2,7 @@ package org.securedroid.capability
 
 import android.content.Context
 import org.securedroid.capability.providers.AndroidCapabilityProvider
-import org.securedroid.capability.providers.CapabilityProvider
+import org.securedroid.capability.providers.ICapabilityProvider
 import org.securedroid.capability.providers.ManagedDeviceProvider
 import org.securedroid.capability.providers.NormalModeProvider
 
@@ -10,13 +10,13 @@ class CapabilityEngine(
     private val context: Context
 ) {
 
-    private val androidProvider: CapabilityProvider =
+    private val androidProvider: ICapabilityProvider =
         AndroidCapabilityProvider(context)
 
-    private val normalModeProvider: CapabilityProvider =
+    private val normalModeProvider: ICapabilityProvider =
         NormalModeProvider(context)
 
-    private val managedDeviceProvider: CapabilityProvider =
+    private val managedDeviceProvider: ICapabilityProvider =
         ManagedDeviceProvider(context)
 
     fun detect(): CapabilitySnapshot {
@@ -75,7 +75,7 @@ class CapabilityEngine(
     }
 
     private fun safelyEvaluate(
-        provider: CapabilityProvider
+        provider: ICapabilityProvider
     ): List<Capability> {
 
         return try {
@@ -175,7 +175,7 @@ class CapabilityEngine(
     }
 
     private fun createProviderErrorCapability(
-        provider: CapabilityProvider,
+        provider: ICapabilityProvider,
         reason: String
     ): Capability {
 
@@ -212,7 +212,7 @@ class CapabilityEngine(
     }
 }
 
-private fun CapabilityProvider.getModeSafely(): SecureDroidMode {
+private fun ICapabilityProvider.getModeSafely(): SecureDroidMode {
 
     return when (this) {
 

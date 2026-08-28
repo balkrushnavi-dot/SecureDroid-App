@@ -16,7 +16,7 @@ import org.securedroid.vpn.VpnStateStore
 
 class NormalModeProvider(
     private val context: Context
-) : CapabilityProvider {
+) : ICapabilityProvider {
 
     override val id: String = "normal_mode"
     override val name: String = "Normal Mode Provider"

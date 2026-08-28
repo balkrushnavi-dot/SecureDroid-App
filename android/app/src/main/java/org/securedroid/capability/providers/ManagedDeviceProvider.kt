@@ -1,9 +1,17 @@
-package org.securedroid.capability
+package org.securedroid.capability.providers
 
 import android.app.admin.DevicePolicyManager
 import android.content.Context
 import android.os.Build
 import android.os.UserManager
+import org.securedroid.capability.Capability
+import org.securedroid.capability.CapabilityCategory
+import org.securedroid.capability.CapabilityIds
+import org.securedroid.capability.CapabilityProvider
+import org.securedroid.capability.CapabilityState
+import org.securedroid.capability.ImplementationLayer
+import org.securedroid.capability.RequiredPrivilege
+import org.securedroid.capability.SecureDroidMode
 
 /**
  * Detects capabilities that depend on Android Enterprise management
@@ -15,7 +23,7 @@ import android.os.UserManager
  */
 class ManagedDeviceProvider(
     private val context: Context
-) : org.securedroid.capability.providers.CapabilityProvider {
+) : ICapabilityProvider {
 
     override val id: String = "managed_device"
 
@@ -28,6 +36,17 @@ class ManagedDeviceProvider(
     private val userManager: UserManager? =
         context.getSystemService(Context.USER_SERVICE)
             as? UserManager
+
+    fun getMode(): SecureDroidMode {
+        val dpm = devicePolicyManager ?: return SecureDroidMode.NORMAL
+        if (detectDeviceOwner(dpm)) {
+            return SecureDroidMode.DEVICE_OWNER
+        }
+        if (detectProfileOwner(dpm)) {
+            return SecureDroidMode.MANAGED_PROFILE
+        }
+        return SecureDroidMode.NORMAL
+    }
 
     override fun getCapabilities(): List<Capability> {
 

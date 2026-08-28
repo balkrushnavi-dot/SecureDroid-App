@@ -21,7 +21,7 @@ import org.securedroid.capability.RequiredPrivilege
 
 class AndroidCapabilityProvider(
     private val context: Context
-) : CapabilityProvider {
+) : ICapabilityProvider {
 
     override val id: String = "android"
     override val name: String = "Android Capability Provider"

@@ -16,7 +16,7 @@ import org.securedroid.capability.Capability
 
 * Providers must never fabricate security capabilities.
   */
-  interface CapabilityProvider {
+  interface ICapabilityProvider {
   
   /**
   
