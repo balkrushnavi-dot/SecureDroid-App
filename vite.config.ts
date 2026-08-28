@@ -1,28 +1,29 @@
-import tailwindcss from '@tailwindcss/vite';
-import react from '@vitejs/plugin-react';
-import path from 'path';
 import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import { fileURLToPath, URL } from 'node:url';
 
-export default defineConfig(() => {
-  return {
-    plugins: [react(), tailwindcss()],
+export default defineConfig({
+    plugins: [react()],
+
     resolve: {
-      alias: {
-        '@': path.resolve(__dirname, '.'),
-      },
+        alias: {
+            '@': fileURLToPath(new URL('./src', import.meta.url)),
+        },
     },
-    // ✅ ADD THIS: Build configuration
-    build: {
-      outDir: 'dist',  // This must match webDir in capacitor.config.json
-      emptyOutDir: true,
-      sourcemap: false,
-    },
+
     server: {
-      // HMR is disabled in AI Studio via DISABLE_HMR env var.
-      // Do not modify—file watching is disabled to prevent flickering during agent edits.
-      hmr: process.env.DISABLE_HMR !== 'true',
-      // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
-      watch: process.env.DISABLE_HMR === 'true' ? null : {},
+        port: 5173,
+        host: true,
     },
-  };
+
+    build: {
+        sourcemap: true,
+        rollupOptions: {
+            output: {
+                manualChunks: {
+                    vendor: ['react', 'react-dom'],
+                },
+            },
+        },
+    },
 });
