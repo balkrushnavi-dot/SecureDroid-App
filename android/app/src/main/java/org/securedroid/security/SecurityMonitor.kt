@@ -100,24 +100,22 @@ class SecurityMonitor(
     }
 
     private fun checkDeviceEncryption(): SecurityCheck {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
-            return SecurityCheck(
+        val dpm = appContext.getSystemService(Context.DEVICE_POLICY_SERVICE) as? DevicePolicyManager
+            ?: return SecurityCheck(
                 id = "device_encryption",
                 name = "Storage Encryption",
                 status = SecurityStatus.UNKNOWN,
                 severity = SecuritySeverity.MEDIUM,
-                summary = "Device encryption could not be determined on this Android version.",
+                summary = "Device encryption could not be determined.",
                 scoreImpact = 0,
-                evidence = "Requires Android 7.0+"
+                evidence = "DevicePolicyManager is unavailable."
             )
-        }
 
         return try {
-            val dpm = appContext.getSystemService(Context.DEVICE_POLICY_SERVICE) as? DevicePolicyManager
-            val status = dpm?.storageEncryptionStatus ?: DevicePolicyManager.ENCRYPTION_STATUS_UNSUPPORTED
-            val isEncrypted = status == DevicePolicyManager.ENCRYPTION_STATUS_ACTIVE ||
-                    status == DevicePolicyManager.ENCRYPTION_STATUS_ACTIVE_DEFAULT_KEY ||
-                    status == DevicePolicyManager.ENCRYPTION_STATUS_ACTIVE_PER_USER
+            val encStatus = dpm.storageEncryptionStatus
+            val isEncrypted = encStatus == DevicePolicyManager.ENCRYPTION_STATUS_ACTIVE ||
+                    encStatus == DevicePolicyManager.ENCRYPTION_STATUS_ACTIVE_DEFAULT_KEY ||
+                    encStatus == DevicePolicyManager.ENCRYPTION_STATUS_ACTIVE_PER_USER
 
             if (isEncrypted) {
                 SecurityCheck(
@@ -127,9 +125,9 @@ class SecurityMonitor(
                     severity = SecuritySeverity.INFO,
                     summary = "Device storage is encrypted.",
                     scoreImpact = 0,
-                    evidence = "DevicePolicyManager reports active storage encryption."
+                    evidence = "DevicePolicyManager reports storage encryption active ($encStatus)."
                 )
-            } else if (status == DevicePolicyManager.ENCRYPTION_STATUS_INACTIVE) {
+            } else if (encStatus == DevicePolicyManager.ENCRYPTION_STATUS_INACTIVE) {
                 SecurityCheck(
                     id = "device_encryption",
                     name = "Storage Encryption",
@@ -137,7 +135,7 @@ class SecurityMonitor(
                     severity = SecuritySeverity.CRITICAL,
                     summary = "Device storage is reported as unencrypted.",
                     scoreImpact = -20,
-                    evidence = "DevicePolicyManager reports storage encryption is inactive.",
+                    evidence = "DevicePolicyManager reports encryption status INACTIVE ($encStatus).",
                     remediation = "Enable device encryption in Android Settings."
                 )
             } else {
@@ -146,9 +144,9 @@ class SecurityMonitor(
                     name = "Storage Encryption",
                     status = SecurityStatus.UNKNOWN,
                     severity = SecuritySeverity.MEDIUM,
-                    summary = "Device storage encryption status could not be determined.",
+                    summary = "Storage encryption state could not be confirmed.",
                     scoreImpact = 0,
-                    evidence = "DevicePolicyManager storageEncryptionStatus: $status"
+                    evidence = "DevicePolicyManager reports encryption status code $encStatus."
                 )
             }
         } catch (e: Exception) {
