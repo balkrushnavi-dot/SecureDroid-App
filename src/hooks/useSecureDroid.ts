@@ -57,8 +57,7 @@ export const useSecureDroid = () => {
       const appList = appsResult.data;
       setApps(appList);
 
-      // 3. Get risk reports (using scanForRisks or getAppRiskReports – scanForRisks includes totalRiskyApps)
-      // We'll use getAppRiskReports for consistent structure.
+      // 3. Get risk reports
       const riskResult = await SecureDroidNative.getAppRiskReports();
       const allRiskDetails = riskResult.success && riskResult.data
         ? riskResult.data.map((report: NativeAppRiskReport) => ({
@@ -66,11 +65,11 @@ export const useSecureDroid = () => {
             packageName: report.packageName,
             riskLevel: report.overallRisk,
             findings: report.findings,
-            isSystemApp: false, // not directly known; we'll cross-reference
+            isSystemApp: false,
           }))
         : [];
 
-      // Filter out system apps using the app list
+      // Filter out system apps
       const userAppPackageNames = new Set(
         appList.filter(app => !app.isSystemApp).map(app => app.packageName)
       );
@@ -78,7 +77,7 @@ export const useSecureDroid = () => {
         userAppPackageNames.has(risk.packageName)
       );
 
-      // Keep only MEDIUM/HIGH/CRITICAL for display
+      // Keep only MEDIUM/HIGH/CRITICAL
       const meaningfulRisks = userAppRisks.filter(risk =>
         ['MEDIUM', 'HIGH', 'CRITICAL'].includes(risk.riskLevel.toUpperCase())
       );
@@ -91,21 +90,16 @@ export const useSecureDroid = () => {
         deviceScore = hardeningResult.data.score;
         setHardeningFindings(hardeningResult.data.findings || []);
       } else {
-        // If hardening report fails, set score to -1 to indicate unknown.
-        deviceScore = -1;
+        deviceScore = -1; // unknown
         setHardeningFindings([]);
       }
 
       // Use hardening score as the primary security score
-      // If unknown, keep 0 but indicate with a flag (we can later add a separate state)
       if (deviceScore >= 0) {
         setScore(deviceScore);
       } else {
-        setScore(0);
-        // Optionally set a flag for UI to show "Unknown"
+        setScore(0); // fallback to 0 with unknown state
       }
-
-      // Optionally, we could combine hardening score with app risks, but we keep it separate for clarity.
 
     } catch (err: unknown) {
       console.error('SecureDroid data load failed:', err);
