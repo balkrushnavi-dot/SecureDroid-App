@@ -930,6 +930,146 @@ class SecureDroidNativeService {
   }
 
   // ============================================================
+  // DOMAIN BLOCKLIST & ALLOWLIST
+  // ============================================================
+
+  async getBlockedDomains(): Promise<
+    NativeResult<{
+      blockedDomains: string[];
+      allowedDomains: string[];
+    }>
+  > {
+    if (!this.isNative) {
+      return {
+        success: true,
+        data: {
+          blockedDomains: ['ads.example.com', 'tracker.example.com'],
+          allowedDomains: [],
+        },
+        isSupported: false,
+        runtimePlatform: 'web_preview',
+      };
+    }
+
+    try {
+      const raw = await SecureDroidNativePlugin.getBlockedDomains();
+
+      if (!raw || raw.success === false) {
+        return {
+          success: false,
+          errorCode: raw?.errorCode || 'SERVICE_UNAVAILABLE',
+          message: raw?.message || 'Domain blocklists are unavailable.',
+          isSupported: true,
+          runtimePlatform: 'android_native',
+        };
+      }
+
+      const data = raw.data || raw;
+      const blockedDomains = Array.isArray(data.blockedDomains) ? data.blockedDomains : [];
+      const allowedDomains = Array.isArray(data.allowedDomains) ? data.allowedDomains : [];
+
+      return {
+        success: true,
+        data: {
+          blockedDomains,
+          allowedDomains,
+        },
+        isSupported: true,
+        runtimePlatform: 'android_native',
+      };
+    } catch (error: any) {
+      console.error('[SecureDroid] getBlockedDomains failed:', error);
+      return {
+        success: false,
+        errorCode: 'SERVICE_UNAVAILABLE',
+        message: error?.message || 'Domain blocklists are unavailable.',
+        isSupported: false,
+        runtimePlatform: 'android_native',
+      };
+    }
+  }
+
+  async addBlockedDomain(domain: string): Promise<NativeResult<boolean>> {
+    if (!this.isNative) {
+      return { success: true, data: true, isSupported: false, runtimePlatform: 'web_preview' };
+    }
+
+    try {
+      const raw = await SecureDroidNativePlugin.addBlockedDomain({ domain });
+      return {
+        success: !!raw?.success,
+        data: !!raw?.added,
+        message: raw?.message,
+        isSupported: true,
+        runtimePlatform: 'android_native',
+      };
+    } catch (error: any) {
+      console.error('[SecureDroid] addBlockedDomain failed:', error);
+      return { success: false, errorCode: 'SERVICE_UNAVAILABLE', message: error?.message, isSupported: false, runtimePlatform: 'android_native' };
+    }
+  }
+
+  async removeBlockedDomain(domain: string): Promise<NativeResult<boolean>> {
+    if (!this.isNative) {
+      return { success: true, data: true, isSupported: false, runtimePlatform: 'web_preview' };
+    }
+
+    try {
+      const raw = await SecureDroidNativePlugin.removeBlockedDomain({ domain });
+      return {
+        success: !!raw?.success,
+        data: !!raw?.removed,
+        message: raw?.message,
+        isSupported: true,
+        runtimePlatform: 'android_native',
+      };
+    } catch (error: any) {
+      console.error('[SecureDroid] removeBlockedDomain failed:', error);
+      return { success: false, errorCode: 'SERVICE_UNAVAILABLE', message: error?.message, isSupported: false, runtimePlatform: 'android_native' };
+    }
+  }
+
+  async addAllowedDomain(domain: string): Promise<NativeResult<boolean>> {
+    if (!this.isNative) {
+      return { success: true, data: true, isSupported: false, runtimePlatform: 'web_preview' };
+    }
+
+    try {
+      const raw = await SecureDroidNativePlugin.addAllowedDomain({ domain });
+      return {
+        success: !!raw?.success,
+        data: !!raw?.added,
+        message: raw?.message,
+        isSupported: true,
+        runtimePlatform: 'android_native',
+      };
+    } catch (error: any) {
+      console.error('[SecureDroid] addAllowedDomain failed:', error);
+      return { success: false, errorCode: 'SERVICE_UNAVAILABLE', message: error?.message, isSupported: false, runtimePlatform: 'android_native' };
+    }
+  }
+
+  async removeAllowedDomain(domain: string): Promise<NativeResult<boolean>> {
+    if (!this.isNative) {
+      return { success: true, data: true, isSupported: false, runtimePlatform: 'web_preview' };
+    }
+
+    try {
+      const raw = await SecureDroidNativePlugin.removeAllowedDomain({ domain });
+      return {
+        success: !!raw?.success,
+        data: !!raw?.removed,
+        message: raw?.message,
+        isSupported: true,
+        runtimePlatform: 'android_native',
+      };
+    } catch (error: any) {
+      console.error('[SecureDroid] removeAllowedDomain failed:', error);
+      return { success: false, errorCode: 'SERVICE_UNAVAILABLE', message: error?.message, isSupported: false, runtimePlatform: 'android_native' };
+    }
+  }
+
+  // ============================================================
   // SECURITY AUDIT LOGS
   // ============================================================
 
