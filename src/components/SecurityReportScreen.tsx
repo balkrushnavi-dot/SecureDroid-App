@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
     FileText,
     Download,
@@ -16,9 +16,6 @@ import {
     TrendingUp,
     TrendingDown,
     Activity,
-    BarChart,
-    PieChart,
-    Zap,
     RefreshCw,
     Info,
     Eye,
@@ -31,63 +28,153 @@ import {
     Globe,
     Mail,
     Printer,
-    FileSpreadsheet
+    FileSpreadsheet,
 } from 'lucide-react';
 import {
     SecureDroidTopBar,
     SecureDroidCard,
     SecureDroidSectionHeader,
     SecureDroidStatusChip,
-    SecureDroidButton
+    SecureDroidButton,
 } from './ui/designSystem';
-import { ProgressBar, ScoreRing } from './ui/animations';
+import { ProgressBar } from './ui/animations';
+import { useSecureDroid } from '../hooks/useSecureDroid';
+import { SecureDroidNative } from '../services/native/SecureDroidNative';
 
 interface SecurityReportScreenProps {
     onBack: () => void;
     isLight?: boolean;
 }
 
-interface ReportMetric {
-    id: string;
-    label: string;
-    value: number;
-    max: number;
-    color: string;
-    trend: 'up' | 'down' | 'stable';
+type TimeRange = 'week' | 'month' | 'all';
+
+// Helper to get date range
+function getDateRange(range: TimeRange): { start: number; end: number } {
+    const now = Date.now();
+    let start: number;
+    switch (range) {
+        case 'week':
+            start = now - 7 * 24 * 60 * 60 * 1000;
+            break;
+        case 'month':
+            start = now - 30 * 24 * 60 * 60 * 1000;
+            break;
+        case 'all':
+        default:
+            start = 0;
+            break;
+    }
+    return { start, end: now };
 }
 
 export const SecurityReportScreen: React.FC<SecurityReportScreenProps> = ({
     onBack,
     isLight = false,
 }) => {
-    const [timeRange, setTimeRange] = useState<'week' | 'month' | 'all'>('week');
+    const { apps, risks, score, hardeningFindings, loading, connected, reload } = useSecureDroid();
+    const [timeRange, setTimeRange] = useState<TimeRange>('week');
+    const [securityEvents, setSecurityEvents] = useState<any[]>([]);
+    const [loadingEvents, setLoadingEvents] = useState(false);
+    const [eventError, setEventError] = useState<string | null>(null);
 
-    const metrics: ReportMetric[] = [
-        { id: 'device', label: 'Device Security', value: 92, max: 100, color: 'text-emerald-400', trend: 'up' },
-        { id: 'apps', label: 'App Security', value: 78, max: 100, color: 'text-amber-400', trend: 'stable' },
-        { id: 'privacy', label: 'Privacy Score', value: 65, max: 100, color: 'text-amber-400', trend: 'down' },
-        { id: 'network', label: 'Network Protection', value: 85, max: 100, color: 'text-emerald-400', trend: 'up' },
-    ];
+    // Fetch security logs
+    const loadSecurityEvents = async () => {
+        if (!connected) return;
+        setLoadingEvents(true);
+        setEventError(null);
+        try {
+            const result = await SecureDroidNative.getSecurityLogs(100); // get last 100 events
+            if (result.success && result.data) {
+                setSecurityEvents(result.data);
+            } else {
+                setEventError(result.message || 'Could not load security logs');
+            }
+        } catch (err) {
+            setEventError(err instanceof Error ? err.message : 'Error loading security logs');
+        } finally {
+            setLoadingEvents(false);
+        }
+    };
 
-    const recentEvents = [
-        { id: 1, time: '2 hours ago', event: 'VPN connected', status: 'secure' },
-        { id: 2, time: '4 hours ago', event: 'App scan completed', status: 'secure' },
-        { id: 3, time: '1 day ago', event: 'High-risk app detected: Unknown Installer', status: 'warning' },
-        { id: 4, time: '2 days ago', event: 'Security patch updated', status: 'secure' },
-        { id: 5, time: '3 days ago', event: 'Privacy scan found tracking SDKs', status: 'warning' },
-    ];
+    useEffect(() => {
+        loadSecurityEvents();
+    }, [connected]);
 
-    const recommendations = [
-        { id: 1, text: 'Review app permissions for high-risk apps', priority: 'high' },
-        { id: 2, text: 'Update 3 apps with legacy target SDK', priority: 'medium' },
-        { id: 3, text: 'Enable USB debugging protection', priority: 'low' },
-    ];
+    // Filter events by time range
+    const filteredEvents = useMemo(() => {
+        const { start, end } = getDateRange(timeRange);
+        return securityEvents.filter(e => e.timestamp >= start && e.timestamp <= end);
+    }, [securityEvents, timeRange]);
+
+    // Compute metrics
+    const highRiskCount = risks.filter(r => r.riskLevel === 'HIGH' || r.riskLevel === 'CRITICAL').length;
+    const mediumRiskCount = risks.filter(r => r.riskLevel === 'MEDIUM').length;
+    const lowRiskCount = risks.filter(r => r.riskLevel === 'LOW').length;
+
+    // Device security issues from hardening findings
+    const deviceIssues = hardeningFindings.filter(f => f.level === 'WARNING' || f.level === 'CRITICAL').length;
+
+    // Recent event counts
+    const eventCounts = filteredEvents.reduce((acc, e) => {
+        const cat = e.category || 'AUDIT';
+        acc[cat] = (acc[cat] || 0) + 1;
+        return acc;
+    }, {} as Record<string, number>);
+
+    // Recommendations based on current state
+    const recommendations = useMemo(() => {
+        const recs: { id: string; text: string; priority: 'high' | 'medium' | 'low' }[] = [];
+        if (highRiskCount > 0) {
+            recs.push({
+                id: 'rec-high-risk',
+                text: `Review ${highRiskCount} app${highRiskCount > 1 ? 's' : ''} with high-risk permissions`,
+                priority: 'high',
+            });
+        }
+        if (deviceIssues > 0) {
+            recs.push({
+                id: 'rec-device',
+                text: `Address ${deviceIssues} device security issue${deviceIssues > 1 ? 's' : ''}`,
+                priority: 'high',
+            });
+        }
+        if (score < 50) {
+            recs.push({
+                id: 'rec-low-score',
+                text: 'Improve overall device security score by checking screen lock, encryption, and security patches',
+                priority: 'high',
+            });
+        }
+        if (mediumRiskCount > 0) {
+            recs.push({
+                id: 'rec-medium',
+                text: `Review ${mediumRiskCount} app${mediumRiskCount > 1 ? 's' : ''} with medium-risk permissions`,
+                priority: 'medium',
+            });
+        }
+        if (recs.length === 0) {
+            recs.push({
+                id: 'rec-clean',
+                text: 'Your device is in good shape — continue monitoring regularly',
+                priority: 'low',
+            });
+        }
+        return recs;
+    }, [highRiskCount, mediumRiskCount, deviceIssues, score]);
+
+    // Calculate security score breakdown
+    const scoreBreakdown = {
+        deviceSecurity: score,
+        appSecurity: 100 - (highRiskCount * 5 + mediumRiskCount * 2),
+        privacyScore: 100 - (risks.filter(r => r.riskLevel === 'HIGH' || r.riskLevel === 'CRITICAL').length * 8),
+        networkProtection: 0, // not currently available, could be VPN status
+    };
 
     return (
         <div className={`min-h-full pb-24 transition-colors ${isLight ? 'bg-zinc-50' : 'bg-slate-950'}`}>
             <SecureDroidTopBar
                 title="Security Report"
-                subtitle="Weekly security summary"
+                subtitle="Comprehensive security summary"
                 onBack={onBack}
                 isLight={isLight}
             />
@@ -109,10 +196,11 @@ export const SecurityReportScreen: React.FC<SecurityReportScreenProps> = ({
                         <button
                             key={range}
                             onClick={() => setTimeRange(range)}
-                            className={`flex-1 py-2 rounded-xl text-xs font-medium transition-all ${timeRange === range
+                            className={`flex-1 py-2 rounded-xl text-xs font-medium transition-all ${
+                                timeRange === range
                                     ? 'bg-sky-500/20 text-sky-400 border border-sky-500/30'
                                     : 'bg-slate-800/50 text-slate-400 border border-slate-800 hover:border-slate-600'
-                                }`}
+                            }`}
                         >
                             {range.charAt(0).toUpperCase() + range.slice(1)}
                         </button>
@@ -123,81 +211,123 @@ export const SecurityReportScreen: React.FC<SecurityReportScreenProps> = ({
                 <div className="bg-gradient-to-br from-slate-900 to-slate-800/50 p-6 rounded-2xl border border-slate-700/50">
                     <div className="flex items-center gap-6">
                         <div className="relative">
-                            <ScoreRing value={79} size={100} strokeWidth={8} />
-                            <div className="absolute inset-0 flex items-center justify-center">
-                                <div className="text-center">
-                                    <div className="text-2xl font-bold text-slate-100">79</div>
-                                    <div className="text-[10px] text-slate-500 uppercase">Overall</div>
-                                </div>
+                            <div className="w-24 h-24 rounded-full border-8 border-slate-700/50 flex items-center justify-center">
+                                <span className={`text-3xl font-bold ${score >= 70 ? 'text-emerald-400' : score >= 40 ? 'text-amber-400' : 'text-red-400'}`}>
+                                    {score}
+                                </span>
                             </div>
                         </div>
                         <div className="flex-1">
-                            <div className="text-sm text-slate-400">Security Status</div>
+                            <div className="text-sm text-slate-400">Overall Security Status</div>
                             <div className="flex items-center gap-2 mt-1">
-                                <Shield className="w-5 h-5 text-amber-400" />
-                                <span className="text-lg font-semibold text-amber-400">Good</span>
+                                {score >= 70 ? (
+                                    <ShieldCheck className="w-5 h-5 text-emerald-400" />
+                                ) : score >= 40 ? (
+                                    <Shield className="w-5 h-5 text-amber-400" />
+                                ) : (
+                                    <ShieldOff className="w-5 h-5 text-red-400" />
+                                )}
+                                <span className={`text-lg font-semibold ${score >= 70 ? 'text-emerald-400' : score >= 40 ? 'text-amber-400' : 'text-red-400'}`}>
+                                    {score >= 70 ? 'Good' : score >= 40 ? 'Fair' : 'Poor'}
+                                </span>
                             </div>
-                            <div className="text-xs text-slate-400 mt-2">
-                                {metrics.filter(m => m.value < 70).length} areas need attention
+                            <div className="text-xs text-slate-400 mt-1">
+                                Based on device security posture and app risks
                             </div>
                         </div>
                     </div>
                 </div>
 
-                {/* Metrics */}
-                <SecureDroidSectionHeader title="Security Metrics" />
-
+                {/* Score Breakdown */}
+                <SecureDroidSectionHeader title="Score Breakdown" />
                 <div className="space-y-3">
-                    {metrics.map((metric) => (
-                        <div key={metric.id} className="bg-slate-900/50 p-4 rounded-2xl border border-slate-800">
-                            <div className="flex items-center justify-between mb-2">
-                                <span className="text-sm font-medium text-slate-200">{metric.label}</span>
-                                <div className="flex items-center gap-2">
-                                    <span className={`text-sm font-bold ${metric.color}`}>{metric.value}%</span>
-                                    {metric.trend === 'up' && <TrendingUp className="w-4 h-4 text-emerald-400" />}
-                                    {metric.trend === 'down' && <TrendingDown className="w-4 h-4 text-red-400" />}
-                                    {metric.trend === 'stable' && <Activity className="w-4 h-4 text-amber-400" />}
-                                </div>
+                    {Object.entries(scoreBreakdown).map(([key, value]) => (
+                        <div key={key} className="bg-slate-900/50 p-3 rounded-xl border border-slate-800">
+                            <div className="flex justify-between items-center mb-1">
+                                <span className="text-sm text-slate-400 capitalize">
+                                    {key.replace(/([A-Z])/g, ' $1').trim()}
+                                </span>
+                                <span className={`text-sm font-bold ${value >= 70 ? 'text-emerald-400' : value >= 40 ? 'text-amber-400' : 'text-red-400'}`}>
+                                    {value}%
+                                </span>
                             </div>
-                            <ProgressBar value={metric.value} max={metric.max} showLabel={false} />
+                            <ProgressBar value={value} max={100} showLabel={false} />
                         </div>
                     ))}
                 </div>
 
+                {/* Key Metrics */}
+                <SecureDroidSectionHeader title="Key Metrics" />
+                <div className="grid grid-cols-2 gap-2">
+                    <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-800 text-center">
+                        <div className="text-lg font-bold text-slate-100">{apps.length}</div>
+                        <div className="text-[10px] text-slate-500 uppercase tracking-wider">Total Apps</div>
+                    </div>
+                    <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-800 text-center">
+                        <div className={`text-lg font-bold ${risks.length > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                            {risks.length}
+                        </div>
+                        <div className="text-[10px] text-slate-500 uppercase tracking-wider">Risks Found</div>
+                    </div>
+                    <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-800 text-center">
+                        <div className="text-lg font-bold text-slate-100">{hardeningFindings.length}</div>
+                        <div className="text-[10px] text-slate-500 uppercase tracking-wider">Device Checks</div>
+                    </div>
+                    <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-800 text-center">
+                        <div className="text-lg font-bold text-slate-100">{filteredEvents.length}</div>
+                        <div className="text-[10px] text-slate-500 uppercase tracking-wider">Events ({timeRange})</div>
+                    </div>
+                </div>
+
                 {/* Recent Activity */}
                 <SecureDroidSectionHeader title="Recent Activity" />
-
                 <div className="bg-slate-900/50 p-4 rounded-2xl border border-slate-800">
-                    <div className="space-y-3">
-                        {recentEvents.map((event) => (
-                            <div key={event.id} className="flex items-center gap-3">
-                                <div className={`w-2 h-2 rounded-full ${event.status === 'secure' ? 'bg-emerald-400' : 'bg-amber-400'}`} />
-                                <div className="flex-1">
-                                    <div className="text-sm text-slate-200">{event.event}</div>
-                                    <div className="text-xs text-slate-400">{event.time}</div>
-                                </div>
-                                <div className={`px-2 py-0.5 rounded-full text-[9px] font-medium ${event.status === 'secure'
-                                        ? 'bg-emerald-500/10 text-emerald-400'
-                                        : 'bg-amber-500/10 text-amber-400'
+                    {loadingEvents ? (
+                        <div className="flex items-center justify-center py-4">
+                            <RefreshCw className="w-5 h-5 text-sky-400 animate-spin" />
+                            <span className="ml-2 text-sm text-slate-400">Loading events...</span>
+                        </div>
+                    ) : filteredEvents.length === 0 ? (
+                        <div className="text-center py-4 text-sm text-slate-400">
+                            No security events found for this period.
+                        </div>
+                    ) : (
+                        <div className="space-y-2 max-h-60 overflow-y-auto">
+                            {filteredEvents.slice(0, 10).map((event) => (
+                                <div key={event.id} className="flex items-center justify-between text-sm border-b border-slate-800/50 pb-2">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs text-slate-500">
+                                            {new Date(event.timestamp).toLocaleDateString()}
+                                        </span>
+                                        <span className="text-slate-300">{event.description || event.category}</span>
+                                    </div>
+                                    <span className={`text-xs px-2 py-0.5 rounded-full ${
+                                        event.severity === 'CRITICAL' ? 'bg-red-500/20 text-red-400' :
+                                        event.severity === 'WARNING' ? 'bg-amber-500/20 text-amber-400' :
+                                        'bg-emerald-500/20 text-emerald-400'
                                     }`}>
-                                    {event.status === 'secure' ? 'Secure' : 'Warning'}
+                                        {event.severity || 'INFO'}
+                                    </span>
                                 </div>
-                            </div>
-                        ))}
-                    </div>
+                            ))}
+                        </div>
+                    )}
+                    {eventError && (
+                        <div className="text-xs text-red-400 mt-2">{eventError}</div>
+                    )}
                 </div>
 
                 {/* Recommendations */}
                 <SecureDroidSectionHeader title="Recommendations" />
-
                 <div className="space-y-2">
                     {recommendations.map((rec) => (
                         <div key={rec.id} className="bg-slate-900/50 p-3 rounded-xl border border-slate-800">
                             <div className="flex items-center gap-3">
-                                <div className={`w-6 h-6 rounded-full flex items-center justify-center ${rec.priority === 'high' ? 'bg-red-500/10' :
-                                        rec.priority === 'medium' ? 'bg-amber-500/10' :
-                                            'bg-emerald-500/10'
-                                    }`}>
+                                <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
+                                    rec.priority === 'high' ? 'bg-red-500/10' :
+                                    rec.priority === 'medium' ? 'bg-amber-500/10' :
+                                    'bg-emerald-500/10'
+                                }`}>
                                     {rec.priority === 'high' && <AlertTriangle className="w-3 h-3 text-red-400" />}
                                     {rec.priority === 'medium' && <AlertTriangle className="w-3 h-3 text-amber-400" />}
                                     {rec.priority === 'low' && <CheckCircle2 className="w-3 h-3 text-emerald-400" />}
@@ -205,7 +335,6 @@ export const SecurityReportScreen: React.FC<SecurityReportScreenProps> = ({
                                 <div className="flex-1">
                                     <div className="text-sm text-slate-200">{rec.text}</div>
                                 </div>
-                                <ChevronRight className="w-4 h-4 text-slate-600" />
                             </div>
                         </div>
                     ))}
@@ -230,8 +359,13 @@ export const SecurityReportScreen: React.FC<SecurityReportScreenProps> = ({
                     </div>
                 </div>
 
-                <SecureDroidButton onClick={onBack} variant="secondary" className="w-full">
-                    Back to Dashboard
+                <SecureDroidButton
+                    onClick={reload}
+                    disabled={loading}
+                    className="w-full"
+                >
+                    <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                    Refresh Report
                 </SecureDroidButton>
             </div>
         </div>
