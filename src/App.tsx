@@ -399,10 +399,6 @@ export default function App() {
         return <LoadingScreen message="Loading security data..." />;
     }
 
-    if (!connected && error && !error.includes('mock data')) {
-        return <ErrorScreen message={error} onRetry={reload} />;
-    }
-
     const navigateTo = (screen: Screen) => setCurrentScreen(screen);
     const handleBack = () => setCurrentScreen('home');
     const handleAppDetail = (packageName: string) => {
