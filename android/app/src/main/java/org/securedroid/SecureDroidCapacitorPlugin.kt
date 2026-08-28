@@ -21,6 +21,9 @@ import org.securedroid.diagnostics.HardeningAnalyzer
 import org.securedroid.diagnostics.WifiSecurityAnalyzer
 import org.securedroid.logging.SecurityEvent
 import org.securedroid.logging.SecurityLogManager
+import org.securedroid.notification.SecurityNotificationManager
+import org.securedroid.security.SecurityMonitorScheduler
+import org.securedroid.security.SecurityMonitorService
 import org.securedroid.vault.VaultStorage
 import org.securedroid.vpn.DomainBlocklistManager
 import org.securedroid.vpn.SecureVpnManager
@@ -323,6 +326,151 @@ class SecureDroidCapacitorPlugin : Plugin() {
         } catch (e: Exception) {
             Log.e(TAG, "getWifiSecurityReport failed", e)
             call.reject("Wifi security analysis failed: ${e.message}", e)
+        }
+    }
+
+    // =========================================================
+    // WORKMANAGER BACKGROUND SECURITY MONITOR & NOTIFICATIONS
+    // =========================================================
+
+    @PluginMethod
+    fun getBackgroundMonitorStatus(call: PluginCall) {
+        try {
+            val context = bridge.context.applicationContext
+            val isScheduled = SecurityMonitorScheduler.isScheduled(context)
+            val intervalMinutes = SecurityMonitorScheduler.getIntervalMinutes(context)
+            val hasNotificationPermission = SecurityNotificationManager.hasNotificationPermission(context)
+            val lastScan = SecurityMonitorService.getLastScanSummary() ?: SecurityMonitorService.getStoredScanSummary(context)
+
+            val result = JSObject()
+            result.put("success", true)
+            result.put("isScheduled", isScheduled)
+            result.put("intervalMinutes", intervalMinutes)
+            result.put("hasNotificationPermission", hasNotificationPermission)
+            result.put("workManagerActive", true)
+
+            val scanObj = JSObject()
+            if (lastScan != null) {
+                scanObj.put("timestamp", lastScan.timestamp)
+                scanObj.put("appsScanned", lastScan.appsScanned)
+                scanObj.put("highRiskAppsCount", lastScan.highRiskAppsCount)
+                scanObj.put("vulnerabilitiesCount", lastScan.vulnerabilitiesCount)
+                scanObj.put("alertsPosted", lastScan.alertsPosted)
+                scanObj.put("status", lastScan.status)
+            }
+            result.put("lastScan", scanObj)
+
+            call.resolve(result)
+        } catch (e: Exception) {
+            Log.e(TAG, "getBackgroundMonitorStatus failed", e)
+            call.reject("Unable to retrieve background monitor status: ${e.message}", e)
+        }
+    }
+
+    @PluginMethod
+    fun scheduleBackgroundMonitor(call: PluginCall) {
+        try {
+            val context = bridge.context.applicationContext
+            val intervalMinutes = call.getLong("intervalMinutes") ?: 15L
+            SecurityMonitorScheduler.schedule(context, intervalMinutes)
+
+            val result = JSObject()
+            result.put("success", true)
+            result.put("isScheduled", true)
+            result.put("intervalMinutes", intervalMinutes.coerceAtLeast(15L))
+            result.put("message", "WorkManager periodic security monitoring scheduled (${intervalMinutes} min interval)")
+
+            call.resolve(result)
+        } catch (e: Exception) {
+            Log.e(TAG, "scheduleBackgroundMonitor failed", e)
+            call.reject("Failed to schedule background security monitor: ${e.message}", e)
+        }
+    }
+
+    @PluginMethod
+    fun cancelBackgroundMonitor(call: PluginCall) {
+        try {
+            val context = bridge.context.applicationContext
+            SecurityMonitorScheduler.cancel(context)
+
+            val result = JSObject()
+            result.put("success", true)
+            result.put("isScheduled", false)
+            result.put("message", "WorkManager periodic security monitoring cancelled")
+
+            call.resolve(result)
+        } catch (e: Exception) {
+            Log.e(TAG, "cancelBackgroundMonitor failed", e)
+            call.reject("Failed to cancel background security monitor: ${e.message}", e)
+        }
+    }
+
+    @PluginMethod
+    fun triggerBackgroundScanNow(call: PluginCall) {
+        try {
+            val context = bridge.context.applicationContext
+            SecurityMonitorScheduler.runNow(context)
+
+            val result = JSObject()
+            result.put("success", true)
+            result.put("message", "WorkManager background security scan queued immediately")
+
+            call.resolve(result)
+        } catch (e: Exception) {
+            Log.e(TAG, "triggerBackgroundScanNow failed", e)
+            call.reject("Failed to trigger background scan: ${e.message}", e)
+        }
+    }
+
+    @PluginMethod
+    fun testSecurityAlert(call: PluginCall) {
+        try {
+            val context = bridge.context.applicationContext
+            val alertType = call.getString("type") ?: "APP_ALERT"
+            val title = call.getString("title") ?: "High-Risk App Alert: Suspicious Utility"
+            val message = call.getString("message") ?: "Requests dangerous SMS interception and accessibility service permissions."
+            val severity = call.getString("severity") ?: "HIGH"
+            val packageName = call.getString("packageName") ?: "com.example.suspicious.app"
+
+            val posted = when (alertType) {
+                "VULNERABILITY" -> {
+                    SecurityNotificationManager.sendVulnerabilityAlert(
+                        context = context,
+                        vulnerabilityId = "TEST_VULN",
+                        title = title,
+                        summary = message,
+                        severity = severity,
+                        recommendation = "Review device security settings in SecureDroid."
+                    )
+                }
+                "APP_ALERT" -> {
+                    SecurityNotificationManager.sendHighRiskAppAlert(
+                        context = context,
+                        appName = title.removePrefix("High-Risk App Alert: "),
+                        packageName = packageName,
+                        riskReason = message,
+                        findingCount = 3
+                    )
+                }
+                else -> {
+                    SecurityNotificationManager.sendTestAlert(
+                        context = context,
+                        title = title,
+                        message = message,
+                        severity = severity
+                    )
+                }
+            }
+
+            val result = JSObject()
+            result.put("success", posted)
+            result.put("notificationSent", posted)
+            result.put("message", if (posted) "Local notification alert dispatched" else "Notification permission missing or disabled")
+
+            call.resolve(result)
+        } catch (e: Exception) {
+            Log.e(TAG, "testSecurityAlert failed", e)
+            call.reject("Failed to send test security alert: ${e.message}", e)
         }
     }
 

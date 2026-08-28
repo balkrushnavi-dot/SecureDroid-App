@@ -1003,6 +1003,116 @@ class SecureDroidNativeService {
             return this.nativeFailure(error instanceof Error ? error.message : 'Failed to get Wi-Fi report.');
         }
     }
+
+    // ============================================================
+    // WORKMANAGER BACKGROUND MONITOR & NOTIFICATIONS
+    // ============================================================
+
+    async getBackgroundMonitorStatus(): Promise<NativeResult<any>> {
+        if (!this.isNative) {
+            return this.unavailable('Background WorkManager monitor is unavailable in web preview.');
+        }
+
+        try {
+            const raw = await SecureDroidNativePlugin.getBackgroundMonitorStatus();
+            const failure = this.parseNativeFailure<any>(raw, 'Failed to get background monitor status.');
+            if (failure) return failure;
+            return {
+                success: true,
+                data: (raw as any)?.data || raw,
+                isSupported: true,
+                runtimePlatform: 'android_native',
+            };
+        } catch (error: unknown) {
+            return this.nativeFailure(error instanceof Error ? error.message : 'Failed to get background monitor status.');
+        }
+    }
+
+    async scheduleBackgroundMonitor(intervalMinutes = 15): Promise<NativeResult<any>> {
+        if (!this.isNative) {
+            return this.unavailable('Background WorkManager scheduling requires Android native services.');
+        }
+
+        try {
+            const raw = await SecureDroidNativePlugin.scheduleBackgroundMonitor({ intervalMinutes });
+            const failure = this.parseNativeFailure<any>(raw, 'Failed to schedule background security monitor.');
+            if (failure) return failure;
+            return {
+                success: true,
+                data: (raw as any)?.data || raw,
+                isSupported: true,
+                runtimePlatform: 'android_native',
+            };
+        } catch (error: unknown) {
+            return this.nativeFailure(error instanceof Error ? error.message : 'Failed to schedule background security monitor.');
+        }
+    }
+
+    async cancelBackgroundMonitor(): Promise<NativeResult<any>> {
+        if (!this.isNative) {
+            return this.unavailable('Background WorkManager cancellation requires Android native services.');
+        }
+
+        try {
+            const raw = await SecureDroidNativePlugin.cancelBackgroundMonitor();
+            const failure = this.parseNativeFailure<any>(raw, 'Failed to cancel background security monitor.');
+            if (failure) return failure;
+            return {
+                success: true,
+                data: (raw as any)?.data || raw,
+                isSupported: true,
+                runtimePlatform: 'android_native',
+            };
+        } catch (error: unknown) {
+            return this.nativeFailure(error instanceof Error ? error.message : 'Failed to cancel background security monitor.');
+        }
+    }
+
+    async triggerBackgroundScanNow(): Promise<NativeResult<any>> {
+        if (!this.isNative) {
+            return this.unavailable('Immediate background security scan requires Android native services.');
+        }
+
+        try {
+            const raw = await SecureDroidNativePlugin.triggerBackgroundScanNow();
+            const failure = this.parseNativeFailure<any>(raw, 'Failed to trigger background security scan.');
+            if (failure) return failure;
+            return {
+                success: true,
+                data: (raw as any)?.data || raw,
+                isSupported: true,
+                runtimePlatform: 'android_native',
+            };
+        } catch (error: unknown) {
+            return this.nativeFailure(error instanceof Error ? error.message : 'Failed to trigger background security scan.');
+        }
+    }
+
+    async testSecurityAlert(options: {
+        type?: 'APP_ALERT' | 'VULNERABILITY' | 'TEST';
+        title?: string;
+        message?: string;
+        severity?: string;
+        packageName?: string;
+    }): Promise<NativeResult<any>> {
+        if (!this.isNative) {
+            return this.unavailable('Local notification alerts require Android native services.');
+        }
+
+        try {
+            const raw = await SecureDroidNativePlugin.testSecurityAlert(options);
+            const failure = this.parseNativeFailure<any>(raw, 'Failed to send security alert notification.');
+            if (failure) return failure;
+            return {
+                success: true,
+                data: (raw as any)?.data || raw,
+                isSupported: true,
+                runtimePlatform: 'android_native',
+            };
+        } catch (error: unknown) {
+            return this.nativeFailure(error instanceof Error ? error.message : 'Failed to send security alert notification.');
+        }
+    }
 }
 
 export const SecureDroidNative =

@@ -243,6 +243,63 @@ export interface SecureDroidPlugin {
     getVmHardwareCapability(): Promise<
         NativeResult<VmHardwareCapability>
     >;
+
+    // ========================================================
+    // 12. WORKMANAGER BACKGROUND MONITOR & NOTIFICATIONS
+    // ========================================================
+
+    getBackgroundMonitorStatus(): Promise<
+        NativeResult<{
+            isScheduled: boolean;
+            intervalMinutes: number;
+            hasNotificationPermission: boolean;
+            workManagerActive: boolean;
+            lastScan?: {
+                timestamp: number;
+                appsScanned: number;
+                highRiskAppsCount: number;
+                vulnerabilitiesCount: number;
+                alertsPosted: number;
+                status: string;
+            };
+        }>
+    >;
+
+    scheduleBackgroundMonitor(options?: {
+        intervalMinutes?: number;
+    }): Promise<
+        NativeResult<{
+            isScheduled: boolean;
+            intervalMinutes: number;
+            message: string;
+        }>
+    >;
+
+    cancelBackgroundMonitor(): Promise<
+        NativeResult<{
+            isScheduled: boolean;
+            message: string;
+        }>
+    >;
+
+    triggerBackgroundScanNow(): Promise<
+        NativeResult<{
+            message: string;
+        }>
+    >;
+
+    testSecurityAlert(options: {
+        type?: 'APP_ALERT' | 'VULNERABILITY' | 'TEST';
+        title?: string;
+        message?: string;
+        severity?: string;
+        packageName?: string;
+    }): Promise<
+        NativeResult<{
+            notificationSent: boolean;
+            message: string;
+        }>
+    >;
 }
 
 /**

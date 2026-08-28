@@ -1086,3 +1086,34 @@ export interface WifiSecurityReport {
     isReal: boolean;
 }
 
+// ============================================================
+// 30. WORKMANAGER BACKGROUND MONITOR & NOTIFICATIONS
+// ============================================================
+
+export interface BackgroundScanSummary {
+    timestamp: number;
+    durationMs?: number;
+    appsScanned: number;
+    highRiskAppsCount: number;
+    vulnerabilitiesCount: number;
+    alertsPosted: number;
+    status: 'SECURE' | 'WARNINGS_DETECTED' | 'THREATS_DETECTED' | string;
+}
+
+export interface BackgroundMonitorStatus {
+    isScheduled: boolean;
+    intervalMinutes: number;
+    hasNotificationPermission: boolean;
+    workManagerActive: boolean;
+    lastScan?: BackgroundScanSummary;
+    isReal: boolean;
+}
+
+export interface NotificationAlertPayload {
+    type?: 'APP_ALERT' | 'VULNERABILITY' | 'TEST';
+    title: string;
+    message: string;
+    severity?: 'HIGH' | 'CRITICAL' | 'WARNING' | 'INFO';
+    packageName?: string;
+}
+
