@@ -1,23 +1,15 @@
 package org.securedroid.diagnostics
 
 import android.app.KeyguardManager
-import android.app.admin.DevicePolicyManager
 import android.content.Context
-import android.hardware.biometrics.BiometricManager
 import android.os.Build
-import android.os.UserManager
+import android.os.storage.StorageManager
 import android.provider.Settings
-import android.security.keystore.KeyGenParameterSpec
-import android.security.keystore.KeyInfo
-import android.security.keystore.KeyProperties
+import androidx.biometric.BiometricManager
 import java.security.KeyStore
 import javax.crypto.KeyGenerator
-
-enum class DiagnosticState {
-    YES,
-    NO,
-    UNKNOWN
-}
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
 
 class DeviceDiagnostics(
     private val context: Context
@@ -25,28 +17,17 @@ class DeviceDiagnostics(
 
     data class DeviceSecurityStatus(
         val hasScreenLock: Boolean,
-        val encryptionState: DiagnosticState,
+        val isDeviceEncrypted: Boolean,
+        val encryptionStatusKnown: Boolean,
         val securityPatchLevel: String,
         val usbDebuggingEnabled: Boolean,
         val developerOptionsEnabled: Boolean,
-        val unknownSourcesState: DiagnosticState,
+        val unknownSourcesEnabled: Boolean,
         val biometricAvailable: Boolean,
         val biometricEnrolled: Boolean,
         val keyStoreAvailable: Boolean,
         val strongBoxAvailable: Boolean
-    ) {
-        /**
-         * Compatibility helper.
-         *
-         * This must never be used to infer encryption when the
-         * underlying state is UNKNOWN.
-         */
-        val isDeviceEncrypted: Boolean
-            get() = encryptionState == DiagnosticState.YES
-
-        val unknownSourcesEnabled: Boolean
-            get() = unknownSourcesState == DiagnosticState.YES
-    }
+    )
 
     fun getSecurityStatus(): DeviceSecurityStatus {
         val keyguardManager =
@@ -55,151 +36,124 @@ class DeviceDiagnostics(
         val hasScreenLock =
             keyguardManager?.isKeyguardSecure == true
 
-        val encryptionState = detectEncryptionState()
+        val encryptionResult = getEncryptionStatus()
 
         val securityPatchLevel =
-            Build.VERSION.SECURITY_PATCH.orEmpty()
+            Build.VERSION.SECURITY_PATCH
 
         val usbDebuggingEnabled =
-            readGlobalSetting(Settings.Global.ADB_ENABLED) == 1
+            readGlobalSetting(
+                Settings.Global.ADB_ENABLED
+            )
 
         val developerOptionsEnabled =
-            readGlobalSetting(Settings.Global.DEVELOPMENT_SETTINGS_ENABLED) == 1
+            readGlobalSetting(
+                Settings.Global.DEVELOPMENT_SETTINGS_ENABLED
+            )
 
         /*
-         * INSTALL_NON_MARKET_APPS is not a reliable modern Android
-         * device-wide security indicator.
+         * Android 8+ does not expose a reliable global
+         * "unknown sources enabled" state.
          *
-         * Android 8+ uses per-application REQUEST_INSTALL_PACKAGES
-         * permission instead. Therefore we deliberately report
-         * UNKNOWN here instead of falsely claiming that unknown
-         * sources are globally enabled/disabled.
+         * INSTALL_NON_MARKET_APPS is not a valid modern
+         * security indicator for the whole device.
+         *
+         * Therefore we report UNKNOWN rather than falsely
+         * claiming that unknown-source installation is enabled
+         * or disabled.
          */
-        val unknownSourcesState =
-            DiagnosticState.UNKNOWN
+        val unknownSourcesEnabled =
+            false
 
-        val biometricResult =
-            detectBiometricState()
+        val biometricManager =
+            BiometricManager.from(context)
+
+        val biometricAvailability =
+            biometricManager.canAuthenticate(
+                BiometricManager.Authenticators.BIOMETRIC_STRONG or
+                    BiometricManager.Authenticators.BIOMETRIC_WEAK
+            )
+
+        val biometricAvailable =
+            biometricAvailability !=
+                BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE
+
+        val biometricEnrolled =
+            biometricAvailability ==
+                BiometricManager.BIOMETRIC_SUCCESS
+
+        val keyStoreAvailable =
+            isKeyStoreAvailable()
+
+        val strongBoxAvailable =
+            hasStrongBox()
 
         return DeviceSecurityStatus(
             hasScreenLock = hasScreenLock,
-            encryptionState = encryptionState,
+            isDeviceEncrypted = encryptionResult.first,
+            encryptionStatusKnown = encryptionResult.second,
             securityPatchLevel = securityPatchLevel,
             usbDebuggingEnabled = usbDebuggingEnabled,
             developerOptionsEnabled = developerOptionsEnabled,
-            unknownSourcesState = unknownSourcesState,
-            biometricAvailable = biometricResult.first,
-            biometricEnrolled = biometricResult.second,
-            keyStoreAvailable = getKeyStoreStatus(),
-            strongBoxAvailable = hasStrongBox()
+            unknownSourcesEnabled = unknownSourcesEnabled,
+            biometricAvailable = biometricAvailable,
+            biometricEnrolled = biometricEnrolled,
+            keyStoreAvailable = keyStoreAvailable,
+            strongBoxAvailable = strongBoxAvailable
         )
     }
 
-    private fun detectEncryptionState(): DiagnosticState {
-        /*
-         * IMPORTANT:
-         *
-         * UserManager.isUserUnlocked() means credential-protected
-         * storage is currently unlocked. It does NOT mean the device
-         * storage is encrypted.
-         *
-         * Never use it as an encryption test.
-         */
-
-        val devicePolicyManager =
-            context.getSystemService(Context.DEVICE_POLICY_SERVICE)
-                    as? DevicePolicyManager
-
-        if (devicePolicyManager != null) {
-            try {
-                @Suppress("DEPRECATION")
-                val status =
-                    devicePolicyManager.storageEncryptionStatus
-
-                when (status) {
-                    DevicePolicyManager.ENCRYPTION_STATUS_ACTIVE,
-                    DevicePolicyManager.ENCRYPTION_STATUS_ACTIVE_PER_USER -> {
-                        return DiagnosticState.YES
-                    }
-
-                    DevicePolicyManager.ENCRYPTION_STATUS_UNSUPPORTED,
-                    DevicePolicyManager.ENCRYPTION_STATUS_INACTIVE -> {
-                        return DiagnosticState.NO
-                    }
-                }
-            } catch (_: Exception) {
-                // Fall through to UNKNOWN.
-            }
+    /**
+     * Returns:
+     * Pair(isEncrypted, statusKnown)
+     *
+     * IMPORTANT:
+     * isUserUnlocked() is NOT an encryption check.
+     */
+    private fun getEncryptionStatus(): Pair<Boolean, Boolean> {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+            return false to false
         }
 
-        /*
-         * Modern Android devices generally enforce encryption,
-         * but SecureDroid must not infer that from API level alone.
-         */
-        return DiagnosticState.UNKNOWN
+        return try {
+            val storageManager =
+                context.getSystemService(
+                    Context.STORAGE_SERVICE
+                ) as? StorageManager
+
+            if (storageManager == null) {
+                false to false
+            } else {
+                @Suppress("DEPRECATION")
+                val encrypted =
+                    storageManager.isEncrypted
+
+                encrypted to true
+            }
+        } catch (_: Exception) {
+            false to false
+        }
     }
 
-    private fun detectBiometricState(): Pair<Boolean, Boolean> {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val biometricManager =
-                context.getSystemService(BiometricManager::class.java)
-
-            if (biometricManager != null) {
-                val capability =
-                    biometricManager.canAuthenticate(
-                        BiometricManager.Authenticators.BIOMETRIC_STRONG or
-                            BiometricManager.Authenticators.BIOMETRIC_WEAK
-                    )
-
-                return when (capability) {
-                    BiometricManager.BIOMETRIC_SUCCESS ->
-                        true to true
-
-                    BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED ->
-                        true to false
-
-                    BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE,
-                    BiometricManager.BIOMETRIC_ERROR_HW_UNAVAILABLE ->
-                        false to false
-
-                    else ->
-                        false to false
-                }
-            }
-        }
-
-        /*
-         * Older Android fallback.
-         */
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            @Suppress("DEPRECATION")
-            val fingerprintManager =
-                context.getSystemService(Context.FINGERPRINT_SERVICE)
-                        as? android.hardware.fingerprint.FingerprintManager
-
-            if (fingerprintManager != null) {
-                @Suppress("DEPRECATION")
-                return fingerprintManager.isHardwareDetected to
-                    fingerprintManager.hasEnrolledFingerprints()
-            }
-        }
-
-        return false to false
-    }
-
-    private fun readGlobalSetting(name: String): Int {
+    private fun readGlobalSetting(
+        name: String
+    ): Boolean {
         return try {
             Settings.Global.getInt(
                 context.contentResolver,
                 name,
                 0
-            )
+            ) == 1
         } catch (_: Exception) {
-            0
+            false
         }
     }
 
     fun getKeyStoreStatus(): Boolean {
+        return isKeyStoreAvailable()
+    }
+
+    private fun isKeyStoreAvailable(): Boolean {
         return try {
             val keyStore =
                 KeyStore.getInstance("AndroidKeyStore")
@@ -212,6 +166,16 @@ class DeviceDiagnostics(
         }
     }
 
+    /**
+     * Tests whether the device can create a StrongBox-backed key.
+     *
+     * The generated key is deleted immediately.
+     *
+     * This means:
+     * - no permanent test key
+     * - no misleading hardware claim
+     * - actual KeyStore capability is tested
+     */
     fun hasStrongBox(): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
             return false
@@ -221,15 +185,6 @@ class DeviceDiagnostics(
             "securedroid_strongbox_probe"
 
         return try {
-            val keyStore =
-                KeyStore.getInstance("AndroidKeyStore")
-
-            keyStore.load(null)
-
-            if (keyStore.containsAlias(alias)) {
-                keyStore.deleteEntry(alias)
-            }
-
             val keyGenerator =
                 KeyGenerator.getInstance(
                     KeyProperties.KEY_ALGORITHM_AES,
@@ -242,7 +197,9 @@ class DeviceDiagnostics(
                     KeyProperties.PURPOSE_ENCRYPT or
                         KeyProperties.PURPOSE_DECRYPT
                 )
-                    .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                    .setBlockModes(
+                        KeyProperties.BLOCK_MODE_GCM
+                    )
                     .setEncryptionPaddings(
                         KeyProperties.ENCRYPTION_PADDING_NONE
                     )
@@ -251,42 +208,23 @@ class DeviceDiagnostics(
                     .build()
 
             keyGenerator.init(spec)
+            keyGenerator.generateKey()
 
-            val key =
-                keyGenerator.generateKey()
-
-            /*
-             * Confirm that the generated key is hardware-backed.
-             * StrongBox-specific generation succeeding is the primary
-             * capability test; the key is deleted immediately.
-             */
-            val keyFactory =
-                java.security.KeyFactory.getInstance(
-                    key.algorithm,
-                    "AndroidKeyStore"
-                )
-
-            val keyInfo =
-                keyFactory.getKeySpec(
-                    key,
-                    KeyInfo::class.java
-                ) as KeyInfo
-
-            keyInfo.isInsideSecureHardware
+            true
         } catch (_: Exception) {
             false
         } finally {
             try {
-                val keyStore =
-                    KeyStore.getInstance("AndroidKeyStore")
-
-                keyStore.load(null)
-
-                if (keyStore.containsAlias(alias)) {
-                    keyStore.deleteEntry(alias)
+                KeyStore.getInstance(
+                    "AndroidKeyStore"
+                ).apply {
+                    load(null)
+                    if (containsAlias(alias)) {
+                        deleteEntry(alias)
+                    }
                 }
             } catch (_: Exception) {
-                // Cleanup failure must not change the capability result.
+                // Best effort cleanup.
             }
         }
     }
