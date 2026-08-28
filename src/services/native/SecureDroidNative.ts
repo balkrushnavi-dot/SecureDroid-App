@@ -10,19 +10,17 @@ import type {
 
 /**
  * ============================================================
- * Capacitor native plugin contract
+ * SECUREDROID CAPACITOR PLUGIN CONTRACT
  * ============================================================
  *
- * IMPORTANT:
- * Android registers:
+ * This interface MUST match the Android plugin methods exposed
+ * by:
+ *
+ * SecureDroidCapacitorPlugin.kt
+ *
+ * Android plugin name:
  *
  * @CapacitorPlugin(name = "SecureDroid")
- *
- * Therefore this MUST be:
- *
- * registerPlugin<SecureDroidPlugin>('SecureDroid')
- *
- * Do not use "SecureDroidPlugin" here.
  */
 export interface SecureDroidPlugin {
   checkConnection(): Promise<any>;
@@ -56,21 +54,31 @@ export interface SecureDroidPlugin {
 }
 
 /**
- * Single native Capacitor plugin instance.
+ * Native Capacitor plugin.
+ *
+ * The name MUST exactly match:
+ *
+ * @CapacitorPlugin(name = "SecureDroid")
  */
-const NativePlugin = registerPlugin<SecureDroidPlugin>('SecureDroid');
+const NativePlugin =
+  registerPlugin<SecureDroidPlugin>('SecureDroid');
 
 /**
  * SecureDroid Native Service
  *
- * This is the ONLY TypeScript adapter that should be used by
- * the React application for native SecureDroid functionality.
+ * This class is the single TypeScript adapter between the
+ * React/UI layer and the Android Capacitor plugin.
  *
- * Android response formats are normalized here into the
- * application's NativeResult<T> contract.
+ * Responsibilities:
+ *
+ * - Prevent native APIs from being called in web preview.
+ * - Normalize Android responses.
+ * - Keep the UI independent from Android response-key details.
+ * - Provide a consistent NativeResult<T> contract.
  */
 class SecureDroidNativeService {
-  private readonly isNative = Capacitor.isNativePlatform();
+  private readonly isNative =
+    Capacitor.isNativePlatform();
 
   // ============================================================
   // CONNECTION
@@ -79,9 +87,9 @@ class SecureDroidNativeService {
   async checkConnection(): Promise<
     NativeResult<{
       connected: boolean;
-      plugin?: string;
-      platform?: string;
-      message?: string;
+      plugin: string;
+      platform: string;
+      message: string;
       timestamp?: number;
     }>
   > {
@@ -90,20 +98,21 @@ class SecureDroidNativeService {
         success: false,
         errorCode: 'SERVICE_UNAVAILABLE',
         message:
-          'Native SecureDroid functionality requires Android execution.',
+          'Native SecureDroid bridge requires Android execution.',
         isSupported: false,
         runtimePlatform: 'web_preview',
       };
     }
 
     try {
-      const raw: any = await NativePlugin.checkConnection();
+      const raw = await NativePlugin.checkConnection();
 
       if (!raw || raw.success === false) {
         return {
           success: false,
           errorCode:
-            raw?.errorCode || 'SERVICE_UNAVAILABLE',
+            raw?.errorCode ||
+            'SERVICE_UNAVAILABLE',
           message:
             raw?.message ||
             'SecureDroid native bridge is unavailable.',
@@ -115,27 +124,31 @@ class SecureDroidNativeService {
       return {
         success: true,
         data: {
-          connected: Boolean(raw.connected),
-          plugin:
-            typeof raw.plugin === 'string'
-              ? raw.plugin
-              : undefined,
-          platform:
-            typeof raw.platform === 'string'
-              ? raw.platform
-              : undefined,
-          message:
-            typeof raw.message === 'string'
-              ? raw.message
-              : undefined,
+          connected: Boolean(
+            raw.connected
+          ),
+          plugin: String(
+            raw.plugin ||
+              'SecureDroid'
+          ),
+          platform: String(
+            raw.platform ||
+              'android'
+          ),
+          message: String(
+            raw.message ||
+              'Native bridge available.'
+          ),
           timestamp:
-            typeof raw.timestamp === 'number'
+            typeof raw.timestamp ===
+            'number'
               ? raw.timestamp
               : undefined,
         },
         message: raw.message,
         isSupported: true,
-        runtimePlatform: 'android_native',
+        runtimePlatform:
+          'android_native',
       };
     } catch (error: any) {
       console.error(
@@ -145,12 +158,14 @@ class SecureDroidNativeService {
 
       return {
         success: false,
-        errorCode: 'SERVICE_UNAVAILABLE',
+        errorCode:
+          'SERVICE_UNAVAILABLE',
         message:
           error?.message ||
           'SecureDroid native bridge is unavailable.',
         isSupported: false,
-        runtimePlatform: 'android_native',
+        runtimePlatform:
+          'android_native',
       };
     }
   }
@@ -165,16 +180,18 @@ class SecureDroidNativeService {
     if (!this.isNative) {
       return {
         success: false,
-        errorCode: 'SERVICE_UNAVAILABLE',
+        errorCode:
+          'SERVICE_UNAVAILABLE',
         message:
           'Installed-app evidence requires native Android execution.',
         isSupported: false,
-        runtimePlatform: 'web_preview',
+        runtimePlatform:
+          'web_preview',
       };
     }
 
     try {
-      const raw: any =
+      const raw =
         await NativePlugin.getInstalledApps();
 
       if (!raw || raw.success === false) {
@@ -186,26 +203,17 @@ class SecureDroidNativeService {
           message:
             raw?.message ||
             'Installed-app evidence is unavailable from the native Android bridge.',
-          runtimePlatform: 'android_native',
+          runtimePlatform:
+            'android_native',
         };
       }
 
-      /*
-       * Android currently returns:
-       *
-       * {
-       *   success: true,
-       *   data: [...],
-       *   apps: [...]
-       * }
-       *
-       * Prefer data, then fall back to apps.
-       */
-      const rawApps = Array.isArray(raw.data)
-        ? raw.data
-        : Array.isArray(raw.apps)
-          ? raw.apps
-          : [];
+      const rawApps =
+        Array.isArray(raw.data)
+          ? raw.data
+          : Array.isArray(raw.apps)
+            ? raw.apps
+            : [];
 
       const apps: NativeInstalledApp[] =
         rawApps.map(
@@ -215,7 +223,9 @@ class SecureDroidNativeService {
                 app.requestedPermissions
               )
                 ? app.requestedPermissions
-                : Array.isArray(app.permissions)
+                : Array.isArray(
+                    app.permissions
+                  )
                   ? app.permissions
                   : [];
 
@@ -225,7 +235,9 @@ class SecureDroidNativeService {
               )
                 ? app.dangerousPermissions
                 : requestedPermissions.filter(
-                    (permission: string) =>
+                    (
+                      permission: string
+                    ) =>
                       this.isDangerousPermission(
                         permission
                       )
@@ -236,7 +248,8 @@ class SecureDroidNativeService {
               app.installerPackageName ??
               (
                 app.installSource &&
-                app.installSource !== 'UNKNOWN'
+                app.installSource !==
+                  'UNKNOWN'
                   ? app.installSource
                   : undefined
               );
@@ -254,7 +267,8 @@ class SecureDroidNativeService {
               ),
 
               versionName: String(
-                app.versionName || 'Unknown'
+                app.versionName ||
+                  'Unknown'
               ),
 
               versionCode: Number(
@@ -269,13 +283,15 @@ class SecureDroidNativeService {
                 app.minSdk || 0
               ),
 
-              isSystemApp: Boolean(
-                app.isSystemApp
-              ),
+              isSystemApp:
+                Boolean(
+                  app.isSystemApp
+                ),
 
-              isLaunchable: Boolean(
-                app.isLaunchable
-              ),
+              isLaunchable:
+                Boolean(
+                  app.isLaunchable
+                ),
 
               iconBase64:
                 typeof app.iconBase64 ===
@@ -283,23 +299,22 @@ class SecureDroidNativeService {
                   ? app.iconBase64
                   : undefined,
 
-              firstInstallTime: Number(
-                app.firstInstallTime ??
-                  app.installTime ??
-                  0
-              ),
+              firstInstallTime:
+                Number(
+                  app.firstInstallTime ??
+                    app.installTime ??
+                    0
+                ),
 
-              lastUpdateTime: Number(
-                app.lastUpdateTime ??
-                  app.updateTime ??
-                  0
-              ),
+              lastUpdateTime:
+                Number(
+                  app.lastUpdateTime ??
+                    app.updateTime ??
+                    0
+                ),
 
               requestedPermissions,
 
-              /*
-               * Never fabricate granted permissions.
-               */
               grantedPermissions:
                 Array.isArray(
                   app.grantedPermissions
@@ -311,9 +326,10 @@ class SecureDroidNativeService {
 
               installerPackage,
 
-              isDebuggable: Boolean(
-                app.isDebuggable
-              ),
+              isDebuggable:
+                Boolean(
+                  app.isDebuggable
+                ),
 
               signingCertSha256:
                 typeof app.signingCertSha256 ===
@@ -321,11 +337,12 @@ class SecureDroidNativeService {
                   ? app.signingCertSha256
                   : undefined,
 
-              enabled: Boolean(
-                app.enabled ??
-                  app.isEnabled ??
-                  true
-              ),
+              enabled:
+                Boolean(
+                  app.enabled ??
+                    app.isEnabled ??
+                    true
+                ),
             };
           }
         );
@@ -334,7 +351,8 @@ class SecureDroidNativeService {
         success: true,
         data: apps,
         isSupported: true,
-        runtimePlatform: 'android_native',
+        runtimePlatform:
+          'android_native',
       };
     } catch (error: any) {
       console.error(
@@ -344,12 +362,14 @@ class SecureDroidNativeService {
 
       return {
         success: false,
-        errorCode: 'SERVICE_UNAVAILABLE',
+        errorCode:
+          'SERVICE_UNAVAILABLE',
         message:
           error?.message ||
           'Installed-app evidence is unavailable from the native Android bridge.',
         isSupported: false,
-        runtimePlatform: 'android_native',
+        runtimePlatform:
+          'android_native',
       };
     }
   }
@@ -364,16 +384,18 @@ class SecureDroidNativeService {
     if (!this.isNative) {
       return {
         success: false,
-        errorCode: 'SERVICE_UNAVAILABLE',
+        errorCode:
+          'SERVICE_UNAVAILABLE',
         message:
           'Application risk analysis requires native Android execution.',
         isSupported: false,
-        runtimePlatform: 'web_preview',
+        runtimePlatform:
+          'web_preview',
       };
     }
 
     try {
-      const raw: any =
+      const raw =
         await NativePlugin.scanForRisks();
 
       if (!raw || raw.success === false) {
@@ -384,22 +406,28 @@ class SecureDroidNativeService {
             'SERVICE_UNAVAILABLE',
           message:
             raw?.message ||
-            'Application risk analysis is unavailable on this device.',
-          runtimePlatform: 'android_native',
+            'Application risk analysis is unavailable.',
+          runtimePlatform:
+            'android_native',
         };
       }
 
-      const rawReports = Array.isArray(raw.data)
-        ? raw.data
-        : Array.isArray(raw.riskDetails)
-          ? raw.riskDetails
-          : [];
+      const rawReports =
+        Array.isArray(raw.data)
+          ? raw.data
+          : Array.isArray(
+              raw.riskDetails
+            )
+            ? raw.riskDetails
+            : [];
 
       const reports: NativeAppRiskReport[] =
         rawReports.map(
-          (report: any): NativeAppRiskReport => {
+          (report: any) => {
             const rawFindings =
-              Array.isArray(report.findings)
+              Array.isArray(
+                report.findings
+              )
                 ? report.findings
                 : [];
 
@@ -432,7 +460,8 @@ class SecureDroidNativeService {
 
             return {
               packageName: String(
-                report.packageName || ''
+                report.packageName ||
+                  ''
               ),
 
               label: String(
@@ -457,7 +486,8 @@ class SecureDroidNativeService {
         success: true,
         data: reports,
         isSupported: true,
-        runtimePlatform: 'android_native',
+        runtimePlatform:
+          'android_native',
       };
     } catch (error: any) {
       console.error(
@@ -467,18 +497,20 @@ class SecureDroidNativeService {
 
       return {
         success: false,
-        errorCode: 'SERVICE_UNAVAILABLE',
+        errorCode:
+          'SERVICE_UNAVAILABLE',
         message:
           error?.message ||
-          'Application risk analysis is unavailable on this device.',
+          'Application risk analysis is unavailable.',
         isSupported: false,
-        runtimePlatform: 'android_native',
+        runtimePlatform:
+          'android_native',
       };
     }
   }
 
   // ============================================================
-  // APPLICATION RISK REPORTS
+  // APP RISK REPORTS
   // ============================================================
 
   async getAppRiskReports(): Promise<
@@ -487,16 +519,18 @@ class SecureDroidNativeService {
     if (!this.isNative) {
       return {
         success: false,
-        errorCode: 'SERVICE_UNAVAILABLE',
+        errorCode:
+          'SERVICE_UNAVAILABLE',
         message:
           'Application risk analysis requires native Android execution.',
         isSupported: false,
-        runtimePlatform: 'web_preview',
+        runtimePlatform:
+          'web_preview',
       };
     }
 
     try {
-      const raw: any =
+      const raw =
         await NativePlugin.getAppRiskReports();
 
       if (!raw || raw.success === false) {
@@ -508,23 +542,31 @@ class SecureDroidNativeService {
           message:
             raw?.message ||
             'App risk analysis is unavailable on this device.',
-          runtimePlatform: 'android_native',
+          runtimePlatform:
+            'android_native',
         };
       }
 
-      const rawReports = Array.isArray(raw.data)
-        ? raw.data
-        : Array.isArray(raw.reports)
-          ? raw.reports
-          : Array.isArray(raw.riskDetails)
+      const rawReports =
+        Array.isArray(raw.data)
+          ? raw.data
+          : Array.isArray(
+              raw.riskDetails
+            )
             ? raw.riskDetails
-            : [];
+            : Array.isArray(
+                raw.reports
+              )
+              ? raw.reports
+              : [];
 
       const reports: NativeAppRiskReport[] =
         rawReports.map(
-          (report: any): NativeAppRiskReport => {
+          (report: any) => {
             const rawFindings =
-              Array.isArray(report.findings)
+              Array.isArray(
+                report.findings
+              )
                 ? report.findings
                 : [];
 
@@ -557,7 +599,8 @@ class SecureDroidNativeService {
 
             return {
               packageName: String(
-                report.packageName || ''
+                report.packageName ||
+                  ''
               ),
 
               label: String(
@@ -582,7 +625,8 @@ class SecureDroidNativeService {
         success: true,
         data: reports,
         isSupported: true,
-        runtimePlatform: 'android_native',
+        runtimePlatform:
+          'android_native',
       };
     } catch (error: any) {
       console.error(
@@ -592,12 +636,14 @@ class SecureDroidNativeService {
 
       return {
         success: false,
-        errorCode: 'SERVICE_UNAVAILABLE',
+        errorCode:
+          'SERVICE_UNAVAILABLE',
         message:
           error?.message ||
           'App risk analysis is unavailable on this device.',
         isSupported: false,
-        runtimePlatform: 'android_native',
+        runtimePlatform:
+          'android_native',
       };
     }
   }
@@ -612,16 +658,18 @@ class SecureDroidNativeService {
     if (!this.isNative) {
       return {
         success: false,
-        errorCode: 'SERVICE_UNAVAILABLE',
+        errorCode:
+          'SERVICE_UNAVAILABLE',
         message:
           'Device hardening analysis requires native Android execution.',
         isSupported: false,
-        runtimePlatform: 'web_preview',
+        runtimePlatform:
+          'web_preview',
       };
     }
 
     try {
-      const raw: any =
+      const raw =
         await NativePlugin.getHardeningReport();
 
       if (!raw || raw.success === false) {
@@ -633,18 +681,117 @@ class SecureDroidNativeService {
           message:
             raw?.message ||
             'Device hardening analysis is unavailable.',
-          runtimePlatform: 'android_native',
+          runtimePlatform:
+            'android_native',
         };
       }
 
+      const data =
+        raw.data &&
+        typeof raw.data === 'object'
+          ? raw.data
+          : {
+              score: raw.score,
+              findings: raw.findings,
+            };
+
       return {
         success: true,
-        data: raw.data ?? raw,
+        data: {
+          ...data,
+
+          score:
+            typeof data.score ===
+            'number'
+              ? data.score
+              : 0,
+
+          findings:
+            Array.isArray(
+              data.findings
+            )
+              ? data.findings
+              : [],
+
+          vpnStatus:
+            Boolean(
+              raw.vpnStatus ??
+                data.vpnStatus
+            ),
+
+          vpnState:
+            String(
+              raw.vpnState ??
+                data.vpnState ??
+                'DISCONNECTED'
+            ),
+
+          screenLock:
+            Boolean(
+              raw.screenLock ??
+                data.screenLock
+            ),
+
+          screenLockStatus:
+            String(
+              raw.screenLockStatus ??
+                data.screenLockStatus ??
+                'UNKNOWN'
+            ),
+
+          usbDebugging:
+            Boolean(
+              raw.usbDebugging ??
+                data.usbDebugging
+            ),
+
+          usbDebuggingStatus:
+            String(
+              raw.usbDebuggingStatus ??
+                data.usbDebuggingStatus ??
+                'UNKNOWN'
+            ),
+
+          developerOptions:
+            Boolean(
+              raw.developerOptions ??
+                data.developerOptions
+            ),
+
+          developerOptionsStatus:
+            String(
+              raw.developerOptionsStatus ??
+                data.developerOptionsStatus ??
+                'UNKNOWN'
+            ),
+
+          securityPatchStatus:
+            String(
+              raw.securityPatchStatus ??
+                data.securityPatchStatus ??
+                'UNKNOWN'
+            ),
+
+          unknownSources:
+            Boolean(
+              raw.unknownSources ??
+                data.unknownSources
+            ),
+
+          unknownSourcesStatus:
+            String(
+              raw.unknownSourcesStatus ??
+                data.unknownSourcesStatus ??
+                'UNKNOWN'
+            ),
+        },
+
         message: raw.message,
+
         isSupported:
           raw.isSupported !== false,
+
         runtimePlatform:
-          raw.runtimePlatform ||
           'android_native',
       };
     } catch (error: any) {
@@ -655,73 +802,28 @@ class SecureDroidNativeService {
 
       return {
         success: false,
-        errorCode: 'SERVICE_UNAVAILABLE',
+        errorCode:
+          'SERVICE_UNAVAILABLE',
         message:
           error?.message ||
           'Device hardening analysis is unavailable.',
         isSupported: false,
-        runtimePlatform: 'android_native',
+        runtimePlatform:
+          'android_native',
       };
     }
   }
 
+  /**
+   * Backward-compatible alias.
+   *
+   * Android exposes getDeviceHardening(),
+   * while the newer native service uses getHardeningReport().
+   */
   async getDeviceHardening(): Promise<
     NativeResult<any>
   > {
-    if (!this.isNative) {
-      return {
-        success: false,
-        errorCode: 'SERVICE_UNAVAILABLE',
-        message:
-          'Device hardening analysis requires native Android execution.',
-        isSupported: false,
-        runtimePlatform: 'web_preview',
-      };
-    }
-
-    try {
-      const raw: any =
-        await NativePlugin.getDeviceHardening();
-
-      if (!raw || raw.success === false) {
-        return {
-          success: false,
-          errorCode:
-            raw?.errorCode ||
-            'SERVICE_UNAVAILABLE',
-          message:
-            raw?.message ||
-            'Device hardening analysis is unavailable.',
-          runtimePlatform: 'android_native',
-        };
-      }
-
-      return {
-        success: true,
-        data: raw.data ?? raw,
-        message: raw.message,
-        isSupported:
-          raw.isSupported !== false,
-        runtimePlatform:
-          raw.runtimePlatform ||
-          'android_native',
-      };
-    } catch (error: any) {
-      console.error(
-        '[SecureDroid] getDeviceHardening failed:',
-        error
-      );
-
-      return {
-        success: false,
-        errorCode: 'SERVICE_UNAVAILABLE',
-        message:
-          error?.message ||
-          'Device hardening analysis is unavailable.',
-        isSupported: false,
-        runtimePlatform: 'android_native',
-      };
-    }
+    return this.getHardeningReport();
   }
 
   // ============================================================
@@ -738,16 +840,18 @@ class SecureDroidNativeService {
     if (!this.isNative) {
       return {
         success: false,
-        errorCode: 'SERVICE_UNAVAILABLE',
+        errorCode:
+          'SERVICE_UNAVAILABLE',
         message:
           'VPN permission requires native Android execution.',
         isSupported: false,
-        runtimePlatform: 'web_preview',
+        runtimePlatform:
+          'web_preview',
       };
     }
 
     try {
-      const raw: any =
+      const raw =
         await NativePlugin.requestVpnPermission();
 
       if (!raw || raw.success === false) {
@@ -755,18 +859,22 @@ class SecureDroidNativeService {
           success: false,
           errorCode:
             raw?.errorCode ||
-            'VPN_PERMISSION_FAILED',
+            'SERVICE_UNAVAILABLE',
           message:
             raw?.message ||
             'Unable to request VPN permission.',
-          runtimePlatform: 'android_native',
+          runtimePlatform:
+            'android_native',
         };
       }
 
       return {
         success: true,
         data: {
-          granted: Boolean(raw.granted),
+          granted:
+            Boolean(
+              raw.granted
+            ),
 
           permissionRequested:
             Boolean(
@@ -779,7 +887,8 @@ class SecureDroidNativeService {
           ),
         },
 
-        message: raw.message,
+        message:
+          raw.message,
 
         isSupported: true,
 
@@ -795,11 +904,11 @@ class SecureDroidNativeService {
       return {
         success: false,
         errorCode:
-          'VPN_PERMISSION_FAILED',
+          'SERVICE_UNAVAILABLE',
         message:
           error?.message ||
           'Unable to request VPN permission.',
-        isSupported: true,
+        isSupported: false,
         runtimePlatform:
           'android_native',
       };
@@ -816,16 +925,18 @@ class SecureDroidNativeService {
     if (!this.isNative) {
       return {
         success: false,
-        errorCode: 'SERVICE_UNAVAILABLE',
+        errorCode:
+          'SERVICE_UNAVAILABLE',
         message:
           'VPN status requires native Android execution.',
         isSupported: false,
-        runtimePlatform: 'web_preview',
+        runtimePlatform:
+          'web_preview',
       };
     }
 
     try {
-      const raw: any =
+      const raw =
         await NativePlugin.getVpnStatus();
 
       if (!raw || raw.success === false) {
@@ -833,29 +944,79 @@ class SecureDroidNativeService {
           success: false,
           errorCode:
             raw?.errorCode ||
-            'VPN_STATUS_UNAVAILABLE',
+            'SERVICE_UNAVAILABLE',
           message:
             raw?.message ||
             'VPN status is unavailable on this device.',
-          runtimePlatform: 'android_native',
+          runtimePlatform:
+            'android_native',
         };
       }
 
       const rawData =
         raw.data &&
-        typeof raw.data === 'object'
+        typeof raw.data ===
+          'object'
           ? raw.data
           : raw;
 
-      const status =
-        this.normalizeVpnStatus(
-          rawData
-        );
+      const data =
+        {
+          ...rawData,
+
+          isActive:
+            Boolean(
+              rawData.isActive ??
+                raw.isActive
+            ),
+
+          state:
+            String(
+              rawData.state ??
+                raw.state ??
+                'DISCONNECTED'
+            ),
+
+          establishedTime:
+            rawData.establishedTime ??
+            null,
+
+          bytesReceived:
+            Number(
+              rawData.bytesReceived ??
+                0
+            ),
+
+          bytesTransmitted:
+            Number(
+              rawData.bytesTransmitted ??
+                0
+            ),
+
+          blockedDomainsCount:
+            Number(
+              rawData.blockedDomainsCount ??
+                0
+            ),
+
+          activeDns:
+            String(
+              rawData.activeDns ??
+                '1.1.1.1'
+            ),
+
+          filterMode:
+            String(
+              rawData.filterMode ??
+                'BLOCKLIST'
+            ),
+        } as NativeVpnStatus;
 
       return {
         success: true,
-        data: status,
-        message: raw.message,
+        data,
+        message:
+          raw.message,
         isSupported: true,
         runtimePlatform:
           'android_native',
@@ -869,11 +1030,11 @@ class SecureDroidNativeService {
       return {
         success: false,
         errorCode:
-          'VPN_STATUS_UNAVAILABLE',
+          'SERVICE_UNAVAILABLE',
         message:
           error?.message ||
           'VPN status is unavailable on this device.',
-        isSupported: true,
+        isSupported: false,
         runtimePlatform:
           'android_native',
       };
@@ -893,94 +1054,46 @@ class SecureDroidNativeService {
     if (!this.isNative) {
       return {
         success: false,
-        errorCode: 'SERVICE_UNAVAILABLE',
+        errorCode:
+          'SERVICE_UNAVAILABLE',
         message:
           'Starting the VPN requires native Android execution.',
         isSupported: false,
-        runtimePlatform: 'web_preview',
+        runtimePlatform:
+          'web_preview',
       };
     }
 
     try {
-      /*
-       * Check VPN permission first.
-       *
-       * This prevents sending a start request when Android
-       * still requires the system VPN confirmation screen.
-       */
-      const prepareResult =
-        await this.checkVpnPermission();
-
-      if (!prepareResult.granted) {
-        return {
-          success: false,
-          errorCode:
-            'VPN_PERMISSION_REQUIRED',
-          message:
-            'VPN permission is required before starting the VPN.',
-          data: {
-            state: 'DISCONNECTED',
-            permissionRequired: true,
-          },
-          isSupported: true,
-          runtimePlatform:
-            'android_native',
-        };
-      }
-
-      const raw: any =
+      const raw =
         await NativePlugin.startVpn();
 
-      /*
-       * IMPORTANT:
-       *
-       * success means the START REQUEST was accepted.
-       * It does NOT necessarily mean the VPN is already CONNECTED.
-       *
-       * Android will normally transition:
-       *
-       * DISCONNECTED
-       *      ↓
-       * CONNECTING
-       *      ↓
-       * CONNECTED
-       */
-      const state = String(
-        raw?.state ||
-          'CONNECTING'
-      );
-
-      if (!raw || raw.success === false) {
+      if (!raw) {
         return {
           success: false,
           errorCode:
-            raw?.permissionRequired
-              ? 'VPN_PERMISSION_REQUIRED'
-              : 'VPN_START_FAILED',
-
+            'SERVICE_UNAVAILABLE',
           message:
-            raw?.message ||
             'Unable to start VPN.',
-
-          data: {
-            state,
-            permissionRequired:
-              Boolean(
-                raw?.permissionRequired
-              ),
-          },
-
-          isSupported: true,
+          isSupported: false,
           runtimePlatform:
             'android_native',
         };
       }
 
+      const success =
+        Boolean(
+          raw.success
+        );
+
       return {
-        success: true,
+        success,
 
         data: {
-          state,
+          state: String(
+            raw.state ||
+              'DISCONNECTED'
+          ),
 
           permissionRequired:
             Boolean(
@@ -988,9 +1101,19 @@ class SecureDroidNativeService {
             ),
         },
 
+        errorCode:
+          success
+            ? undefined
+            : raw.errorCode ||
+              'SERVICE_UNAVAILABLE',
+
         message:
           raw.message ||
-          'VPN start requested.',
+          (
+            success
+              ? 'VPN start requested.'
+              : 'Unable to start VPN.'
+          ),
 
         isSupported: true,
 
@@ -1006,11 +1129,11 @@ class SecureDroidNativeService {
       return {
         success: false,
         errorCode:
-          'VPN_START_FAILED',
+          'SERVICE_UNAVAILABLE',
         message:
           error?.message ||
           'Unable to start VPN.',
-        isSupported: true,
+        isSupported: false,
         runtimePlatform:
           'android_native',
       };
@@ -1029,52 +1152,59 @@ class SecureDroidNativeService {
     if (!this.isNative) {
       return {
         success: false,
-        errorCode: 'SERVICE_UNAVAILABLE',
+        errorCode:
+          'SERVICE_UNAVAILABLE',
         message:
           'Stopping the VPN requires native Android execution.',
         isSupported: false,
-        runtimePlatform: 'web_preview',
+        runtimePlatform:
+          'web_preview',
       };
     }
 
     try {
-      const raw: any =
+      const raw =
         await NativePlugin.stopVpn();
 
-      if (!raw || raw.success === false) {
+      if (!raw) {
         return {
           success: false,
           errorCode:
-            raw?.errorCode ||
-            'VPN_STOP_FAILED',
+            'SERVICE_UNAVAILABLE',
           message:
-            raw?.message ||
             'Unable to stop VPN.',
-          data: {
-            state: String(
-              raw?.state ||
-                'ERROR'
-            ),
-          },
-          isSupported: true,
+          isSupported: false,
           runtimePlatform:
             'android_native',
         };
       }
 
+      const success =
+        raw.success !== false;
+
       return {
-        success: true,
+        success,
 
         data: {
           state: String(
             raw.state ||
-              'DISCONNECTING'
+              'DISCONNECTED'
           ),
         },
 
+        errorCode:
+          success
+            ? undefined
+            : raw.errorCode ||
+              'SERVICE_UNAVAILABLE',
+
         message:
           raw.message ||
-          'VPN stop requested.',
+          (
+            success
+              ? 'VPN stop requested.'
+              : 'Unable to stop VPN.'
+          ),
 
         isSupported: true,
 
@@ -1090,11 +1220,11 @@ class SecureDroidNativeService {
       return {
         success: false,
         errorCode:
-          'VPN_STOP_FAILED',
+          'SERVICE_UNAVAILABLE',
         message:
           error?.message ||
           'Unable to stop VPN.',
-        isSupported: true,
+        isSupported: false,
         runtimePlatform:
           'android_native',
       };
@@ -1102,7 +1232,7 @@ class SecureDroidNativeService {
   }
 
   // ============================================================
-  // SECURITY AUDIT LOG
+  // SECURITY AUDIT LOGS
   // ============================================================
 
   async getSecurityLogs(
@@ -1114,16 +1244,18 @@ class SecureDroidNativeService {
     if (!this.isNative) {
       return {
         success: false,
-        errorCode: 'SERVICE_UNAVAILABLE',
+        errorCode:
+          'SERVICE_UNAVAILABLE',
         message:
           'Security logs require native Android execution.',
         isSupported: false,
-        runtimePlatform: 'web_preview',
+        runtimePlatform:
+          'web_preview',
       };
     }
 
     try {
-      const raw: any =
+      const raw =
         await NativePlugin.getSecurityLogs({
           limit,
           category,
@@ -1237,7 +1369,8 @@ class SecureDroidNativeService {
     if (!this.isNative) {
       return {
         success: false,
-        errorCode: 'SERVICE_UNAVAILABLE',
+        errorCode:
+          'SERVICE_UNAVAILABLE',
         message:
           'Security event logging requires native Android execution.',
         isSupported: false,
@@ -1247,7 +1380,7 @@ class SecureDroidNativeService {
     }
 
     try {
-      const raw: any =
+      const raw =
         await NativePlugin.logSecurityEvent({
           event,
         });
@@ -1268,12 +1401,13 @@ class SecureDroidNativeService {
 
       const source =
         raw.data &&
-        typeof raw.data === 'object'
+        typeof raw.data ===
+          'object'
           ? raw.data
           : raw;
 
-      const normalizedEvent:
-        NativeSecurityEvent = {
+      const normalizedEvent: NativeSecurityEvent =
+        {
           id: String(
             source.id ||
               `evt_${Date.now()}`
@@ -1344,122 +1478,16 @@ class SecureDroidNativeService {
   }
 
   // ============================================================
-  // PRIVATE VPN PERMISSION CHECK
-  // ============================================================
-
-  private async checkVpnPermission(): Promise<{
-    granted: boolean;
-  }> {
-    /*
-     * requestVpnPermission() is intentionally used as the
-     * permission-status API because the Android implementation
-     * calls VpnService.prepare().
-     *
-     * When permission is already granted:
-     *
-     * {
-     *   success: true,
-     *   granted: true
-     * }
-     *
-     * When permission is not granted, Android opens the
-     * system permission activity.
-     */
-    try {
-      const raw: any =
-        await NativePlugin.requestVpnPermission();
-
-      if (!raw || raw.success === false) {
-        return {
-          granted: false,
-        };
-      }
-
-      return {
-        granted:
-          raw.granted === true,
-      };
-    } catch (error) {
-      console.error(
-        '[SecureDroid] VPN permission check failed:',
-        error
-      );
-
-      return {
-        granted: false,
-      };
-    }
-  }
-
-  // ============================================================
-  // VPN STATUS NORMALIZATION
-  // ============================================================
-
-  private normalizeVpnStatus(
-    raw: any
-  ): NativeVpnStatus {
-    const state = String(
-      raw?.state ||
-        (raw?.isActive
-          ? 'CONNECTED'
-          : 'DISCONNECTED')
-    ).toUpperCase();
-
-    const isActive =
-      state === 'CONNECTED' ||
-      Boolean(raw?.isActive);
-
-    return {
-      ...(raw as NativeVpnStatus),
-
-      isActive,
-
-      isConnected:
-        state === 'CONNECTED' ||
-        Boolean(raw?.isConnected),
-
-      state,
-
-      establishedTime:
-        typeof raw?.establishedTime ===
-        'number'
-          ? raw.establishedTime
-          : undefined,
-
-      bytesReceived: Number(
-        raw?.bytesReceived || 0
-      ),
-
-      bytesTransmitted: Number(
-        raw?.bytesTransmitted || 0
-      ),
-
-      blockedDomainsCount: Number(
-        raw?.blockedDomainsCount || 0
-      ),
-
-      activeDns: String(
-        raw?.activeDns ||
-          '1.1.1.1'
-      ),
-
-      filterMode: String(
-        raw?.filterMode ||
-          'BLOCKLIST'
-      ),
-    } as NativeVpnStatus;
-  }
-
-  // ============================================================
-  // RISK NORMALIZATION
+  // HELPERS
   // ============================================================
 
   private normalizeRiskLevel(
     value: any
   ): 'LOW' | 'MEDIUM' | 'HIGH' {
     switch (
-      String(value || '')
-        .toUpperCase()
+      String(
+        value || ''
+      ).toUpperCase()
     ) {
       case 'HIGH':
       case 'CRITICAL':
@@ -1475,16 +1503,13 @@ class SecureDroidNativeService {
     }
   }
 
-  // ============================================================
-  // SECURITY EVENT NORMALIZATION
-  // ============================================================
-
   private normalizeEventSeverity(
     value: any
   ): 'INFO' | 'WARNING' | 'CRITICAL' {
     switch (
-      String(value || '')
-        .toUpperCase()
+      String(
+        value || ''
+      ).toUpperCase()
     ) {
       case 'CRITICAL':
         return 'CRITICAL';
@@ -1503,8 +1528,9 @@ class SecureDroidNativeService {
     value: any
   ): NativeSecurityEvent['category'] {
     switch (
-      String(value || '')
-        .toUpperCase()
+      String(
+        value || ''
+      ).toUpperCase()
     ) {
       case 'PERMISSION':
         return 'PERMISSION';
@@ -1536,57 +1562,32 @@ class SecureDroidNativeService {
     }
   }
 
-  // ============================================================
-  // DANGEROUS PERMISSION DETECTION
-  // ============================================================
-
   private isDangerousPermission(
     permission: string
   ): boolean {
     const dangerousPermissions =
       new Set([
         'android.permission.CAMERA',
-
         'android.permission.RECORD_AUDIO',
-
         'android.permission.ACCESS_FINE_LOCATION',
-
         'android.permission.ACCESS_COARSE_LOCATION',
-
         'android.permission.READ_CONTACTS',
-
         'android.permission.WRITE_CONTACTS',
-
         'android.permission.READ_CALENDAR',
-
         'android.permission.WRITE_CALENDAR',
-
         'android.permission.READ_SMS',
-
         'android.permission.SEND_SMS',
-
         'android.permission.RECEIVE_SMS',
-
         'android.permission.CALL_PHONE',
-
         'android.permission.READ_CALL_LOG',
-
         'android.permission.WRITE_CALL_LOG',
-
         'android.permission.READ_PHONE_STATE',
-
         'android.permission.READ_PHONE_NUMBERS',
-
         'android.permission.BODY_SENSORS',
-
         'android.permission.ACTIVITY_RECOGNITION',
-
         'android.permission.READ_MEDIA_IMAGES',
-
         'android.permission.READ_MEDIA_VIDEO',
-
         'android.permission.READ_MEDIA_AUDIO',
-
         'android.permission.POST_NOTIFICATIONS',
       ]);
 
@@ -1596,7 +1597,8 @@ class SecureDroidNativeService {
   }
 }
 
+/**
+ * Single application-wide native service instance.
+ */
 export const SecureDroidNative =
   new SecureDroidNativeService();
-
-export default SecureDroidNative;
