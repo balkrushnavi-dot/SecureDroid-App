@@ -15,10 +15,12 @@ import {
     Shield,
     ShieldCheck,
     ShieldOff,
+    ShieldAlert,
     AlertTriangle,
     CheckCircle2,
     XCircle,
     ChevronRight,
+    ChevronDown,
     Search,
     Filter,
     RefreshCw,
@@ -31,6 +33,10 @@ import {
     Lock,
     Unlock,
     Info,
+    Zap,
+    Globe,
+    User,
+    Bell,
 } from 'lucide-react';
 import {
     SecureDroidTopBar,
@@ -39,6 +45,9 @@ import {
     SecureDroidStatusChip,
     SecureDroidButton,
     SecureDroidSearchBar,
+    SecureDroidBadge,
+    SecureDroidListItem,
+    SecureDroidProgressRing,
 } from './ui/designSystem';
 import { useSecureDroid } from '../hooks/useSecureDroid';
 import type { AppInfo } from '../hooks/useSecureDroid';
@@ -48,61 +57,58 @@ interface PrivacyRadarScreenProps {
     isLight?: boolean;
 }
 
-// Permission categorization (same as used in AppDetailScreen)
-const PERMISSION_MAP: Record<string, { name: string; icon: React.ElementType; risk: 'LOW' | 'MEDIUM' | 'HIGH'; category: string }> = {
-    'android.permission.CAMERA': { name: 'Camera', icon: Camera, risk: 'HIGH', category: 'CAMERA' },
-    'android.permission.RECORD_AUDIO': { name: 'Microphone', icon: Mic, risk: 'HIGH', category: 'MICROPHONE' },
-    'android.permission.ACCESS_FINE_LOCATION': { name: 'Precise Location', icon: MapPin, risk: 'HIGH', category: 'LOCATION' },
-    'android.permission.ACCESS_COARSE_LOCATION': { name: 'Approximate Location', icon: MapPin, risk: 'MEDIUM', category: 'LOCATION' },
-    'android.permission.ACCESS_BACKGROUND_LOCATION': { name: 'Background Location', icon: MapPin, risk: 'HIGH', category: 'LOCATION' },
-    'android.permission.READ_CONTACTS': { name: 'Read Contacts', icon: Users, risk: 'HIGH', category: 'CONTACTS' },
-    'android.permission.WRITE_CONTACTS': { name: 'Write Contacts', icon: Users, risk: 'HIGH', category: 'CONTACTS' },
-    'android.permission.READ_CALENDAR': { name: 'Read Calendar', icon: Calendar, risk: 'MEDIUM', category: 'CALENDAR' },
-    'android.permission.WRITE_CALENDAR': { name: 'Write Calendar', icon: Calendar, risk: 'MEDIUM', category: 'CALENDAR' },
-    'android.permission.READ_SMS': { name: 'Read SMS', icon: MessageSquare, risk: 'HIGH', category: 'SMS' },
-    'android.permission.SEND_SMS': { name: 'Send SMS', icon: MessageSquare, risk: 'HIGH', category: 'SMS' },
-    'android.permission.RECEIVE_SMS': { name: 'Receive SMS', icon: MessageSquare, risk: 'HIGH', category: 'SMS' },
-    'android.permission.READ_CALL_LOG': { name: 'Read Call Log', icon: Phone, risk: 'HIGH', category: 'PHONE' },
-    'android.permission.WRITE_CALL_LOG': { name: 'Write Call Log', icon: Phone, risk: 'HIGH', category: 'PHONE' },
-    'android.permission.CALL_PHONE': { name: 'Directly Call Phone', icon: Phone, risk: 'HIGH', category: 'PHONE' },
-    'android.permission.READ_PHONE_STATE': { name: 'Phone State', icon: Phone, risk: 'MEDIUM', category: 'PHONE' },
-    'android.permission.READ_PHONE_NUMBERS': { name: 'Phone Numbers', icon: Phone, risk: 'MEDIUM', category: 'PHONE' },
-    'android.permission.READ_EXTERNAL_STORAGE': { name: 'Read External Storage', icon: Database, risk: 'MEDIUM', category: 'STORAGE' },
-    'android.permission.WRITE_EXTERNAL_STORAGE': { name: 'Write External Storage', icon: Database, risk: 'MEDIUM', category: 'STORAGE' },
-    'android.permission.READ_MEDIA_IMAGES': { name: 'Read Images', icon: Image, risk: 'LOW', category: 'STORAGE' },
-    'android.permission.READ_MEDIA_VIDEO': { name: 'Read Videos', icon: Image, risk: 'LOW', category: 'STORAGE' },
-    'android.permission.READ_MEDIA_AUDIO': { name: 'Read Audio', icon: FileText, risk: 'LOW', category: 'STORAGE' },
-    'android.permission.BODY_SENSORS': { name: 'Body Sensors', icon: Activity, risk: 'MEDIUM', category: 'SENSORS' },
-    'android.permission.ACTIVITY_RECOGNITION': { name: 'Activity Recognition', icon: Activity, risk: 'LOW', category: 'SENSORS' },
-    'android.permission.POST_NOTIFICATIONS': { name: 'Post Notifications', icon: Bell, risk: 'LOW', category: 'NOTIFICATIONS' },
-    'android.permission.SYSTEM_ALERT_WINDOW': { name: 'Draw Over Other Apps', icon: Eye, risk: 'HIGH', category: 'SYSTEM' },
-    'android.permission.REQUEST_INSTALL_PACKAGES': { name: 'Install Packages', icon: Package, risk: 'HIGH', category: 'SYSTEM' },
-    'android.permission.WRITE_SECURE_SETTINGS': { name: 'Write Secure Settings', icon: Settings, risk: 'HIGH', category: 'SYSTEM' },
-    'android.permission.BIND_ACCESSIBILITY_SERVICE': { name: 'Accessibility Service', icon: Eye, risk: 'HIGH', category: 'SYSTEM' },
-    'android.permission.BIND_DEVICE_ADMIN': { name: 'Device Administrator', icon: Shield, risk: 'HIGH', category: 'SYSTEM' },
+// Permission categorization
+const PERMISSION_MAP: Record<string, { name: string; icon: React.ElementType; risk: 'LOW' | 'MEDIUM' | 'HIGH'; category: string; description: string }> = {
+    'android.permission.CAMERA': { name: 'Camera', icon: Camera, risk: 'HIGH', category: 'CAMERA', description: 'Take photos and videos' },
+    'android.permission.RECORD_AUDIO': { name: 'Microphone', icon: Mic, risk: 'HIGH', category: 'MICROPHONE', description: 'Record audio' },
+    'android.permission.ACCESS_FINE_LOCATION': { name: 'Precise Location', icon: MapPin, risk: 'HIGH', category: 'LOCATION', description: 'Access precise location' },
+    'android.permission.ACCESS_COARSE_LOCATION': { name: 'Approximate Location', icon: MapPin, risk: 'MEDIUM', category: 'LOCATION', description: 'Access approximate location' },
+    'android.permission.ACCESS_BACKGROUND_LOCATION': { name: 'Background Location', icon: MapPin, risk: 'HIGH', category: 'LOCATION', description: 'Access location in background' },
+    'android.permission.READ_CONTACTS': { name: 'Read Contacts', icon: Users, risk: 'HIGH', category: 'CONTACTS', description: 'Read your contacts' },
+    'android.permission.WRITE_CONTACTS': { name: 'Write Contacts', icon: Users, risk: 'HIGH', category: 'CONTACTS', description: 'Modify your contacts' },
+    'android.permission.READ_CALENDAR': { name: 'Read Calendar', icon: Calendar, risk: 'MEDIUM', category: 'CALENDAR', description: 'Read calendar events' },
+    'android.permission.WRITE_CALENDAR': { name: 'Write Calendar', icon: Calendar, risk: 'MEDIUM', category: 'CALENDAR', description: 'Modify calendar events' },
+    'android.permission.READ_SMS': { name: 'Read SMS', icon: MessageSquare, risk: 'HIGH', category: 'SMS', description: 'Read SMS messages' },
+    'android.permission.SEND_SMS': { name: 'Send SMS', icon: MessageSquare, risk: 'HIGH', category: 'SMS', description: 'Send SMS messages' },
+    'android.permission.RECEIVE_SMS': { name: 'Receive SMS', icon: MessageSquare, risk: 'HIGH', category: 'SMS', description: 'Intercept incoming SMS' },
+    'android.permission.READ_CALL_LOG': { name: 'Read Call Log', icon: Phone, risk: 'HIGH', category: 'PHONE', description: 'Read call history' },
+    'android.permission.WRITE_CALL_LOG': { name: 'Write Call Log', icon: Phone, risk: 'HIGH', category: 'PHONE', description: 'Modify call history' },
+    'android.permission.CALL_PHONE': { name: 'Directly Call Phone', icon: Phone, risk: 'HIGH', category: 'PHONE', description: 'Directly call phone numbers' },
+    'android.permission.READ_PHONE_STATE': { name: 'Phone State', icon: Phone, risk: 'MEDIUM', category: 'PHONE', description: 'Read phone status and identity' },
+    'android.permission.READ_PHONE_NUMBERS': { name: 'Phone Numbers', icon: Phone, risk: 'MEDIUM', category: 'PHONE', description: 'Read phone numbers' },
+    'android.permission.READ_EXTERNAL_STORAGE': { name: 'Read External Storage', icon: Database, risk: 'MEDIUM', category: 'STORAGE', description: 'Read files on external storage' },
+    'android.permission.WRITE_EXTERNAL_STORAGE': { name: 'Write External Storage', icon: Database, risk: 'MEDIUM', category: 'STORAGE', description: 'Write files on external storage' },
+    'android.permission.READ_MEDIA_IMAGES': { name: 'Read Images', icon: Image, risk: 'LOW', category: 'STORAGE', description: 'Read images from media store' },
+    'android.permission.READ_MEDIA_VIDEO': { name: 'Read Videos', icon: Image, risk: 'LOW', category: 'STORAGE', description: 'Read videos from media store' },
+    'android.permission.READ_MEDIA_AUDIO': { name: 'Read Audio', icon: FileText, risk: 'LOW', category: 'STORAGE', description: 'Read audio files from media store' },
+    'android.permission.BODY_SENSORS': { name: 'Body Sensors', icon: Activity, risk: 'MEDIUM', category: 'SENSORS', description: 'Access body sensor data' },
+    'android.permission.ACTIVITY_RECOGNITION': { name: 'Activity Recognition', icon: Activity, risk: 'LOW', category: 'SENSORS', description: 'Recognize physical activity' },
+    'android.permission.POST_NOTIFICATIONS': { name: 'Post Notifications', icon: Bell, risk: 'LOW', category: 'NOTIFICATIONS', description: 'Show notifications' },
+    'android.permission.SYSTEM_ALERT_WINDOW': { name: 'Draw Over Other Apps', icon: Eye, risk: 'HIGH', category: 'SYSTEM', description: 'Display overlay windows' },
+    'android.permission.REQUEST_INSTALL_PACKAGES': { name: 'Install Packages', icon: Package, risk: 'HIGH', category: 'SYSTEM', description: 'Install other applications' },
+    'android.permission.WRITE_SECURE_SETTINGS': { name: 'Write Secure Settings', icon: Settings, risk: 'HIGH', category: 'SYSTEM', description: 'Modify protected system settings' },
+    'android.permission.BIND_ACCESSIBILITY_SERVICE': { name: 'Accessibility Service', icon: Eye, risk: 'HIGH', category: 'SYSTEM', description: 'Control screen via accessibility' },
+    'android.permission.BIND_DEVICE_ADMIN': { name: 'Device Administrator', icon: Shield, risk: 'HIGH', category: 'SYSTEM', description: 'Request device admin privileges' },
 };
 
-// Default for unknown
-const DEFAULT_PERM = { name: 'Unknown Permission', icon: Shield, risk: 'LOW' as const, category: 'OTHER' };
+const DEFAULT_PERM = { name: 'Unknown Permission', icon: Shield, risk: 'LOW' as const, category: 'OTHER', description: 'This permission is not recognized' };
 
-// Helper to get permission info, fallback to default
 function getPermissionInfo(perm: string) {
     return PERMISSION_MAP[perm] || DEFAULT_PERM;
 }
 
-// UI state
 type FilterType = 'ALL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'CAMERA' | 'MICROPHONE' | 'LOCATION' | 'CONTACTS' | 'SMS' | 'PHONE' | 'STORAGE' | 'SYSTEM';
 
 export const PrivacyRadarScreen: React.FC<PrivacyRadarScreenProps> = ({
     onBack,
     isLight = false,
 }) => {
-    const { apps, loading, connected, error, reload } = useSecureDroid();
+    const { apps, risks, loading, connected, error, reload } = useSecureDroid();
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedFilter, setSelectedFilter] = useState<FilterType>('ALL');
+    const [expandedApp, setExpandedApp] = useState<string | null>(null);
 
-    // Only consider user apps
-    const userApps = useMemo(() => apps.filter(a => !a.isSystemApp), [apps]);
+    const userApps = useMemo(() => apps.filter(app => !app.isSystemApp), [apps]);
 
     // Build permission usage list
     const permissionItems = useMemo(() => {
@@ -116,6 +122,7 @@ export const PrivacyRadarScreen: React.FC<PrivacyRadarScreenProps> = ({
             risk: 'LOW' | 'MEDIUM' | 'HIGH';
             category: string;
             granted: boolean;
+            description: string;
             isSystemApp: boolean;
         }[] = [];
 
@@ -134,6 +141,7 @@ export const PrivacyRadarScreen: React.FC<PrivacyRadarScreenProps> = ({
                     risk: info.risk,
                     category: info.category,
                     granted: grantedSet.has(perm),
+                    description: info.description,
                     isSystemApp: app.isSystemApp,
                 });
             }
@@ -147,7 +155,6 @@ export const PrivacyRadarScreen: React.FC<PrivacyRadarScreenProps> = ({
     const mediumRiskCount = permissionItems.filter(i => i.risk === 'MEDIUM').length;
     const lowRiskCount = permissionItems.filter(i => i.risk === 'LOW').length;
 
-    // Apps with at least one high-risk permission
     const riskyAppsSet = new Set<string>();
     for (const item of permissionItems) {
         if (item.risk === 'HIGH') {
@@ -159,7 +166,6 @@ export const PrivacyRadarScreen: React.FC<PrivacyRadarScreenProps> = ({
     // Filter and search
     const filteredItems = useMemo(() => {
         let result = permissionItems;
-        // Search
         if (searchQuery.trim()) {
             const q = searchQuery.toLowerCase();
             result = result.filter(item =>
@@ -168,19 +174,28 @@ export const PrivacyRadarScreen: React.FC<PrivacyRadarScreenProps> = ({
                 item.packageName.toLowerCase().includes(q)
             );
         }
-        // Filter
         if (selectedFilter !== 'ALL') {
             if (['HIGH', 'MEDIUM', 'LOW'].includes(selectedFilter)) {
                 result = result.filter(item => item.risk === selectedFilter);
             } else {
-                // Category filter
                 result = result.filter(item => item.category === selectedFilter);
             }
         }
         return result;
     }, [permissionItems, searchQuery, selectedFilter]);
 
-    // Available filter options
+    // Group by app
+    const groupedByApp = useMemo(() => {
+        const groups: Record<string, typeof permissionItems> = {};
+        for (const item of filteredItems) {
+            if (!groups[item.packageName]) {
+                groups[item.packageName] = [];
+            }
+            groups[item.packageName].push(item);
+        }
+        return groups;
+    }, [filteredItems]);
+
     const filterOptions: { value: FilterType; label: string }[] = [
         { value: 'ALL', label: 'ALL' },
         { value: 'HIGH', label: 'HIGH' },
@@ -196,7 +211,6 @@ export const PrivacyRadarScreen: React.FC<PrivacyRadarScreenProps> = ({
         { value: 'SYSTEM', label: 'SYSTEM' },
     ];
 
-    // Compute privacy score: start at 100, deduct for each granted high-risk and medium-risk permission
     const privacyScore = useMemo(() => {
         let score = 100;
         for (const item of permissionItems) {
@@ -209,7 +223,7 @@ export const PrivacyRadarScreen: React.FC<PrivacyRadarScreenProps> = ({
 
     const getRiskColor = (risk: string) => {
         switch (risk) {
-            case 'HIGH': return 'text-red-400 bg-red-500/10';
+            case 'HIGH': return 'text-rose-400 bg-rose-500/10';
             case 'MEDIUM': return 'text-amber-400 bg-amber-500/10';
             case 'LOW': return 'text-emerald-400 bg-emerald-500/10';
             default: return 'text-slate-400 bg-slate-500/10';
@@ -225,130 +239,205 @@ export const PrivacyRadarScreen: React.FC<PrivacyRadarScreenProps> = ({
         }
     };
 
+    const toggleExpanded = (packageName: string) => {
+        setExpandedApp(expandedApp === packageName ? null : packageName);
+    };
+
+    const getAppRiskLevel = (packageName: string) => {
+        const risk = risks.find(r => r.packageName === packageName);
+        return risk?.riskLevel || 'LOW';
+    };
+
     return (
         <div className={`min-h-full pb-24 transition-colors ${isLight ? 'bg-zinc-50' : 'bg-slate-950'}`}>
             <SecureDroidTopBar
                 title="Privacy Radar"
-                subtitle="Track permission usage by app"
+                subtitle="Track app permission usage"
                 onBack={onBack}
                 isLight={isLight}
+                rightAction={
+                    <button
+                        onClick={reload}
+                        disabled={loading}
+                        className="p-2 rounded-xl bg-slate-800/50 hover:bg-slate-700/50 transition-colors disabled:opacity-50"
+                    >
+                        <RefreshCw className={`w-4 h-4 text-slate-400 ${loading ? 'animate-spin' : ''}`} />
+                    </button>
+                }
             />
 
-            <div className="p-4 space-y-4">
+            <div className="p-4 space-y-4 max-w-7xl mx-auto">
                 {/* Stats */}
                 <div className="grid grid-cols-4 gap-2">
                     <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-800 text-center">
-                        <div className="text-lg font-bold text-slate-100">{totalPermissions}</div>
-                        <div className="text-[10px] text-slate-500 uppercase tracking-wider">Total Uses</div>
+                        <div className="text-lg font-bold text-zinc-100">{totalPermissions}</div>
+                        <div className="text-[10px] text-slate-500 uppercase tracking-wider">Total</div>
                     </div>
                     <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-800 text-center">
-                        <div className={`text-lg font-bold ${highRiskCount > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+                        <div className={`text-lg font-bold ${highRiskCount > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
                             {highRiskCount}
                         </div>
-                        <div className="text-[10px] text-slate-500 uppercase tracking-wider">High Risk</div>
+                        <div className="text-[10px] text-slate-500 uppercase tracking-wider">High</div>
                     </div>
                     <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-800 text-center">
-                        <div className="text-lg font-bold text-amber-400">{mediumRiskCount}</div>
-                        <div className="text-[10px] text-slate-500 uppercase tracking-wider">Medium Risk</div>
+                        <div className={`text-lg font-bold ${mediumRiskCount > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                            {mediumRiskCount}
+                        </div>
+                        <div className="text-[10px] text-slate-500 uppercase tracking-wider">Medium</div>
                     </div>
                     <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-800 text-center">
-                        <div className="text-lg font-bold text-slate-100">{riskyAppsCount}</div>
-                        <div className="text-[10px] text-slate-500 uppercase tracking-wider">Risky Apps</div>
+                        <div className="text-lg font-bold text-emerald-400">{lowRiskCount}</div>
+                        <div className="text-[10px] text-slate-500 uppercase tracking-wider">Low</div>
+                    </div>
+                </div>
+
+                {/* Privacy Score */}
+                <div className="bg-gradient-to-br from-slate-900 to-slate-800/50 p-4 rounded-2xl border border-slate-700/50">
+                    <div className="flex items-center gap-6">
+                        <SecureDroidProgressRing value={privacyScore} size={64} strokeWidth={5} isLight={false}>
+                            <span className="text-xl font-bold text-zinc-100">{privacyScore}</span>
+                        </SecureDroidProgressRing>
+                        <div>
+                            <div className="text-sm text-slate-400">Privacy Score</div>
+                            <div className={`text-lg font-semibold ${privacyScore >= 70 ? 'text-emerald-400' : privacyScore >= 40 ? 'text-amber-400' : 'text-rose-400'}`}>
+                                {privacyScore >= 70 ? 'Good' : privacyScore >= 40 ? 'Needs Review' : 'At Risk'}
+                            </div>
+                            <div className="text-xs text-slate-500 mt-1">
+                                {riskyAppsCount} app{riskyAppsCount > 1 ? 's' : ''} with high-risk permissions
+                            </div>
+                        </div>
                     </div>
                 </div>
 
                 {/* Search & Filter */}
-                <div className="space-y-2">
-                    <SecureDroidSearchBar
-                        value={searchQuery}
-                        onChange={setSearchQuery}
-                        placeholder="Search apps or permissions..."
-                        isLight={isLight}
-                        onClear={() => setSearchQuery('')}
-                    />
-                    <div className="flex gap-2 overflow-x-auto pb-1">
-                        {filterOptions.map((opt) => (
-                            <button
-                                key={opt.value}
-                                onClick={() => setSelectedFilter(opt.value)}
-                                className={`px-3 py-1.5 rounded-full text-[10px] font-medium whitespace-nowrap transition-all ${
-                                    selectedFilter === opt.value
-                                        ? 'bg-sky-500/20 text-sky-400 border border-sky-500/30'
-                                        : 'bg-slate-800/50 text-slate-400 border border-slate-800 hover:border-slate-600'
-                                }`}
-                            >
-                                {opt.label}
-                            </button>
-                        ))}
+                <div className="flex flex-col sm:flex-row gap-2">
+                    <div className="flex-1">
+                        <SecureDroidSearchBar
+                            value={searchQuery}
+                            onChange={setSearchQuery}
+                            placeholder="Search apps or permissions..."
+                            isLight={isLight}
+                            onClear={() => setSearchQuery('')}
+                        />
                     </div>
                 </div>
 
-                {/* Permission Usage List */}
-                <SecureDroidSectionHeader title="Permission Usage" />
+                <div className="flex gap-1 overflow-x-auto pb-1">
+                    {filterOptions.map((opt) => (
+                        <button
+                            key={opt.value}
+                            onClick={() => setSelectedFilter(opt.value)}
+                            className={`px-3 py-1.5 rounded-full text-[10px] font-medium whitespace-nowrap transition-all ${
+                                selectedFilter === opt.value
+                                    ? 'bg-sky-500/20 text-sky-400 border border-sky-500/30'
+                                    : 'bg-slate-800/50 text-slate-400 border border-slate-800 hover:border-slate-600'
+                            }`}
+                        >
+                            {opt.label}
+                        </button>
+                    ))}
+                </div>
 
-                <div className="space-y-2">
-                    {filteredItems.length === 0 ? (
-                        <div className="bg-slate-900/50 p-8 rounded-2xl border border-slate-800 text-center">
-                            <EyeOff className="w-8 h-8 text-slate-600 mx-auto mb-2" />
-                            <p className="text-sm text-slate-400">No permission usage found</p>
-                            <p className="text-xs text-slate-500">Try adjusting your search or filter</p>
+                {/* Permission Usage List */}
+                <SecureDroidSectionHeader title="Permission Usage" isLight={isLight} />
+
+                <div className="space-y-3">
+                    {Object.keys(groupedByApp).length === 0 ? (
+                        <div className="p-12 text-center">
+                            <EyeOff className="w-12 h-12 text-slate-600 mx-auto mb-3" />
+                            <p className="text-slate-400 text-lg font-medium">No permissions found</p>
+                            <p className="text-sm text-slate-500 mt-1">Try adjusting your search or filter</p>
                         </div>
                     ) : (
-                        filteredItems.map((item) => {
-                            const Icon = item.permissionIcon;
+                        Object.entries(groupedByApp).map(([packageName, items]) => {
+                            const app = userApps.find(a => a.packageName === packageName);
+                            const appName = app?.appName || packageName;
+                            const isExpanded = expandedApp === packageName;
+                            const appRisk = getAppRiskLevel(packageName);
+                            const appRiskColor = getRiskColor(appRisk);
+
                             return (
-                                <div key={item.id} className="bg-slate-900/50 p-3 rounded-xl border border-slate-800">
-                                    <div className="flex items-center gap-3">
-                                        <div className={`w-8 h-8 rounded-full ${getRiskColor(item.risk)} flex items-center justify-center`}>
-                                            <Icon className="w-4 h-4" />
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <div className="flex items-center gap-2">
-                                                <span className="font-medium text-slate-100 text-sm">{item.appName}</span>
-                                                <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-medium ${getRiskColor(item.risk)}`}>
-                                                    {getRiskLabel(item.risk)}
-                                                </span>
-                                                {item.isSystemApp && (
-                                                    <span className="text-[9px] text-slate-500 bg-slate-800/50 px-1.5 py-0.5 rounded-full">System</span>
-                                                )}
+                                <SecureDroidCard
+                                    key={packageName}
+                                    className="p-0 overflow-hidden"
+                                    isLight={isLight}
+                                >
+                                    <div
+                                        className="p-4 cursor-pointer hover:bg-slate-800/30 transition-colors"
+                                        onClick={() => toggleExpanded(packageName)}
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 rounded-xl bg-slate-800/50 flex items-center justify-center shrink-0">
+                                                <Smartphone className="w-5 h-5 text-slate-400" />
                                             </div>
-                                            <div className="flex items-center gap-3 text-xs text-slate-400">
-                                                <span>{item.permissionName}</span>
-                                                <span>•</span>
-                                                <span>{item.granted ? '✅ Granted' : '📝 Declared'}</span>
+
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-medium text-zinc-100 text-sm truncate">
+                                                        {appName}
+                                                    </span>
+                                                    <span className={`px-1.5 py-0.5 rounded-full text-[8px] font-medium ${appRiskColor}`}>
+                                                        {appRisk}
+                                                    </span>
+                                                    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-slate-800 text-slate-400">
+                                                        {items.length} permissions
+                                                    </span>
+                                                </div>
+                                                <p className="text-xs text-slate-400 font-mono truncate">
+                                                    {packageName}
+                                                </p>
                                             </div>
+
+                                            <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
                                         </div>
-                                        <ChevronRight className="w-4 h-4 text-slate-600" />
                                     </div>
-                                </div>
+
+                                    {isExpanded && (
+                                        <div className="px-4 pb-4 pt-2 border-t border-slate-800/50 space-y-1.5">
+                                            {items.map((item) => {
+                                                const Icon = item.permissionIcon;
+                                                return (
+                                                    <div
+                                                        key={item.id}
+                                                        className="flex items-center gap-3 p-2.5 rounded-xl bg-slate-900/50 border border-slate-800"
+                                                    >
+                                                        <div className={`w-7 h-7 rounded-full ${getRiskColor(item.risk)} flex items-center justify-center shrink-0`}>
+                                                            <Icon className="w-3.5 h-3.5" />
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="text-sm font-medium text-zinc-200">
+                                                                    {item.permissionName}
+                                                                </span>
+                                                                <span className={`text-[8px] px-1.5 py-0.5 rounded-full ${getRiskColor(item.risk)}`}>
+                                                                    {getRiskLabel(item.risk)}
+                                                                </span>
+                                                            </div>
+                                                            <p className="text-xs text-slate-400">{item.description}</p>
+                                                        </div>
+                                                        <div className="text-right shrink-0">
+                                                            {item.granted ? (
+                                                                <span className="text-xs text-emerald-400">Granted</span>
+                                                            ) : (
+                                                                <span className="text-xs text-amber-400">Declared</span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </SecureDroidCard>
                             );
                         })
                     )}
                 </div>
 
-                {/* Privacy Score */}
-                <div className="bg-gradient-to-br from-slate-900 to-slate-800/50 p-4 rounded-2xl border border-slate-700/50">
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <div className="text-sm text-slate-400">Privacy Score</div>
-                            <div className={`text-2xl font-bold ${privacyScore >= 70 ? 'text-emerald-400' : privacyScore >= 40 ? 'text-amber-400' : 'text-red-400'}`}>
-                                {privacyScore}
-                            </div>
-                        </div>
-                        <div className="text-right">
-                            <div className="text-sm text-slate-400">Status</div>
-                            <span className={`text-sm font-medium ${privacyScore >= 70 ? 'text-emerald-400' : privacyScore >= 40 ? 'text-amber-400' : 'text-red-400'}`}>
-                                {privacyScore >= 70 ? 'Good' : privacyScore >= 40 ? 'Needs Review' : 'At Risk'}
-                            </span>
-                        </div>
-                    </div>
-                </div>
-
                 {/* Recommendation */}
                 {highRiskCount > 0 && (
-                    <div className="bg-amber-950/20 p-4 rounded-2xl border border-amber-800/30">
+                    <div className="p-4 rounded-xl border bg-amber-950/20 border-amber-800/30">
                         <div className="flex items-start gap-3">
-                            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                            <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
                             <div>
                                 <p className="text-sm font-medium text-amber-400">
                                     {riskyAppsCount} app{riskyAppsCount > 1 ? 's' : ''} with high-risk permissions
@@ -362,14 +451,9 @@ export const PrivacyRadarScreen: React.FC<PrivacyRadarScreenProps> = ({
                     </div>
                 )}
 
-                <SecureDroidButton
-                    onClick={reload}
-                    disabled={loading}
-                    className="w-full"
-                >
-                    <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-                    {loading ? 'Loading...' : 'Refresh'}
-                </SecureDroidButton>
+                <div className="text-center text-[10px] text-slate-500 pt-2">
+                    {Object.keys(groupedByApp).length} apps with {filteredItems.length} permissions
+                </div>
             </div>
         </div>
     );
