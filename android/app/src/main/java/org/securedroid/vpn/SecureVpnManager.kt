@@ -7,238 +7,220 @@ import android.util.Log
 import androidx.core.content.ContextCompat
 
 class SecureVpnManager(
-    private val context: Context
+private val context: Context
 ) {
 
-    companion object {
-        private const val TAG = "SecureVpnManager"
-        private const val DEFAULT_DNS_SERVER = "1.1.1.1"
+companion object {
+    private const val TAG = "SecureVpnManager"
+    private const val DNS_SERVER = "1.1.1.1"
+}
+
+fun getState(): VpnState {
+    return VpnStateStore.get()
+}
+
+fun isConnected(): Boolean {
+    return getState() == VpnState.CONNECTED
+}
+
+fun start(): Boolean {
+
+    val currentState = getState()
+
+    Log.d(
+        TAG,
+        "start() called, current state=$currentState"
+    )
+
+    if (
+        currentState == VpnState.CONNECTING ||
+        currentState == VpnState.CONNECTED
+    ) {
+        Log.d(
+            TAG,
+            "VPN is already connecting or connected"
+        )
+
+        return false
     }
 
-    fun getState(): VpnState {
-        return VpnStateStore.get()
-    }
-
-    fun isConnected(): Boolean {
-        return getState() == VpnState.CONNECTED
-    }
-
-    /**
-     * Returns true when Android has already granted this application
-     * permission to establish a VPN.
-     */
-    fun hasVpnPermission(): Boolean {
-        return try {
-            VpnService.prepare(context) == null
-        } catch (e: Exception) {
-            Log.e(
-                TAG,
-                "Unable to determine VPN permission",
-                e
-            )
-            false
-        }
-    }
-
-    /**
-     * Requests the VPN service to start.
+    /*
+     * The VPN permission should normally be checked by the
+     * Capacitor plugin before calling this method.
      *
-     * IMPORTANT:
-     * This only requests service startup. The actual connection state
-     * is determined by SecureVpnService after Builder.establish().
+     * We check again here so this manager cannot accidentally
+     * start the service without Android VPN authorization.
      */
-    fun start(
-        dnsServer: String = DEFAULT_DNS_SERVER
-    ): Boolean {
+    val prepareIntent =
+        VpnService.prepare(context)
 
-        val currentState = VpnStateStore.get()
+    if (prepareIntent != null) {
+
+        Log.w(
+            TAG,
+            "VPN permission has not been granted"
+        )
+
+        return false
+    }
+
+    VpnStateStore.set(
+        VpnState.CONNECTING
+    )
+
+    Log.d(
+        TAG,
+        "VPN state set to CONNECTING"
+    )
+
+    val intent =
+        Intent(
+            context,
+            SecureVpnService::class.java
+        ).apply {
+
+            action =
+                SecureVpnService.ACTION_START
+
+            putExtra(
+                SecureVpnService.EXTRA_DNS_SERVER,
+                DNS_SERVER
+            )
+        }
+
+    return try {
+
+        ContextCompat.startForegroundService(
+            context,
+            intent
+        )
 
         Log.d(
             TAG,
-            "start() called, currentState=$currentState"
+            "VPN foreground service start requested"
         )
 
-        if (!hasVpnPermission()) {
+        true
 
-            Log.w(
-                TAG,
-                "VPN permission has not been granted"
-            )
+    } catch (e: SecurityException) {
 
-            return false
-        }
-
-        if (
-            currentState == VpnState.CONNECTING ||
-            currentState == VpnState.CONNECTED
-        ) {
-
-            Log.d(
-                TAG,
-                "VPN is already connecting or connected"
-            )
-
-            return false
-        }
-
-        val sanitizedDns =
-            dnsServer
-                .trim()
-                .takeIf { it.isNotEmpty() }
-                ?: DEFAULT_DNS_SERVER
+        Log.e(
+            TAG,
+            "SecurityException while starting VPN service",
+            e
+        )
 
         VpnStateStore.set(
-            VpnState.CONNECTING
+            VpnState.ERROR
         )
 
-        Log.d(
+        false
+
+    } catch (e: Exception) {
+
+        Log.e(
             TAG,
-            "VPN state set to CONNECTING"
+            "Failed to start VPN service",
+            e
         )
-
-        return try {
-
-            val intent =
-                Intent(
-                    context,
-                    SecureVpnService::class.java
-                ).apply {
-
-                    action =
-                        SecureVpnService.ACTION_START
-
-                    putExtra(
-                        SecureVpnService.EXTRA_DNS_SERVER,
-                        sanitizedDns
-                    )
-                }
-
-            ContextCompat.startForegroundService(
-                context,
-                intent
-            )
-
-            Log.d(
-                TAG,
-                "VPN service start request sent"
-            )
-
-            true
-
-        } catch (e: SecurityException) {
-
-            Log.e(
-                TAG,
-                "SecurityException while starting VPN service",
-                e
-            )
-
-            VpnStateStore.set(
-                VpnState.ERROR
-            )
-
-            false
-
-        } catch (e: Exception) {
-
-            Log.e(
-                TAG,
-                "Failed to start VPN service",
-                e
-            )
-
-            VpnStateStore.set(
-                VpnState.ERROR
-            )
-
-            false
-        }
-    }
-
-    /**
-     * Requests VPN shutdown.
-     *
-     * The service is responsible for closing the actual VPN
-     * interface and setting DISCONNECTED.
-     */
-    fun stop() {
-
-        val currentState =
-            VpnStateStore.get()
-
-        Log.d(
-            TAG,
-            "stop() called, currentState=$currentState"
-        )
-
-        if (
-            currentState == VpnState.DISCONNECTED
-        ) {
-
-            Log.d(
-                TAG,
-                "VPN is already disconnected"
-            )
-
-            return
-        }
 
         VpnStateStore.set(
-            VpnState.DISCONNECTING
+            VpnState.ERROR
         )
+
+        false
+    }
+}
+
+fun stop() {
+
+    val currentState =
+        getState()
+
+    Log.d(
+        TAG,
+        "stop() called, current state=$currentState"
+    )
+
+    if (
+        currentState == VpnState.DISCONNECTED
+    ) {
+        Log.d(
+            TAG,
+            "VPN is already disconnected"
+        )
+
+        return
+    }
+
+    if (
+        currentState == VpnState.DISCONNECTING
+    ) {
+        Log.d(
+            TAG,
+            "VPN is already disconnecting"
+        )
+
+        return
+    }
+
+    VpnStateStore.set(
+        VpnState.DISCONNECTING
+    )
+
+    Log.d(
+        TAG,
+        "VPN state set to DISCONNECTING"
+    )
+
+    val intent =
+        Intent(
+            context,
+            SecureVpnService::class.java
+        ).apply {
+
+            action =
+                SecureVpnService.ACTION_STOP
+        }
+
+    try {
+
+        /*
+         * This is an explicit service intent, so startService()
+         * is sufficient for the stop request.
+         */
+        context.startService(intent)
 
         Log.d(
             TAG,
-            "VPN state set to DISCONNECTING"
+            "VPN stop request sent"
         )
 
-        try {
+    } catch (e: SecurityException) {
 
-            val intent =
-                Intent(
-                    context,
-                    SecureVpnService::class.java
-                ).apply {
+        Log.e(
+            TAG,
+            "SecurityException while stopping VPN service",
+            e
+        )
 
-                    action =
-                        SecureVpnService.ACTION_STOP
-                }
+        VpnStateStore.set(
+            VpnState.ERROR
+        )
 
-            /*
-             * The service already exists when a VPN is active,
-             * so startService() is sufficient for delivering the
-             * stop command.
-             */
-            context.startService(intent)
+    } catch (e: Exception) {
 
-            Log.d(
-                TAG,
-                "VPN stop request sent"
-            )
+        Log.e(
+            TAG,
+            "Failed to stop VPN service",
+            e
+        )
 
-        } catch (e: SecurityException) {
-
-            Log.e(
-                TAG,
-                "SecurityException while stopping VPN",
-                e
-            )
-
-            VpnStateStore.set(
-                VpnState.ERROR
-            )
-
-        } catch (e: Exception) {
-
-            Log.e(
-                TAG,
-                "Failed to stop VPN service",
-                e
-            )
-
-            VpnStateStore.set(
-                VpnState.ERROR
-            )
-        }
+        VpnStateStore.set(
+            VpnState.ERROR
+        )
     }
+}
+
+
 }
