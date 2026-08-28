@@ -37,6 +37,8 @@ import {
     Globe,
     User,
     Bell,
+    Package,
+    Settings,
 } from 'lucide-react';
 import {
     SecureDroidTopBar,
@@ -133,7 +135,7 @@ export const PrivacyRadarScreen: React.FC<PrivacyRadarScreenProps> = ({
                 const info = getPermissionInfo(perm);
                 items.push({
                     id: `${app.packageName}-${perm}`,
-                    appName: app.appName,
+                    appName: app.appName || app.label || app.packageName,
                     packageName: app.packageName,
                     permission: perm,
                     permissionName: info.name,
@@ -351,7 +353,7 @@ export const PrivacyRadarScreen: React.FC<PrivacyRadarScreenProps> = ({
                     ) : (
                         Object.entries(groupedByApp).map(([packageName, items]) => {
                             const app = userApps.find(a => a.packageName === packageName);
-                            const appName = app?.appName || packageName;
+                            const appName = app?.appName || app?.label || packageName;
                             const isExpanded = expandedApp === packageName;
                             const appRisk = getAppRiskLevel(packageName);
                             const appRiskColor = getRiskColor(appRisk);

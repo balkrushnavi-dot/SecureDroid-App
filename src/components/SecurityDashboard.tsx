@@ -41,7 +41,7 @@ export function SecurityDashboard({ onNavigate }: SecurityDashboardProps) {
       }
 
       if (vpnRes.success && vpnRes.data) {
-        setVpnActive(Boolean(vpnRes.data.isActive || vpnRes.data.isConnected));
+        setVpnActive(Boolean(vpnRes.data.isActive));
       }
 
       if (appsRes.success && Array.isArray(appsRes.data)) {

@@ -46,6 +46,8 @@ export class BackupService {
     const base64Salt = this.uint8ArrayToBase64(salt);
 
     await SecureDroidNative.logSecurityEvent({
+      id: `backup_create_${Date.now()}`,
+      timestamp: Date.now(),
       category: 'BACKUP',
       severity: 'INFO',
       description: 'AES-GCM encrypted backup archive generated successfully.',
@@ -110,6 +112,8 @@ export class BackupService {
       const data = JSON.parse(jsonStr);
 
       await SecureDroidNative.logSecurityEvent({
+        id: `backup_restore_${Date.now()}`,
+        timestamp: Date.now(),
         category: 'BACKUP',
         severity: 'INFO',
         description: 'Encrypted backup archive validated and restored.',
@@ -119,6 +123,8 @@ export class BackupService {
       return data;
     } catch {
       await SecureDroidNative.logSecurityEvent({
+        id: `backup_restore_fail_${Date.now()}`,
+        timestamp: Date.now(),
         category: 'BACKUP',
         severity: 'WARNING',
         description: 'Failed backup restore attempt: Invalid passphrase or corrupted archive.',

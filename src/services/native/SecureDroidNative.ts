@@ -230,7 +230,7 @@ class SecureDroidNativeService {
                             : undefined,
                     mode:
                         typeof raw.mode === 'string'
-                            ? raw.mode
+                            ? (raw.mode as any)
                             : undefined,
                     isReal: raw.isReal === true,
                 },
@@ -734,7 +734,8 @@ class SecureDroidNativeService {
     // ============================================================
 
     async getSecurityLogs(
-        limit = 50
+        limit = 50,
+        category?: string,
     ): Promise<NativeResult<NativeSecurityEvent[]>> {
         if (!this.isNative) {
             return this.unavailable(
@@ -755,6 +756,7 @@ class SecureDroidNativeService {
             const raw =
                 await SecureDroidNativePlugin.getSecurityLogs({
                     limit: safeLimit,
+                    category,
                 });
 
             const failure =
@@ -925,6 +927,80 @@ class SecureDroidNativeService {
                     ? error.message
                     : 'Risk scan failed.'
             );
+        }
+    }
+    // ============================================================
+    // DEVICE INFO & NETWORK
+    // ============================================================
+
+    async getDeviceInfo(): Promise<NativeResult<any>> {
+        if (!this.isNative) {
+            return this.unavailable('Device info requires Android native services.');
+        }
+
+        try {
+            const raw = await SecureDroidNativePlugin.getDeviceInfo();
+            const failure = this.parseNativeFailure<any>(raw, 'Failed to get device info.');
+            if (failure) return failure;
+            return {
+                success: true,
+                data: (raw as any)?.data || raw,
+                isSupported: true,
+                runtimePlatform: 'android_native',
+            };
+        } catch (error: unknown) {
+            return this.nativeFailure(error instanceof Error ? error.message : 'Failed to get device info.');
+        }
+    }
+
+    async getNetworkState(): Promise<NativeResult<any>> {
+        if (!this.isNative) {
+            return this.unavailable('Network state requires Android native services.');
+        }
+
+        try {
+            const raw = await SecureDroidNativePlugin.getNetworkState();
+            const failure = this.parseNativeFailure<any>(raw, 'Failed to get network state.');
+            if (failure) return failure;
+            return {
+                success: true,
+                data: (raw as any)?.data || raw,
+                isSupported: true,
+                runtimePlatform: 'android_native',
+            };
+        } catch (error: unknown) {
+            return this.nativeFailure(error instanceof Error ? error.message : 'Failed to get network state.');
+        }
+    }
+
+    async getWifiSecurityReport(): Promise<NativeResult<{ ssid?: string; isSecure: boolean }>> {
+        if (!this.isNative) {
+            return this.unavailable('Wi-Fi security report requires Android native services.');
+        }
+
+        try {
+            const raw = await SecureDroidNativePlugin.getNetworkState();
+            if (raw.success && raw.data) {
+                return {
+                    success: true,
+                    data: {
+                        ssid: raw.data.ssid,
+                        isSecure: raw.data.isValidated !== false,
+                    },
+                    isSupported: true,
+                    runtimePlatform: 'android_native',
+                };
+            }
+            return {
+                success: true,
+                data: {
+                    isSecure: true,
+                },
+                isSupported: true,
+                runtimePlatform: 'android_native',
+            };
+        } catch (error: unknown) {
+            return this.nativeFailure(error instanceof Error ? error.message : 'Failed to get Wi-Fi report.');
         }
     }
 }

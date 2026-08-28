@@ -472,6 +472,7 @@ export interface PermissionStatusMap {
 export interface NativeInstalledApp {
     packageName: string;
     label: string;
+    appName?: string;
 
     versionName: string;
     versionCode: number;
@@ -735,6 +736,7 @@ export type VpnFilterMode =
 
 export interface NativeVpnStatus {
     isActive: boolean;
+    state?: string;
 
     establishedTime?: number;
 
@@ -1051,3 +1053,36 @@ export interface SecurityObservation {
 
     timestamp: number;
 }
+
+export interface CapabilityReport {
+    capabilities: SecurityCapability[];
+    timestamp: number;
+    isReal: boolean;
+}
+
+export interface DeviceManagementStatus {
+    isDeviceOwner: boolean;
+    isProfileOwner: boolean;
+    isManagedProfile: boolean;
+    isReal: boolean;
+}
+
+export interface NativeServiceHealth {
+    healthy: boolean;
+    servicesRunning: number;
+    isReal: boolean;
+}
+
+export interface SecurityEngineStatus {
+    active: boolean;
+    version: string;
+    isReal: boolean;
+}
+
+export interface WifiSecurityReport {
+    ssid?: string;
+    isSecure: boolean;
+    securityType?: string;
+    isReal: boolean;
+}
+

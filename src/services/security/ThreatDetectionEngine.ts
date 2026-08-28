@@ -108,6 +108,7 @@ export class ThreatDetectionEngine {
           recommendation:
             'Verify that this package is intentionally debuggable. ' +
             'Production builds should normally disable debugging.',
+          isReal: false,
         });
       }
 
@@ -147,6 +148,7 @@ export class ThreatDetectionEngine {
             ],
             recommendation:
               'Review the application installation source in Android App Info.',
+            isReal: false,
           });
 
         } else if (
@@ -169,6 +171,7 @@ export class ThreatDetectionEngine {
             ],
             recommendation:
               'Verify that the application was intentionally installed from this source.',
+            isReal: false,
           });
         }
       }
@@ -228,6 +231,7 @@ export class ThreatDetectionEngine {
             evidence: highImpactPermissions,
             recommendation:
               'Review whether each high-impact permission is necessary for the application.',
+            isReal: false,
           });
         }
       }
@@ -263,6 +267,7 @@ export class ThreatDetectionEngine {
           ],
           recommendation:
             'Prefer an updated application version targeting a current Android API level.',
+          isReal: false,
         });
       }
     }
@@ -311,6 +316,7 @@ export class ThreatDetectionEngine {
         excessivePermissionAppsFound: excessivePermissionApps,
         outdatedTargetSdkAppsFound: outdatedSdkCount,
       },
+      isReal: false,
     };
   }
 }

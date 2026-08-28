@@ -77,7 +77,7 @@ export const AppSecurityAuditorScreen: React.FC<AppSecurityAuditorScreenProps> =
         if (searchQuery.trim()) {
             const q = searchQuery.toLowerCase();
             result = result.filter(app =>
-                app.appName.toLowerCase().includes(q) ||
+                (app.appName || app.label || '').toLowerCase().includes(q) ||
                 app.packageName.toLowerCase().includes(q)
             );
         }
@@ -92,7 +92,7 @@ export const AppSecurityAuditorScreen: React.FC<AppSecurityAuditorScreenProps> =
                 case 'risk':
                     return (riskOrder[riskA as keyof typeof riskOrder] || 4) - (riskOrder[riskB as keyof typeof riskOrder] || 4);
                 case 'name':
-                    return a.appName.localeCompare(b.appName);
+                    return (a.appName || a.label || '').localeCompare(b.appName || b.label || '');
                 case 'install':
                     return b.firstInstallTime - a.firstInstallTime;
                 default:
@@ -278,7 +278,7 @@ export const AppSecurityAuditorScreen: React.FC<AppSecurityAuditorScreenProps> =
                                             <div className="flex-1 min-w-0">
                                                 <div className="flex items-center gap-2">
                                                     <span className="font-medium text-zinc-100 text-sm truncate">
-                                                        {app.appName}
+                                                        {app.appName || app.label || app.packageName}
                                                     </span>
                                                     {app.isSystemApp && (
                                                         <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-slate-800 text-slate-400">

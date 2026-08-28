@@ -1,4 +1,5 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
+import { XCircle } from 'lucide-react';
 
 interface Props {
     children: ReactNode;

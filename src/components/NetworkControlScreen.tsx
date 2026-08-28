@@ -191,7 +191,7 @@ export const NetworkControlScreen: React.FC<NetworkControlScreenProps> = ({
 
             if (isActive) {
                 const res = await SecureDroidNative.stopVpn();
-                if (res.data?.state) {
+                if (res.success && res.data?.state) {
                     setConnectionState(res.data.state as ConnectionState);
                 }
                 if (!res.success) {
@@ -202,7 +202,7 @@ export const NetworkControlScreen: React.FC<NetworkControlScreenProps> = ({
             } else {
                 const res = await SecureDroidNative.startVpn();
 
-                if (res.data?.permissionRequired) {
+                if (res.success && res.data?.permissionRequired) {
                     setNeedsPermission(true);
                     setError(null);
                     setIsBusy(false);

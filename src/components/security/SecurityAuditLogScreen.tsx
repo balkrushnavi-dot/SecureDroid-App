@@ -32,6 +32,7 @@ import {
     Zap,
     Bell,
     FileText,
+    Settings,
 } from 'lucide-react';
 import {
     SecureDroidTopBar,

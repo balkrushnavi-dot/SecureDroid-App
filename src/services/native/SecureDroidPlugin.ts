@@ -53,6 +53,10 @@ export interface SecureDroidPlugin {
     checkConnection(): Promise<{
         connected: boolean;
         message?: string;
+        pluginVersion?: string;
+        androidApiLevel?: number;
+        mode?: any;
+        isReal?: boolean;
         runtimePlatform?: 'android_native' | 'web_preview' | 'unknown';
     }>;
 
@@ -256,6 +260,6 @@ export interface SecureDroidPlugin {
 export const SecureDroidNativePlugin =
     registerPlugin<SecureDroidPlugin>('SecureDroid');
 
-export type {
-    SecureDroidPlugin,
-};
+export type AppItem = NativeInstalledApp;
+export const SecureDroidPlugin = SecureDroidNativePlugin;
+

@@ -1,6 +1,7 @@
-import { Capacitor } from '@capacitor/core';
+import { registerPlugin } from '@capacitor/core';
+import type { SecureDroidPlugin } from '../services/native/SecureDroidPlugin';
 
-const SecureDroid = Capacitor.Plugins.SecureDroid;
+const SecureDroid = registerPlugin<SecureDroidPlugin>('SecureDroid');
 
 export const SecurityBridge = {
     getInstalledApps: async () => {
