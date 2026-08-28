@@ -1,149 +1,261 @@
-import { registerPlugin, Capacitor } from '@capacitor/core';
+import { registerPlugin } from '@capacitor/core';
 
-export interface ThreatItem {
-  id: string;
-  title: string;
-  risk: string;
-  description: string;
+import type {
+    NativeResult,
+    NativeInstalledApp,
+    NativeAppRiskReport,
+    NativeHardeningReport,
+    NativeSecurityEvent,
+    NativeVpnStatus,
+    NativeDeviceInfo,
+    NativeBatteryStatus,
+    NativeNetworkState,
+    NativeStorageInfo,
+    NativeBiometricStatus,
+    BiometricAuthResult,
+    PermissionStatusMap,
+    CapabilityReport,
+    DeviceManagementStatus,
+    SystemSecurityAssessment,
+    ThreatAssessmentReport,
+    VmHardwareCapability,
+    NativeServiceHealth,
+    SecurityEngineStatus,
+    SecureStorageItem,
+} from '../../types/native';
+
+/**
+ * SecureDroid Capacitor Plugin Contract
+ *
+ * This interface defines the boundary between:
+ *
+ * React/TypeScript
+ *        ↓
+ * Capacitor
+ *        ↓
+ * SecureDroidCapacitorPlugin.kt
+ *        ↓
+ * Android security services
+ *
+ * SECURITY RULE:
+ * The TypeScript layer must never assume that a method's existence
+ * means the capability is available on the current device.
+ *
+ * Native code must return explicit capability/error information.
+ */
+
+export interface SecureDroidPlugin {
+
+    // ========================================================
+    // 1. BRIDGE / SERVICE HEALTH
+    // ========================================================
+
+    checkConnection(): Promise<{
+        connected: boolean;
+        message?: string;
+        runtimePlatform?: 'android_native' | 'web_preview' | 'unknown';
+    }>;
+
+    getServiceHealth(): Promise<
+        NativeResult<NativeServiceHealth>
+    >;
+
+    // ========================================================
+    // 2. CAPABILITY ENGINE
+    // ========================================================
+
+    getCapabilities(): Promise<
+        NativeResult<CapabilityReport>
+    >;
+
+    getDeviceManagementStatus(): Promise<
+        NativeResult<DeviceManagementStatus>
+    >;
+
+    // ========================================================
+    // 3. DEVICE INFORMATION
+    // ========================================================
+
+    getDeviceInfo(): Promise<
+        NativeResult<NativeDeviceInfo>
+    >;
+
+    getBatteryStatus(): Promise<
+        NativeResult<NativeBatteryStatus>
+    >;
+
+    getNetworkState(): Promise<
+        NativeResult<NativeNetworkState>
+    >;
+
+    getStorageInfo(): Promise<
+        NativeResult<NativeStorageInfo>
+    >;
+
+    // ========================================================
+    // 4. BIOMETRICS
+    // ========================================================
+
+    getBiometricStatus(): Promise<
+        NativeResult<NativeBiometricStatus>
+    >;
+
+    authenticateBiometric(options?: {
+        reason?: string;
+        allowDeviceCredential?: boolean;
+    }): Promise<
+        NativeResult<BiometricAuthResult>
+    >;
+
+    // ========================================================
+    // 5. PERMISSIONS
+    // ========================================================
+
+    checkPermissions(options: {
+        permissions: string[];
+    }): Promise<
+        NativeResult<PermissionStatusMap>
+    >;
+
+    requestPermissions(options: {
+        permissions: string[];
+    }): Promise<
+        NativeResult<PermissionStatusMap>
+    >;
+
+    // ========================================================
+    // 6. INSTALLED APPLICATIONS
+    // ========================================================
+
+    getInstalledApps(): Promise<
+        NativeResult<NativeInstalledApp[]>
+    >;
+
+    getAppRiskReports(): Promise<
+        NativeResult<NativeAppRiskReport[]>
+    >;
+
+    scanForRisks(): Promise<
+        NativeResult<ThreatAssessmentReport>
+    >;
+
+    // ========================================================
+    // 7. SECURITY ASSESSMENT
+    // ========================================================
+
+    getSecurityAssessment(): Promise<
+        NativeResult<SystemSecurityAssessment>
+    >;
+
+    getHardeningReport(): Promise<
+        NativeResult<NativeHardeningReport>
+    >;
+
+    getSecurityEngineStatus(): Promise<
+        NativeResult<SecurityEngineStatus>
+    >;
+
+    // ========================================================
+    // 8. VPN / NETWORK PROTECTION
+    // ========================================================
+
+    getVpnStatus(): Promise<
+        NativeResult<NativeVpnStatus>
+    >;
+
+    requestVpnPermission(): Promise<
+        NativeResult<{
+            granted: boolean;
+            permissionRequested: boolean;
+            state: string;
+        }>
+    >;
+
+    startVpn(): Promise<
+        NativeResult<{
+            state: string;
+            permissionRequired?: boolean;
+        }>
+    >;
+
+    stopVpn(): Promise<
+        NativeResult<{
+            state: string;
+        }>
+    >;
+
+    // ========================================================
+    // 9. SECURITY AUDIT LOG
+    // ========================================================
+
+    getSecurityLogs(options: {
+        limit?: number;
+        category?: string;
+        severity?: string;
+        since?: number;
+    }): Promise<
+        NativeResult<NativeSecurityEvent[]>
+    >;
+
+    logSecurityEvent(options: {
+        event: NativeSecurityEvent;
+    }): Promise<
+        NativeResult<NativeSecurityEvent>
+    >;
+
+    // ========================================================
+    // 10. SECURE STORAGE
+    // ========================================================
+
+    secureStorageSet(options: {
+        key: string;
+        value: string;
+        requiresBiometric?: boolean;
+    }): Promise<
+        NativeResult<{ stored: boolean }>
+    >;
+
+    secureStorageGet(options: {
+        key: string;
+        authenticate?: boolean;
+    }): Promise<
+        NativeResult<SecureStorageItem | null>
+    >;
+
+    secureStorageDelete(options: {
+        key: string;
+    }): Promise<
+        NativeResult<{ deleted: boolean }>
+    >;
+
+    secureStorageClear(): Promise<
+        NativeResult<{ cleared: boolean }>
+    >;
+
+    // ========================================================
+    // 11. VIRTUALIZATION / HARDWARE CAPABILITY
+    // ========================================================
+
+    getVmHardwareCapability(): Promise<
+        NativeResult<VmHardwareCapability>
+    >;
 }
 
-export interface AppItem {
-  packageName: string;
-  name: string;
-  riskLevel: string;
-  permissions: string[];
-  isSystemApp?: boolean;
-}
+/**
+ * Registered Capacitor plugin.
+ *
+ * IMPORTANT:
+ * The native Android class must register itself using the
+ * exact same plugin name:
+ *
+ *     @CapacitorPlugin(name = "SecureDroid")
+ *
+ * No security feature should silently fall back to simulated
+ * native behavior in production.
+ */
+export const SecureDroidNativePlugin =
+    registerPlugin<SecureDroidPlugin>('SecureDroid');
 
-export interface AuditLogItem {
-  id: string;
-  timestamp: string;
-  event: string;
-  severity: string;
-}
-
-export interface SecureDroidPluginInterface {
-  getDeviceStatus(): Promise<{ status: 'secure' | 'warning' | 'critical' }>;
-  getThreats(): Promise<{ threats: ThreatItem[] }>;
-  getScannedApps(): Promise<{ apps: AppItem[] }>;
-  getAuditLogs(): Promise<{ logs: AuditLogItem[] }>;
-  getNetworkStatus(): Promise<{ vpnActive: boolean }>;
-
-  // Native Bridge methods
-  checkConnection(): Promise<any>;
-  getInstalledApps(): Promise<any>;
-  scanForRisks(): Promise<any>;
-  getAppRiskReports(): Promise<any>;
-  getHardeningReport(): Promise<any>;
-  getDeviceHardening(): Promise<any>;
-  getWifiSecurityReport(): Promise<any>;
-  requestVpnPermission(): Promise<any>;
-  getVpnStatus(): Promise<any>;
-  startVpn(): Promise<any>;
-  stopVpn(): Promise<any>;
-  getSecurityLogs(options?: { limit?: number; category?: string }): Promise<any>;
-  logSecurityEvent(options: { event: any }): Promise<any>;
-
-  // Domain Blocklist & Allowlist methods
-  getBlockedDomains(): Promise<any>;
-  addBlockedDomain(options: { domain: string }): Promise<any>;
-  removeBlockedDomain(options: { domain: string }): Promise<any>;
-  addAllowedDomain(options: { domain: string }): Promise<any>;
-  removeAllowedDomain(options: { domain: string }): Promise<any>;
-}
-
-const StubPlugin: SecureDroidPluginInterface = {
-  async getDeviceStatus() {
-    return { status: 'secure' };
-  },
-  async getThreats() {
-    return { threats: [] };
-  },
-  async getScannedApps() {
-    return { apps: [] };
-  },
-  async getAuditLogs() {
-    return { 
-      logs: [
-        { 
-          id: '1', 
-          timestamp: new Date().toISOString(), 
-          event: 'SecureDroid running in web fallback mode', 
-          severity: 'low' 
-        }
-      ] 
-    };
-  },
-  async getNetworkStatus() {
-    return { vpnActive: false };
-  },
-  async checkConnection() {
-    return { connected: false, message: 'Web preview mode' };
-  },
-  async getInstalledApps() {
-    return { success: false, data: [] };
-  },
-  async scanForRisks() {
-    return { success: false, data: [] };
-  },
-  async getAppRiskReports() {
-    return { success: false, data: [] };
-  },
-  async getHardeningReport() {
-    return { success: false, data: { score: 0, findings: [] } };
-  },
-  async getDeviceHardening() {
-    return { success: false, data: { score: 0, findings: [] } };
-  },
-  async getWifiSecurityReport() {
-    return { 
-      success: true, 
-      data: { 
-        isConnected: true, 
-        isWifi: true, 
-        isSecure: true, 
-        findings: [{ id: 'WEB_SIMULATION', level: 'INFO', summary: 'Running in web simulation mode.' }] 
-      } 
-    };
-  },
-  async requestVpnPermission() {
-    return { success: false, granted: false };
-  },
-  async getVpnStatus() {
-    return { success: false, data: { isActive: false, state: 'DISCONNECTED' } };
-  },
-  async startVpn() {
-    return { success: false, state: 'DISCONNECTED' };
-  },
-  async stopVpn() {
-    return { success: false, state: 'DISCONNECTED' };
-  },
-  async getSecurityLogs() {
-    return { success: true, data: [] };
-  },
-  async logSecurityEvent() {
-    return { success: true };
-  },
-  async getBlockedDomains() {
-    return { success: true, data: { blockedDomains: [], allowedDomains: [] } };
-  },
-  async addBlockedDomain() {
-    return { success: true, added: true };
-  },
-  async removeBlockedDomain() {
-    return { success: true, removed: true };
-  },
-  async addAllowedDomain() {
-    return { success: true, added: true };
-  },
-  async removeAllowedDomain() {
-    return { success: true, removed: true };
-  }
+export type {
+    SecureDroidPlugin,
 };
-
-export const SecureDroidPlugin = Capacitor.isNativePlatform()
-  ? registerPlugin<SecureDroidPluginInterface>('SecureDroid')
-  : StubPlugin;
-
-// Export SecureDroidNativePlugin alias to satisfy SecureDroidNative.ts imports
-export const SecureDroidNativePlugin = SecureDroidPlugin;
