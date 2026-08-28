@@ -5,7 +5,6 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
-import android.net.NetworkCapabilities
 import android.net.VpnService
 import android.os.Build
 import android.os.IBinder
@@ -14,6 +13,7 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import org.securedroid.MainActivity
 import java.io.IOException
+import java.util.concurrent.atomic.AtomicBoolean
 
 class SecureVpnService : VpnService() {
 
@@ -31,47 +31,83 @@ class SecureVpnService : VpnService() {
 
         const val ACTION_VPN_ERROR = "org.securedroid.action.VPN_ERROR"
         const val EXTRA_ERROR_MESSAGE = "error_message"
+
+        private const val DEFAULT_DNS_SERVER = "1.1.1.1"
+        private const val VPN_ADDRESS = "10.0.0.2"
+        private const val VPN_PREFIX_LENGTH = 32
     }
 
     private var vpnInterface: ParcelFileDescriptor? = null
 
-    @Volatile
-    private var isRunning = false
-
-    @Volatile
-    private var isEstablishing = false
+    private val running = AtomicBoolean(false)
+    private val establishing = AtomicBoolean(false)
 
     override fun onCreate() {
         super.onCreate()
+
         createNotificationChannel()
-        Log.d(TAG, "VPN Service created")
+
+        Log.d(TAG, "VPN service created")
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        Log.d(TAG, "onStartCommand: action=${intent?.action}")
+    override fun onStartCommand(
+        intent: Intent?,
+        flags: Int,
+        startId: Int
+    ): Int {
 
-        when (intent?.action) {
+        val action = intent?.action
+
+        Log.d(
+            TAG,
+            "onStartCommand action=$action startId=$startId"
+        )
+
+        when (action) {
+
             ACTION_STOP -> {
-                Log.d(TAG, "Stopping VPN")
+                Log.d(TAG, "Received VPN stop request")
+
                 stopVpn()
-                stopSelf()
+
+                stopSelfResult(startId)
+
                 return START_NOT_STICKY
             }
 
-            ACTION_START, null -> {
-                if (isRunning) {
-                    Log.d(TAG, "VPN already running")
+            ACTION_START,
+            null -> {
+
+                if (running.get()) {
+                    Log.d(TAG, "VPN is already running")
+
+                    updateNotification(
+                        "VPN protection is active"
+                    )
+
                     return START_STICKY
                 }
 
-                if (isEstablishing) {
-                    Log.d(TAG, "VPN already establishing")
+                if (establishing.get()) {
+                    Log.d(TAG, "VPN establishment already in progress")
+
                     return START_STICKY
                 }
 
-                val dnsServer = intent?.getStringExtra(EXTRA_DNS_SERVER) ?: "1.1.1.1"
-                Log.d(TAG, "Starting VPN with DNS: $dnsServer")
+                val dnsServer =
+                    intent?.getStringExtra(EXTRA_DNS_SERVER)
+                        ?.trim()
+                        ?.takeIf { it.isNotEmpty() }
+                        ?: DEFAULT_DNS_SERVER
+
                 startVpn(dnsServer)
+            }
+
+            else -> {
+                Log.w(
+                    TAG,
+                    "Unknown VPN service action: $action"
+                )
             }
         }
 
@@ -79,184 +115,453 @@ class SecureVpnService : VpnService() {
     }
 
     private fun startVpn(dnsServer: String) {
-        if (isRunning || isEstablishing) {
-            Log.d(TAG, "startVpn: already running or establishing")
+
+        if (running.get()) {
+            Log.d(TAG, "startVpn ignored: already running")
             return
         }
 
-        isEstablishing = true
+        if (!establishing.compareAndSet(false, true)) {
+            Log.d(TAG, "startVpn ignored: already establishing")
+            return
+        }
+
         VpnStateStore.set(VpnState.CONNECTING)
-        Log.d(TAG, "VPN state: CONNECTING")
+
+        Log.d(
+            TAG,
+            "VPN state changed to CONNECTING"
+        )
 
         try {
-            startForeground(NOTIFICATION_ID, createNotification("VPN is connecting..."))
 
-            val configureIntent = Intent(this, MainActivity::class.java)
-            val pendingIntent = PendingIntent.getActivity(
-                this,
-                0,
-                configureIntent,
-                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            /*
+             * A foreground notification must be active before
+             * performing the VPN establishment work.
+             */
+            startForeground(
+                NOTIFICATION_ID,
+                createNotification(
+                    "VPN is connecting..."
+                )
             )
 
-            val builder = Builder()
-                .setSession("SecureDroid")
-                .addAddress("10.0.0.2", 32)
-                .addRoute("0.0.0.0", 0)
-                .addDnsServer(dnsServer)
-                .setConfigureIntent(pendingIntent)
+            /*
+             * Always close an old interface before creating
+             * another one.
+             */
+            closeVpnInterface()
 
-            if (Build.VERSION.SDK_INT >= 34) {
-                Log.d(TAG, "Adding allowFamily for Android 14+")
-                try {
-                    val allowFamilyMethod = Builder::class.java.getMethod(
-                        "allowFamily",
-                        Int::class.java
+            val configureIntent =
+                Intent(this, MainActivity::class.java)
+
+            val pendingIntent =
+                PendingIntent.getActivity(
+                    this,
+                    0,
+                    configureIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or
+                        PendingIntent.FLAG_IMMUTABLE
+                )
+
+            /*
+             * Android's VpnService.Builder creates the local TUN
+             * interface.
+             *
+             * IMPORTANT:
+             *
+             * This establishes the Android VPN interface only.
+             * It does NOT provide a remote VPN tunnel or packet
+             * forwarding by itself.
+             */
+            val builder =
+                Builder()
+                    .setSession("SecureDroid")
+                    .setConfigureIntent(pendingIntent)
+                    .addAddress(
+                        VPN_ADDRESS,
+                        VPN_PREFIX_LENGTH
                     )
-                    allowFamilyMethod.invoke(builder, 1)
-                    allowFamilyMethod.invoke(builder, 2)
-                    Log.d(TAG, "allowFamily invoked successfully")
-                } catch (e: Exception) {
-                    Log.w(TAG, "allowFamily not available, continuing without it", e)
-                }
-            }
+                    .addRoute(
+                        "0.0.0.0",
+                        0
+                    )
+                    .addDnsServer(dnsServer)
 
-            vpnInterface?.close()
-            vpnInterface = null
+            /*
+             * Establish the VPN interface.
+             */
+            Log.d(
+                TAG,
+                "Calling VpnService.Builder.establish()"
+            )
 
-            Log.d(TAG, "Establishing VPN interface...")
-            vpnInterface = builder.establish()
+            val establishedInterface =
+                builder.establish()
 
-            if (vpnInterface != null) {
-                isRunning = true
-                isEstablishing = false
-                VpnStateStore.set(VpnState.CONNECTED)
-                Log.d(TAG, "VPN established successfully, state: CONNECTED")
-                startForeground(NOTIFICATION_ID, createNotification("VPN protection is active"))
-            } else {
-                isRunning = false
-                isEstablishing = false
+            if (establishedInterface == null) {
+
+                val message =
+                    "Android could not establish the VPN interface"
+
+                Log.e(TAG, message)
+
+                closeVpnInterface()
+
+                establishing.set(false)
+                running.set(false)
+
                 VpnStateStore.set(VpnState.ERROR)
-                val errorMsg = "VPN establishment returned null interface"
-                Log.e(TAG, errorMsg)
-                sendErrorBroadcast(errorMsg)
+
+                sendErrorBroadcast(message)
+
+                stopForegroundSafely()
+
+                return
             }
+
+            vpnInterface = establishedInterface
+
+            /*
+             * At this point Android successfully created the VPN
+             * interface.
+             *
+             * We deliberately do not call this a fully functional
+             * Internet tunnel because this service currently has
+             * no packet forwarding implementation.
+             */
+            running.set(true)
+            establishing.set(false)
+
+            VpnStateStore.set(VpnState.CONNECTED)
+
+            Log.d(
+                TAG,
+                "VPN interface established successfully"
+            )
+
+            Log.w(
+                TAG,
+                "VPN interface is active, but no packet-forwarding " +
+                    "backend is configured. This service does not " +
+                    "provide a remote Internet tunnel by itself."
+            )
+
+            updateNotification(
+                "VPN interface is active"
+            )
 
         } catch (e: SecurityException) {
-            val errorMsg = "Security exception: ${e.message}"
-            Log.e(TAG, "VPN establishment failed: SecurityException", e)
-            isRunning = false
-            isEstablishing = false
-            VpnStateStore.set(VpnState.ERROR)
-            sendErrorBroadcast(errorMsg)
 
-            try {
-                vpnInterface?.close()
-            } catch (_: Exception) {}
-            vpnInterface = null
+            handleStartFailure(
+                "Security exception while establishing VPN: " +
+                    (e.message ?: "unknown security error"),
+                e
+            )
 
         } catch (e: IOException) {
-            val errorMsg = "IO exception: ${e.message}"
-            Log.e(TAG, "VPN establishment failed: IOException", e)
-            isRunning = false
-            isEstablishing = false
-            VpnStateStore.set(VpnState.ERROR)
-            sendErrorBroadcast(errorMsg)
 
-            try {
-                vpnInterface?.close()
-            } catch (_: Exception) {}
-            vpnInterface = null
+            handleStartFailure(
+                "I/O exception while establishing VPN: " +
+                    (e.message ?: "unknown I/O error"),
+                e
+            )
 
         } catch (e: Exception) {
-            val errorMsg = "${e.javaClass.simpleName}: ${e.message}"
-            Log.e(TAG, "VPN establishment failed: ${e.javaClass.simpleName} - ${e.message}", e)
-            isRunning = false
-            isEstablishing = false
-            VpnStateStore.set(VpnState.ERROR)
-            sendErrorBroadcast(errorMsg)
 
-            try {
-                vpnInterface?.close()
-            } catch (_: Exception) {}
-            vpnInterface = null
+            handleStartFailure(
+                "${e.javaClass.simpleName}: " +
+                    (e.message ?: "unknown VPN error"),
+                e
+            )
         }
     }
 
-    private fun sendErrorBroadcast(errorMessage: String) {
-        try {
-            val intent = Intent(ACTION_VPN_ERROR).apply {
-                putExtra(EXTRA_ERROR_MESSAGE, errorMessage)
-            }
-            sendBroadcast(intent)
-            Log.d(TAG, "Error broadcast sent: $errorMessage")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to send error broadcast", e)
-        }
+    private fun handleStartFailure(
+        errorMessage: String,
+        throwable: Throwable
+    ) {
+
+        Log.e(
+            TAG,
+            errorMessage,
+            throwable
+        )
+
+        running.set(false)
+        establishing.set(false)
+
+        closeVpnInterface()
+
+        VpnStateStore.set(VpnState.ERROR)
+
+        sendErrorBroadcast(errorMessage)
+
+        stopForegroundSafely()
     }
 
     private fun stopVpn() {
+
         Log.d(TAG, "Stopping VPN")
 
-        isRunning = false
-        isEstablishing = false
+        /*
+         * Mark the service as no longer running before closing
+         * the descriptor so concurrent start/stop requests cannot
+         * mistake the old interface for an active VPN.
+         */
+        running.set(false)
+        establishing.set(false)
 
-        try {
-            vpnInterface?.close()
-            Log.d(TAG, "VPN interface closed")
-        } catch (e: Exception) {
-            Log.e(TAG, "Error closing VPN interface", e)
-        }
-        vpnInterface = null
+        VpnStateStore.set(VpnState.DISCONNECTING)
+
+        Log.d(
+            TAG,
+            "VPN state changed to DISCONNECTING"
+        )
+
+        closeVpnInterface()
 
         VpnStateStore.set(VpnState.DISCONNECTED)
-        Log.d(TAG, "VPN state: DISCONNECTED")
 
-        stopForeground(STOP_FOREGROUND_REMOVE)
+        Log.d(
+            TAG,
+            "VPN state changed to DISCONNECTED"
+        )
+
+        stopForegroundSafely()
+    }
+
+    private fun closeVpnInterface() {
+
+        val interfaceToClose = vpnInterface
+
+        vpnInterface = null
+
+        if (interfaceToClose == null) {
+            return
+        }
+
+        try {
+
+            interfaceToClose.close()
+
+            Log.d(
+                TAG,
+                "VPN interface closed"
+            )
+
+        } catch (e: IOException) {
+
+            Log.e(
+                TAG,
+                "Failed to close VPN interface",
+                e
+            )
+
+        } catch (e: Exception) {
+
+            Log.e(
+                TAG,
+                "Unexpected error closing VPN interface",
+                e
+            )
+        }
+    }
+
+    private fun sendErrorBroadcast(
+        errorMessage: String
+    ) {
+
+        try {
+
+            val intent =
+                Intent(ACTION_VPN_ERROR).apply {
+                    setPackage(packageName)
+
+                    putExtra(
+                        EXTRA_ERROR_MESSAGE,
+                        errorMessage
+                    )
+                }
+
+            sendBroadcast(intent)
+
+            Log.d(
+                TAG,
+                "VPN error broadcast sent: $errorMessage"
+            )
+
+        } catch (e: Exception) {
+
+            Log.e(
+                TAG,
+                "Failed to send VPN error broadcast",
+                e
+            )
+        }
     }
 
     override fun onDestroy() {
-        Log.d(TAG, "VPN Service onDestroy")
+
+        Log.d(
+            TAG,
+            "VPN service onDestroy"
+        )
+
         stopVpn()
+
         super.onDestroy()
     }
 
-    override fun onBind(intent: Intent): IBinder? {
+    override fun onRevoke() {
+
+        Log.w(
+            TAG,
+            "VPN permission revoked by Android"
+        )
+
+        running.set(false)
+        establishing.set(false)
+
+        closeVpnInterface()
+
+        VpnStateStore.set(
+            VpnState.DISCONNECTED
+        )
+
+        stopForegroundSafely()
+
+        super.onRevoke()
+    }
+
+    override fun onBind(
+        intent: Intent
+    ): IBinder? {
+
+        /*
+         * VpnService requires the system VPN binding.
+         */
         return super.onBind(intent)
     }
 
     private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
+
+        if (Build.VERSION.SDK_INT <
+            Build.VERSION_CODES.O
+        ) {
+            return
+        }
+
+        val channel =
+            NotificationChannel(
                 NOTIFICATION_CHANNEL_ID,
                 "SecureDroid VPN",
                 NotificationManager.IMPORTANCE_LOW
-            )
-            channel.description = "SecureDroid VPN protection status"
+            ).apply {
 
-            val manager = getSystemService(NotificationManager::class.java)
-            manager?.createNotificationChannel(channel)
-            Log.d(TAG, "Notification channel created")
-        }
+                description =
+                    "SecureDroid VPN protection status"
+
+                setShowBadge(false)
+            }
+
+        val manager =
+            getSystemService(
+                NotificationManager::class.java
+            )
+
+        manager?.createNotificationChannel(channel)
+
+        Log.d(
+            TAG,
+            "VPN notification channel created"
+        )
     }
 
-    private fun createNotification(content: String): Notification {
-        val intent = Intent(this, MainActivity::class.java)
-        val pendingIntent = PendingIntent.getActivity(
-            this,
-            1,
-            intent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
+    private fun createNotification(
+        content: String
+    ): Notification {
 
-        return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
+        val intent =
+            Intent(
+                this,
+                MainActivity::class.java
+            ).apply {
+                flags =
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+
+        val pendingIntent =
+            PendingIntent.getActivity(
+                this,
+                1,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or
+                    PendingIntent.FLAG_IMMUTABLE
+            )
+
+        return NotificationCompat.Builder(
+            this,
+            NOTIFICATION_CHANNEL_ID
+        )
             .setContentTitle("SecureDroid VPN")
             .setContentText(content)
-            .setSmallIcon(android.R.drawable.ic_lock_lock)
+            .setSmallIcon(
+                android.R.drawable.ic_lock_lock
+            )
             .setOngoing(true)
+            .setAutoCancel(false)
             .setContentIntent(pendingIntent)
-            .setCategory(NotificationCompat.CATEGORY_SERVICE)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setCategory(
+                NotificationCompat.CATEGORY_SERVICE
+            )
+            .setPriority(
+                NotificationCompat.PRIORITY_LOW
+            )
             .build()
+    }
+
+    private fun updateNotification(
+        content: String
+    ) {
+
+        val manager =
+            getSystemService(
+                NotificationManager::class.java
+            )
+
+        manager?.notify(
+            NOTIFICATION_ID,
+            createNotification(content)
+        )
+    }
+
+    private fun stopForegroundSafely() {
+
+        try {
+
+            if (Build.VERSION.SDK_INT >=
+                Build.VERSION_CODES.TIRAMISU
+            ) {
+
+                stopForeground(
+                    STOP_FOREGROUND_REMOVE
+                )
+
+            } else {
+
+                @Suppress("DEPRECATION")
+                stopForeground(true)
+            }
+
+        } catch (e: Exception) {
+
+            Log.e(
+                TAG,
+                "Failed to stop foreground service",
+                e
+            )
+        }
     }
 }
