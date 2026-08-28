@@ -10,11 +10,11 @@ import android.security.keystore.KeyProperties
 import android.security.keystore.KeyGenParameterSpec
 import java.security.KeyStore
 import javax.crypto.KeyGenerator
-import org.securedroid.core.capability.CapabilityType.*
 
 import org.securedroid.capability.Capability
 import org.securedroid.capability.CapabilityCategory
 import org.securedroid.capability.CapabilityIds
+import org.securedroid.capability.CapabilityProvider
 import org.securedroid.capability.CapabilityState
 import org.securedroid.capability.ImplementationLayer
 import org.securedroid.capability.RequiredPrivilege
@@ -40,17 +40,17 @@ class AndroidCapabilityProvider(
         return Capability(
             id = "android.platform.version",
             name = "Android Platform",
-            category = CapabilityCategory.SYSTEM,
+            category = CapabilityCategory.SYSTEM_SECURITY,
             state = CapabilityState.SUPPORTED,
             evidence = "API ${Build.VERSION.SDK_INT} (${Build.VERSION.RELEASE})",
             securityMeaning = "SecureDroid is running on a real Android platform.",
-            limitations = null,
+            limitations = "Platform capabilities are bounded by Android security architecture.",
             remediation = null,
-            provider = id,
+            provider = CapabilityProvider.ANDROID,
             isReal = true,
             canAppChange = false,
-            requiredPrivilege = RequiredPrivilege.NONE,
-            implementationLayer = ImplementationLayer.ANDROID_API
+            requiredPrivilege = RequiredPrivilege.NORMAL_APP,
+            implementationLayer = ImplementationLayer.PLATFORM
         )
     }
 
@@ -68,10 +68,10 @@ class AndroidCapabilityProvider(
                 securityMeaning = "SecureDroid can use Android's application-accessible hardware/software-backed key storage.",
                 limitations = "Keystore availability does not by itself prove that every key is hardware-backed.",
                 remediation = null,
-                provider = id,
+                provider = CapabilityProvider.ANDROID_KEYSTORE,
                 isReal = true,
                 canAppChange = false,
-                requiredPrivilege = RequiredPrivilege.NONE,
+                requiredPrivilege = RequiredPrivilege.NORMAL_APP,
                 implementationLayer = ImplementationLayer.HARDWARE
             )
         } catch (e: Exception) {
@@ -84,10 +84,10 @@ class AndroidCapabilityProvider(
                 securityMeaning = "SecureDroid could not initialize Android Keystore.",
                 limitations = "Encrypted features relying on Android Keystore may be unavailable.",
                 remediation = "Retry after restarting the device.",
-                provider = id,
+                provider = CapabilityProvider.ANDROID_KEYSTORE,
                 isReal = true,
                 canAppChange = false,
-                requiredPrivilege = RequiredPrivilege.NONE,
+                requiredPrivilege = RequiredPrivilege.NORMAL_APP,
                 implementationLayer = ImplementationLayer.HARDWARE
             )
         }
@@ -98,16 +98,16 @@ class AndroidCapabilityProvider(
             return Capability(
                 id = CapabilityIds.STRONGBOX,
                 name = "StrongBox Keymaster",
-                category = CapabilityCategory.HARDWARE,
+                category = CapabilityCategory.HARDWARE_SECURITY,
                 state = CapabilityState.UNAVAILABLE,
                 evidence = "StrongBox APIs require Android 9 / API 28 or newer.",
                 securityMeaning = "StrongBox-backed keys cannot be requested on this Android version.",
                 limitations = "The device may still have other secure key-storage mechanisms.",
                 remediation = "Use a device running Android 9 or newer.",
-                provider = id,
+                provider = CapabilityProvider.ANDROID_KEYSTORE,
                 isReal = true,
                 canAppChange = false,
-                requiredPrivilege = RequiredPrivilege.NONE,
+                requiredPrivilege = RequiredPrivilege.HARDWARE,
                 implementationLayer = ImplementationLayer.HARDWARE
             )
         }
@@ -175,32 +175,32 @@ class AndroidCapabilityProvider(
                 Capability(
                     id = CapabilityIds.STRONGBOX,
                     name = "StrongBox Keymaster",
-                    category = CapabilityCategory.HARDWARE,
+                    category = CapabilityCategory.HARDWARE_SECURITY,
                     state = CapabilityState.SUPPORTED,
                     evidence = "StrongBox-backed AES key was successfully generated.",
                     securityMeaning = "The device accepted a key-generation request backed by StrongBox or an equivalent secure hardware security level.",
-                    limitations = null,
+                    limitations = "StrongBox provides an isolated hardware security module for cryptographic operations.",
                     remediation = null,
-                    provider = id,
+                    provider = CapabilityProvider.ANDROID_KEYSTORE,
                     isReal = true,
                     canAppChange = false,
-                    requiredPrivilege = RequiredPrivilege.NONE,
+                    requiredPrivilege = RequiredPrivilege.HARDWARE,
                     implementationLayer = ImplementationLayer.HARDWARE
                 )
             } else {
                 Capability(
                     id = CapabilityIds.STRONGBOX,
                     name = "StrongBox Keymaster",
-                    category = CapabilityCategory.HARDWARE,
+                    category = CapabilityCategory.HARDWARE_SECURITY,
                     state = CapabilityState.UNKNOWN,
                     evidence = "StrongBox key generation succeeded, but hardware security level could not be independently verified.",
                     securityMeaning = "SecureDroid cannot make a stronger hardware-backed claim.",
                     limitations = "Hardware security level verification was inconclusive.",
                     remediation = null,
-                    provider = id,
+                    provider = CapabilityProvider.ANDROID_KEYSTORE,
                     isReal = true,
                     canAppChange = false,
-                    requiredPrivilege = RequiredPrivilege.NONE,
+                    requiredPrivilege = RequiredPrivilege.HARDWARE,
                     implementationLayer = ImplementationLayer.HARDWARE
                 )
             }
@@ -208,16 +208,16 @@ class AndroidCapabilityProvider(
             Capability(
                 id = CapabilityIds.STRONGBOX,
                 name = "StrongBox Keymaster",
-                category = CapabilityCategory.HARDWARE,
+                category = CapabilityCategory.HARDWARE_SECURITY,
                 state = CapabilityState.UNAVAILABLE,
                 evidence = e.javaClass.simpleName,
                 securityMeaning = "SecureDroid could not create a StrongBox-backed test key.",
                 limitations = "This does not prove that the device has no secure hardware; the API request may simply be unsupported or restricted.",
                 remediation = null,
-                provider = id,
+                provider = CapabilityProvider.ANDROID_KEYSTORE,
                 isReal = true,
                 canAppChange = false,
-                requiredPrivilege = RequiredPrivilege.NONE,
+                requiredPrivilege = RequiredPrivilege.HARDWARE,
                 implementationLayer = ImplementationLayer.HARDWARE
             )
         }
@@ -238,11 +238,11 @@ class AndroidCapabilityProvider(
                 securityMeaning = "SecureDroid cannot determine whether a secure lock screen is configured.",
                 limitations = "Android did not provide the required system service.",
                 remediation = null,
-                provider = id,
+                provider = CapabilityProvider.ANDROID,
                 isReal = true,
                 canAppChange = false,
-                requiredPrivilege = RequiredPrivilege.NONE,
-                implementationLayer = ImplementationLayer.ANDROID_API
+                requiredPrivilege = RequiredPrivilege.USER_ACTION,
+                implementationLayer = ImplementationLayer.PLATFORM
             )
         }
 
@@ -264,7 +264,7 @@ class AndroidCapabilityProvider(
                 "No secure lock screen is configured."
             },
             limitations = if (secure) {
-                null
+                "Device is protected by lock screen credentials."
             } else {
                 "Device physical-access protection is weaker."
             },
@@ -273,11 +273,11 @@ class AndroidCapabilityProvider(
             } else {
                 "Configure a secure screen lock in Android Settings."
             },
-            provider = id,
+            provider = CapabilityProvider.ANDROID,
             isReal = true,
             canAppChange = false,
-            requiredPrivilege = RequiredPrivilege.NONE,
-            implementationLayer = ImplementationLayer.ANDROID_API
+            requiredPrivilege = RequiredPrivilege.USER_ACTION,
+            implementationLayer = ImplementationLayer.PLATFORM
         )
     }
 
@@ -286,17 +286,17 @@ class AndroidCapabilityProvider(
             return Capability(
                 id = "android.user.unlocked",
                 name = "User Unlock State",
-                category = CapabilityCategory.SYSTEM,
+                category = CapabilityCategory.SYSTEM_SECURITY,
                 state = CapabilityState.UNKNOWN,
                 evidence = "Direct user-unlock API requires Android 7 / API 24.",
                 securityMeaning = "SecureDroid cannot reliably query the direct user-unlock state.",
                 limitations = "Legacy Android version.",
                 remediation = null,
-                provider = id,
+                provider = CapabilityProvider.ANDROID,
                 isReal = true,
                 canAppChange = false,
-                requiredPrivilege = RequiredPrivilege.NONE,
-                implementationLayer = ImplementationLayer.ANDROID_API
+                requiredPrivilege = RequiredPrivilege.USER_ACTION,
+                implementationLayer = ImplementationLayer.PLATFORM
             )
         }
 
@@ -307,17 +307,17 @@ class AndroidCapabilityProvider(
             return Capability(
                 id = "android.user.unlocked",
                 name = "User Unlock State",
-                category = CapabilityCategory.SYSTEM,
+                category = CapabilityCategory.SYSTEM_SECURITY,
                 state = CapabilityState.UNKNOWN,
                 evidence = "UserManager unavailable.",
                 securityMeaning = "SecureDroid cannot determine the current user unlock state.",
                 limitations = "Required Android system service is unavailable.",
                 remediation = null,
-                provider = id,
+                provider = CapabilityProvider.ANDROID,
                 isReal = true,
                 canAppChange = false,
-                requiredPrivilege = RequiredPrivilege.NONE,
-                implementationLayer = ImplementationLayer.ANDROID_API
+                requiredPrivilege = RequiredPrivilege.USER_ACTION,
+                implementationLayer = ImplementationLayer.PLATFORM
             )
         }
 
@@ -326,7 +326,7 @@ class AndroidCapabilityProvider(
         return Capability(
             id = "android.user.unlocked",
             name = "User Unlock State",
-            category = CapabilityCategory.SYSTEM,
+            category = CapabilityCategory.SYSTEM_SECURITY,
             state = if (unlocked) {
                 CapabilityState.SUPPORTED
             } else {
@@ -339,7 +339,7 @@ class AndroidCapabilityProvider(
                 "The user has not unlocked the device after boot."
             },
             limitations = if (unlocked) {
-                null
+                "Credential-protected storage is unlocked."
             } else {
                 "Some credential-protected operations may be unavailable until first unlock."
             },
@@ -348,11 +348,11 @@ class AndroidCapabilityProvider(
             } else {
                 "Unlock the device."
             },
-            provider = id,
+            provider = CapabilityProvider.ANDROID,
             isReal = true,
             canAppChange = false,
-            requiredPrivilege = RequiredPrivilege.NONE,
-            implementationLayer = ImplementationLayer.ANDROID_API
+            requiredPrivilege = RequiredPrivilege.USER_ACTION,
+            implementationLayer = ImplementationLayer.PLATFORM
         )
     }
 }

@@ -72,10 +72,12 @@ enum class ImplementationLayer {
 object CapabilityIds {
 
     const val VPN_SERVICE = "vpn_service"
+    const val VPN = VPN_SERVICE
 
     const val BIOMETRIC = "biometric_authentication"
 
     const val ANDROID_KEYSTORE = "android_keystore"
+    const val KEYSTORE = ANDROID_KEYSTORE
 
     const val STRONGBOX = "strongbox"
 
@@ -88,6 +90,9 @@ object CapabilityIds {
     const val MANAGED_PROFILE = "managed_profile"
 
     const val PACKAGE_MANAGEMENT = "package_management"
+    const val APP_INVENTORY = PACKAGE_MANAGEMENT
+
+    const val SECURE_STORAGE = "secure_storage"
 
     const val DEVICE_POLICY = "device_policy"
 

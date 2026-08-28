@@ -8,6 +8,7 @@ import android.security.keystore.KeyStoreException
 import org.securedroid.capability.Capability
 import org.securedroid.capability.CapabilityCategory
 import org.securedroid.capability.CapabilityIds
+import org.securedroid.capability.CapabilityProvider
 import org.securedroid.capability.CapabilityState
 import org.securedroid.capability.ImplementationLayer
 import org.securedroid.capability.RequiredPrivilege
@@ -43,11 +44,11 @@ class NormalModeProvider(
                 securityMeaning = "SecureDroid could not determine VPN authorization state.",
                 limitations = "VPN availability could not be verified.",
                 remediation = "Retry the capability check.",
-                provider = id,
+                provider = CapabilityProvider.VPN_SERVICE,
                 isReal = true,
                 canAppChange = true,
-                requiredPrivilege = RequiredPrivilege.VPN_PERMISSION,
-                implementationLayer = ImplementationLayer.VpnService
+                requiredPrivilege = RequiredPrivilege.USER_APPROVAL,
+                implementationLayer = ImplementationLayer.VPN
             )
         }
 
@@ -87,11 +88,11 @@ class NormalModeProvider(
             } else {
                 null
             },
-            provider = id,
+            provider = CapabilityProvider.VPN_SERVICE,
             isReal = true,
             canAppChange = true,
-            requiredPrivilege = RequiredPrivilege.VPN_PERMISSION,
-            implementationLayer = ImplementationLayer.VpnService
+            requiredPrivilege = RequiredPrivilege.USER_APPROVAL,
+            implementationLayer = ImplementationLayer.VPN
         )
     }
 
@@ -117,7 +118,7 @@ class NormalModeProvider(
         return Capability(
             id = CapabilityIds.APP_INVENTORY,
             name = "Installed Application Inventory",
-            category = CapabilityCategory.APPLICATION,
+            category = CapabilityCategory.APPLICATION_MANAGEMENT,
             state = if (canQueryPackages) {
                 CapabilityState.SUPPORTED
             } else {
@@ -135,11 +136,11 @@ class NormalModeProvider(
             } else {
                 "Review the application's package visibility declarations and Android package-visibility restrictions."
             },
-            provider = id,
+            provider = CapabilityProvider.SECUREDROID_NORMAL_MODE,
             isReal = true,
             canAppChange = false,
-            requiredPrivilege = RequiredPrivilege.NONE,
-            implementationLayer = ImplementationLayer.ANDROID_API
+            requiredPrivilege = RequiredPrivilege.NORMAL_APP,
+            implementationLayer = ImplementationLayer.PLATFORM
         )
     }
 
@@ -160,11 +161,11 @@ class NormalModeProvider(
                 securityMeaning = "SecureDroid can encrypt application data using keys protected by Android Keystore.",
                 limitations = "Keystore availability does not guarantee hardware-backed key storage on every device.",
                 remediation = null,
-                provider = id,
+                provider = CapabilityProvider.SECUREDROID_NORMAL_MODE,
                 isReal = true,
                 canAppChange = false,
-                requiredPrivilege = RequiredPrivilege.NONE,
-                implementationLayer = ImplementationLayer.APP
+                requiredPrivilege = RequiredPrivilege.NORMAL_APP,
+                implementationLayer = ImplementationLayer.APPLICATION
             )
         } catch (e: Exception) {
             Capability(
@@ -176,11 +177,11 @@ class NormalModeProvider(
                 securityMeaning = "SecureDroid could not initialize Android Keystore.",
                 limitations = "Keystore-dependent encrypted storage may not function.",
                 remediation = "Retry after restarting the device.",
-                provider = id,
+                provider = CapabilityProvider.SECUREDROID_NORMAL_MODE,
                 isReal = true,
                 canAppChange = false,
-                requiredPrivilege = RequiredPrivilege.NONE,
-                implementationLayer = ImplementationLayer.APP
+                requiredPrivilege = RequiredPrivilege.NORMAL_APP,
+                implementationLayer = ImplementationLayer.APPLICATION
             )
         }
     }
@@ -202,11 +203,11 @@ class NormalModeProvider(
                 securityMeaning = "SecureDroid cannot reliably evaluate modern biometric authentication availability.",
                 limitations = "Legacy Android biometric APIs may expose only fingerprint-specific information.",
                 remediation = "Use a supported Android version.",
-                provider = id,
+                provider = CapabilityProvider.SECUREDROID_NORMAL_MODE,
                 isReal = true,
                 canAppChange = false,
-                requiredPrivilege = RequiredPrivilege.APP_PERMISSION,
-                implementationLayer = ImplementationLayer.ANDROID_API
+                requiredPrivilege = RequiredPrivilege.NORMAL_APP,
+                implementationLayer = ImplementationLayer.PLATFORM
             )
         }
 
@@ -225,11 +226,11 @@ class NormalModeProvider(
                     securityMeaning = "SecureDroid cannot determine biometric availability.",
                     limitations = "Android did not provide BiometricManager.",
                     remediation = null,
-                    provider = id,
+                    provider = CapabilityProvider.SECUREDROID_NORMAL_MODE,
                     isReal = true,
                     canAppChange = false,
-                    requiredPrivilege = RequiredPrivilege.APP_PERMISSION,
-                    implementationLayer = ImplementationLayer.ANDROID_API
+                    requiredPrivilege = RequiredPrivilege.NORMAL_APP,
+                    implementationLayer = ImplementationLayer.PLATFORM
                 )
             } else {
                 val canAuthenticate =
@@ -274,7 +275,7 @@ class NormalModeProvider(
                             "Biometric authentication state could not be fully determined."
                     },
                     limitations = if (state == CapabilityState.SUPPORTED) {
-                        null
+                        "Biometric authentication is supported on this device."
                     } else {
                         "Availability depends on device hardware, enrollment, and current Android authentication state."
                     },
@@ -283,11 +284,11 @@ class NormalModeProvider(
                     } else {
                         null
                     },
-                    provider = id,
+                    provider = CapabilityProvider.SECUREDROID_NORMAL_MODE,
                     isReal = true,
                     canAppChange = false,
-                    requiredPrivilege = RequiredPrivilege.APP_PERMISSION,
-                    implementationLayer = ImplementationLayer.ANDROID_API
+                    requiredPrivilege = RequiredPrivilege.NORMAL_APP,
+                    implementationLayer = ImplementationLayer.PLATFORM
                 )
             }
         } catch (e: Exception) {
@@ -300,11 +301,11 @@ class NormalModeProvider(
                 securityMeaning = "SecureDroid could not evaluate biometric authentication.",
                 limitations = "The platform returned an unexpected biometric error.",
                 remediation = "Retry the capability check.",
-                provider = id,
+                provider = CapabilityProvider.SECUREDROID_NORMAL_MODE,
                 isReal = true,
                 canAppChange = false,
-                requiredPrivilege = RequiredPrivilege.APP_PERMISSION,
-                implementationLayer = ImplementationLayer.ANDROID_API
+                requiredPrivilege = RequiredPrivilege.NORMAL_APP,
+                implementationLayer = ImplementationLayer.PLATFORM
             )
         }
     }
