@@ -6,54 +6,38 @@ import androidx.work.WorkerParameters
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/**
+class SecurityMonitorService(
+    context: Context,
+    params: WorkerParameters
+) : CoroutineWorker(context, params) {
 
-* Periodic background security assessment.
+    override suspend fun doWork(): Result {
+        return try {
+            withContext(Dispatchers.IO) {
 
-* 
+                val monitor = SecurityMonitor(
+                    applicationContext
+                )
 
-* Uses WorkManager instead of a permanently running service.
-  */
-  class SecurityMonitorService(
-  appContext: Context,
-  workerParams: WorkerParameters
-  ) : CoroutineWorker(appContext, workerParams) {
-  
-  override suspend fun doWork(): Result {
-  return try {
-  withContext(Dispatchers.IO) {
-  
-           val monitor = SecurityMonitor(
-             applicationContext
-         )
+                val report = monitor.analyze()
 
-         val report = monitor.analyze()
+                lastReport = report
+            }
 
-         /*
-          * The current worker performs the assessment.
-          *
-          * Persistence/notification should be connected here
-          * once the corresponding repository exists.
-          */
-         lastReport = report
-     }
+            Result.success()
 
-     Result.success()
+        } catch (_: Exception) {
+            Result.retry()
+        }
+    }
 
- } catch (_: Exception) {
-     Result.retry()
- }
-  
-  }
-  
-  companion object {
-  
-   @Volatile
- private var lastReport: SecurityReport? = null
+    companion object {
 
- fun getLastReport(): SecurityReport? {
-     return lastReport
- }
-  
-  }
-  }
+        @Volatile
+        private var lastReport: SecurityReport? = null
+
+        fun getLastReport(): SecurityReport? {
+            return lastReport
+        }
+    }
+}
