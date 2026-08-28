@@ -19,7 +19,7 @@ class SecurityMonitorService(
                     applicationContext
                 )
 
-                val report = monitor.analyze()
+                val report = monitor.getSecurityStatus()
 
                 lastReport = report
             }
@@ -34,9 +34,9 @@ class SecurityMonitorService(
     companion object {
 
         @Volatile
-        private var lastReport: SecurityReport? = null
+        private var lastReport: SecurityStatusReport? = null
 
-        fun getLastReport(): SecurityReport? {
+        fun getLastReport(): SecurityStatusReport? {
             return lastReport
         }
     }
