@@ -1,215 +1,68 @@
-import React, { useState, useEffect } from 'react';
-import {
-  FileText,
-  ShieldCheck,
-  ShieldAlert,
-  AlertTriangle,
-  Info,
-  Clock,
-  Filter,
-  CheckCircle2,
-  Terminal,
-  Activity,
-  Layers,
-  RefreshCw
-} from 'lucide-react';
-import {
-  SecureDroidTopBar,
-  SecureDroidCard,
-  SecureDroidStatusChip,
-  SecureDroidSectionHeader,
-  SecureDroidButton
-} from '../ui/designSystem';
-import { SecurityAuditEvent, SecurityEventSeverity } from '../../types/securedroid';
-import { SecureDroidNative } from '../../services/native/SecureDroidNative';
+import React from 'react';
+import { FileText, Clock, ArrowLeft } from 'lucide-react';
+import { useSecureDroid } from '../../hooks/useSecureDroid';
 
 interface SecurityAuditLogScreenProps {
-  onBack: () => void;
-  isLight?: boolean;
+  onBack?: () => void;
 }
 
-export const SecurityAuditLogScreen: React.FC<SecurityAuditLogScreenProps> = ({
-  onBack,
-  isLight = false,
-}) => {
-  const [events, setEvents] = useState<SecurityAuditEvent[]>([]);
-  const [activeCategory, setActiveCategory] = useState<string>('All');
-  const [timeRange, setTimeRange] = useState<'Today' | '7 Days' | '30 Days'>('Today');
-  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
-
-  const fetchLiveLogs = async () => {
-    setIsRefreshing(true);
-    try {
-      const res = await SecureDroidNative.getSecurityLogs(50);
-      if (res.success && res.data) {
-        const mapped: SecurityAuditEvent[] = res.data.map((l: any, i: number) => ({
-          id: l.id || `live_log_${i}`,
-          timestamp: new Date(l.timestamp || Date.now()).toLocaleTimeString(),
-          category: (l.category || 'SECURITY') as any,
-          severity: (l.severity || 'INFO') as any,
-          title: l.description ? l.description.split('.')[0] : 'Security Event',
-          explanation: l.description || 'System security audit event',
-          action: 'LOGGED_TO_SECURE_STORAGE',
-          evidence: `Source: ${l.source || 'Android Kernel / Service'}`,
-          source: 'REAL EVENT',
-        }));
-        setEvents(mapped);
-        setLoadError(null);
-      } else {
-        // A failed or empty native call must be reported honestly,
-        // not silently backfilled with fabricated sample events.
-        setEvents([]);
-        setLoadError(res.message || 'Security logs are unavailable on this device.');
-      }
-    } finally {
-      setIsRefreshing(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchLiveLogs();
-  }, []);
-
-  const categories = ['All', 'SECURITY', 'PRIVACY', 'APPLICATIONS', 'NETWORK', 'USB', 'AUTHENTICATION', 'BACKUP', 'SECURE_ENVIRONMENT'];
-
-  const filteredEvents = events.filter((e) => {
-    if (activeCategory === 'All') return true;
-    return e.category === activeCategory;
-  });
-
-  const getSeverityBadge = (sev: SecurityEventSeverity) => {
-    switch (sev) {
-      case 'CRITICAL':
-        return { variant: 'UNAVAILABLE' as const, label: 'CRITICAL' };
-      case 'HIGH':
-      case 'WARNING':
-        return { variant: 'DEGRADED' as const, label: sev };
-      case 'NOTICE':
-        return { variant: 'ISOLATED' as const, label: 'NOTICE' };
-      case 'INFO':
-      default:
-        return { variant: 'SECURE' as const, label: 'INFO' };
-    }
-  };
+export function SecurityAuditLogScreen({ onBack }: SecurityAuditLogScreenProps) {
+  const { auditLogs, loading, refresh } = useSecureDroid();
 
   return (
-    <div className={`min-h-full p-4 pb-24 transition-colors ${isLight ? 'bg-zinc-50 text-zinc-900' : 'bg-zinc-950 text-zinc-100'}`}>
-      <SecureDroidTopBar
-        title="Security Audit Log"
-        subtitle="Cryptographic Event Stream & Integrity Timeline"
-        onBack={onBack}
-        isLight={isLight}
-      />
-
-      <div className="pt-4 space-y-4">
-        {/* Time Filter Tabs & Refresh */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1">
-            {(['Today', '7 Days', '30 Days'] as const).map((t) => (
-              <button
-                key={t}
-                onClick={() => setTimeRange(t)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-colors ${
-                  timeRange === t
-                    ? isLight
-                      ? 'bg-zinc-900 text-white'
-                      : 'bg-zinc-100 text-zinc-900'
-                    : isLight
-                    ? 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
-                    : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
-                }`}
-              >
-                {t}
-              </button>
-            ))}
-          </div>
-
-          <button
-            onClick={fetchLiveLogs}
-            disabled={isRefreshing}
-            className="flex items-center gap-1 text-[11px] font-mono text-zinc-400 hover:text-white px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-800"
-          >
-            <RefreshCw className={`w-3 h-3 ${isRefreshing ? 'animate-spin' : ''}`} />
-            <span>{filteredEvents.length} Events</span>
-          </button>
-        </div>
-
-        {/* Category Filter Pills */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-          {categories.map((cat) => (
-            <button
-              key={cat}
-              onClick={() => setActiveCategory(cat)}
-              className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
-                activeCategory === cat
-                  ? isLight
-                    ? 'bg-zinc-900 text-white'
-                    : 'bg-zinc-100 text-zinc-900'
-                  : isLight
-                  ? 'bg-zinc-200/70 text-zinc-700 hover:bg-zinc-300/70'
-                  : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
-              }`}
-            >
-              {cat}
+    <div className="flex flex-col h-full w-full bg-slate-950 text-slate-100 overflow-y-auto p-4">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center space-x-3">
+          {onBack && (
+            <button onClick={onBack} className="p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-300 hover:text-white">
+              <ArrowLeft className="w-5 h-5" />
             </button>
+          )}
+          <h1 className="text-xl font-semibold tracking-wide">Security Audit Log</h1>
+        </div>
+        <button 
+          onClick={refresh}
+          className="px-3 py-1.5 text-xs font-medium bg-cyan-600/20 border border-cyan-500/40 text-cyan-400 rounded-lg hover:bg-cyan-600/30 transition-colors"
+        >
+          Refresh Logs
+        </button>
+      </div>
+
+      {/* Content States */}
+      {loading ? (
+        <div className="flex flex-col items-center justify-center flex-1 py-20 text-cyan-400">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-cyan-400 mb-3" />
+          <p className="text-sm text-slate-400">Loading audit events...</p>
+        </div>
+      ) : auditLogs.length === 0 ? (
+        <div className="flex flex-col items-center justify-center flex-1 py-20 text-center text-slate-400">
+          <FileText className="w-12 h-12 text-slate-600 mb-3" />
+          <p className="text-base font-medium text-slate-300">No Audit Events Recorded</p>
+          <p className="text-xs text-slate-500 mt-1">System telemetry events will appear here as they occur.</p>
+        </div>
+      ) : (
+        <div className="space-y-2.5">
+          {auditLogs.map((log) => (
+            <div key={log.id} className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800/80 flex flex-col space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-cyan-400 font-mono flex items-center space-x-1">
+                  <Clock className="w-3 h-3" />
+                  <span>{new Date(log.timestamp).toLocaleString()}</span>
+                </span>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase font-semibold ${
+                  log.severity === 'high' ? 'bg-red-500/10 text-red-400 border border-red-500/30' :
+                  log.severity === 'medium' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30' :
+                  'bg-slate-800 text-slate-300'
+                }`}>
+                  {log.severity}
+                </span>
+              </div>
+              <p className="text-xs text-slate-200 mt-1">{log.event}</p>
+            </div>
           ))}
         </div>
-
-        {/* Event List */}
-        {loadError && filteredEvents.length === 0 && (
-          <SecureDroidCard isLight={isLight} className="p-4 mb-3 text-sm text-amber-400">
-            {loadError}
-          </SecureDroidCard>
-        )}
-
-        {!loadError && !isRefreshing && filteredEvents.length === 0 && (
-          <SecureDroidCard isLight={isLight} className="p-6 text-center text-sm text-slate-400">
-            No security events recorded yet.
-          </SecureDroidCard>
-        )}
-
-        <div className="space-y-3">
-          {filteredEvents.map((evt) => {
-            const badge = getSeverityBadge(evt.severity);
-            return (
-              <SecureDroidCard key={evt.id} isLight={isLight} className="p-4 space-y-2">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h4 className="font-medium text-sm">{evt.title}</h4>
-                      <SecureDroidStatusChip status={badge.variant} label={badge.label} isLight={isLight} />
-                      <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded ${
-                        evt.source === 'REAL EVENT'
-                          ? 'bg-emerald-950 text-emerald-300'
-                          : evt.source === 'SYSTEM EVENT'
-                          ? 'bg-blue-950 text-blue-300'
-                          : 'bg-zinc-800 text-zinc-400'
-                      }`}>
-                        {evt.source}
-                      </span>
-                    </div>
-                    <p className={`text-xs mt-1 leading-relaxed ${isLight ? 'text-zinc-600' : 'text-zinc-400'}`}>
-                      {evt.explanation}
-                    </p>
-                  </div>
-
-                  <span className="text-[10px] font-mono text-zinc-500 shrink-0">
-                    {evt.timestamp}
-                  </span>
-                </div>
-
-                <div className={`p-2 rounded-lg text-[11px] font-mono space-y-0.5 ${
-                  isLight ? 'bg-zinc-100 text-zinc-700' : 'bg-zinc-900 text-zinc-300'
-                }`}>
-                  <div><strong>Action:</strong> {evt.action}</div>
-                  <div className="truncate"><strong>Evidence:</strong> {evt.evidence}</div>
-                </div>
-              </SecureDroidCard>
-            );
-          })}
-        </div>
-      </div>
+      )}
     </div>
   );
-};
+}
