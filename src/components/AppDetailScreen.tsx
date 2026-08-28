@@ -31,16 +31,17 @@ import {
     Bluetooth,
     RefreshCw,
     Share2,
-    ExternalLink
+    ExternalLink,
 } from 'lucide-react';
 import {
     SecureDroidTopBar,
     SecureDroidCard,
     SecureDroidSectionHeader,
     SecureDroidStatusChip,
-    SecureDroidButton
+    SecureDroidButton,
 } from './ui/designSystem';
 import { useSecureDroid } from '../hooks/useSecureDroid';
+import type { AppInfo, RiskInfo } from '../hooks/useSecureDroid';
 
 interface AppDetailScreenProps {
     onBack: () => void;
@@ -49,13 +50,247 @@ interface AppDetailScreenProps {
 }
 
 interface PermissionDetail {
-    name: string;
+    name: string;            // Human-readable name
     icon: React.ElementType;
-    declared: boolean;
-    granted: boolean;
+    declared: boolean;       // Permission is requested in manifest
+    granted: boolean;        // Permission is currently granted (if known)
     description: string;
     risk: 'LOW' | 'MEDIUM' | 'HIGH';
 }
+
+// Permission categorization mapping
+const PERMISSION_MAP: Record<string, { name: string; icon: React.ElementType; risk: 'LOW' | 'MEDIUM' | 'HIGH'; description: string }> = {
+    'android.permission.CAMERA': {
+        name: 'Camera',
+        icon: Camera,
+        risk: 'HIGH',
+        description: 'Take photos and videos',
+    },
+    'android.permission.RECORD_AUDIO': {
+        name: 'Microphone',
+        icon: Mic,
+        risk: 'HIGH',
+        description: 'Record audio',
+    },
+    'android.permission.ACCESS_FINE_LOCATION': {
+        name: 'Precise Location',
+        icon: MapPin,
+        risk: 'HIGH',
+        description: 'Access precise location',
+    },
+    'android.permission.ACCESS_COARSE_LOCATION': {
+        name: 'Approximate Location',
+        icon: MapPin,
+        risk: 'MEDIUM',
+        description: 'Access approximate location',
+    },
+    'android.permission.READ_CONTACTS': {
+        name: 'Read Contacts',
+        icon: Users,
+        risk: 'HIGH',
+        description: 'Read your contacts',
+    },
+    'android.permission.WRITE_CONTACTS': {
+        name: 'Write Contacts',
+        icon: Users,
+        risk: 'HIGH',
+        description: 'Modify your contacts',
+    },
+    'android.permission.READ_CALENDAR': {
+        name: 'Read Calendar',
+        icon: Calendar,
+        risk: 'MEDIUM',
+        description: 'Read calendar events',
+    },
+    'android.permission.WRITE_CALENDAR': {
+        name: 'Write Calendar',
+        icon: Calendar,
+        risk: 'MEDIUM',
+        description: 'Modify calendar events',
+    },
+    'android.permission.READ_SMS': {
+        name: 'Read SMS',
+        icon: MessageSquare,
+        risk: 'HIGH',
+        description: 'Read SMS messages',
+    },
+    'android.permission.SEND_SMS': {
+        name: 'Send SMS',
+        icon: MessageSquare,
+        risk: 'HIGH',
+        description: 'Send SMS messages',
+    },
+    'android.permission.RECEIVE_SMS': {
+        name: 'Receive SMS',
+        icon: MessageSquare,
+        risk: 'HIGH',
+        description: 'Intercept incoming SMS',
+    },
+    'android.permission.READ_CALL_LOG': {
+        name: 'Read Call Log',
+        icon: Phone,
+        risk: 'HIGH',
+        description: 'Read call history',
+    },
+    'android.permission.WRITE_CALL_LOG': {
+        name: 'Write Call Log',
+        icon: Phone,
+        risk: 'HIGH',
+        description: 'Modify call history',
+    },
+    'android.permission.CALL_PHONE': {
+        name: 'Directly Call Phone',
+        icon: Phone,
+        risk: 'HIGH',
+        description: 'Directly call phone numbers',
+    },
+    'android.permission.READ_PHONE_STATE': {
+        name: 'Phone State',
+        icon: Phone,
+        risk: 'MEDIUM',
+        description: 'Read phone status and identity',
+    },
+    'android.permission.READ_PHONE_NUMBERS': {
+        name: 'Phone Numbers',
+        icon: Phone,
+        risk: 'MEDIUM',
+        description: 'Read phone numbers',
+    },
+    'android.permission.READ_EXTERNAL_STORAGE': {
+        name: 'Read External Storage',
+        icon: Database,
+        risk: 'MEDIUM',
+        description: 'Read files on external storage',
+    },
+    'android.permission.WRITE_EXTERNAL_STORAGE': {
+        name: 'Write External Storage',
+        icon: Database,
+        risk: 'MEDIUM',
+        description: 'Write files on external storage',
+    },
+    'android.permission.READ_MEDIA_IMAGES': {
+        name: 'Read Images',
+        icon: Image,
+        risk: 'LOW',
+        description: 'Read images from media store',
+    },
+    'android.permission.READ_MEDIA_VIDEO': {
+        name: 'Read Videos',
+        icon: Image,
+        risk: 'LOW',
+        description: 'Read videos from media store',
+    },
+    'android.permission.READ_MEDIA_AUDIO': {
+        name: 'Read Audio',
+        icon: FileText,
+        risk: 'LOW',
+        description: 'Read audio files from media store',
+    },
+    'android.permission.BODY_SENSORS': {
+        name: 'Body Sensors',
+        icon: Activity,
+        risk: 'MEDIUM',
+        description: 'Access body sensor data',
+    },
+    'android.permission.ACTIVITY_RECOGNITION': {
+        name: 'Activity Recognition',
+        icon: Activity,
+        risk: 'LOW',
+        description: 'Recognize physical activity',
+    },
+    'android.permission.POST_NOTIFICATIONS': {
+        name: 'Post Notifications',
+        icon: Bell,
+        risk: 'LOW',
+        description: 'Show notifications',
+    },
+    'android.permission.ACCESS_BACKGROUND_LOCATION': {
+        name: 'Background Location',
+        icon: MapPin,
+        risk: 'HIGH',
+        description: 'Access location in the background',
+    },
+    'android.permission.ACCESS_MEDIA_LOCATION': {
+        name: 'Media Location',
+        icon: MapPin,
+        risk: 'MEDIUM',
+        description: 'Read location from media files',
+    },
+    'android.permission.READ_CALL_LOG': {
+        name: 'Read Call Log',
+        icon: Phone,
+        risk: 'HIGH',
+        description: 'Read call history',
+    },
+    'android.permission.WRITE_CALL_LOG': {
+        name: 'Write Call Log',
+        icon: Phone,
+        risk: 'HIGH',
+        description: 'Modify call history',
+    },
+    'android.permission.CAMERA': {
+        name: 'Camera',
+        icon: Camera,
+        risk: 'HIGH',
+        description: 'Take photos and videos',
+    },
+    'android.permission.RECORD_AUDIO': {
+        name: 'Microphone',
+        icon: Mic,
+        risk: 'HIGH',
+        description: 'Record audio',
+    },
+    'android.permission.SYSTEM_ALERT_WINDOW': {
+        name: 'Draw Over Other Apps',
+        icon: Eye,
+        risk: 'HIGH',
+        description: 'Display overlay windows',
+    },
+    'android.permission.REQUEST_INSTALL_PACKAGES': {
+        name: 'Install Packages',
+        icon: Package,
+        risk: 'HIGH',
+        description: 'Install other applications',
+    },
+    'android.permission.WRITE_SECURE_SETTINGS': {
+        name: 'Write Secure Settings',
+        icon: Settings,
+        risk: 'HIGH',
+        description: 'Modify protected system settings',
+    },
+    'android.permission.BIND_ACCESSIBILITY_SERVICE': {
+        name: 'Accessibility Service',
+        icon: Eye,
+        risk: 'HIGH',
+        description: 'Control screen and input via accessibility',
+    },
+    'android.permission.BIND_DEVICE_ADMIN': {
+        name: 'Device Administrator',
+        icon: Shield,
+        risk: 'HIGH',
+        description: 'Can request device admin privileges',
+    },
+    'android.permission.USE_BIOMETRIC': {
+        name: 'Use Biometric',
+        icon: Lock,
+        risk: 'LOW',
+        description: 'Use biometric authentication',
+    },
+    'android.permission.USE_FINGERPRINT': {
+        name: 'Use Fingerprint',
+        icon: Lock,
+        risk: 'LOW',
+        description: 'Use fingerprint authentication',
+    },
+};
+
+// Default for unknown permissions
+const DEFAULT_PERMISSION = {
+    name: 'Unknown Permission',
+    icon: Shield,
+    risk: 'LOW' as const,
+    description: 'This permission is not recognized',
+};
 
 export const AppDetailScreen: React.FC<AppDetailScreenProps> = ({
     onBack,
@@ -65,67 +300,41 @@ export const AppDetailScreen: React.FC<AppDetailScreenProps> = ({
     const { apps, risks } = useSecureDroid();
     const [loading, setLoading] = useState(true);
 
-    // Find the app
+    // Find the app and its risk report
     const app = apps.find(a => a.packageName === packageName);
     const risk = risks.find(r => r.packageName === packageName);
 
-    // Mock permission data for UI demonstration
-    const permissions: PermissionDetail[] = [
-        {
-            name: 'Location',
-            icon: MapPin,
-            declared: true,
-            granted: true,
-            description: 'Access precise location',
-            risk: 'HIGH'
-        },
-        {
-            name: 'Camera',
-            icon: Camera,
-            declared: true,
-            granted: true,
-            description: 'Take photos and videos',
-            risk: 'HIGH'
-        },
-        {
-            name: 'Microphone',
-            icon: Mic,
-            declared: true,
-            granted: false,
-            description: 'Record audio',
-            risk: 'MEDIUM'
-        },
-        {
-            name: 'Contacts',
-            icon: Users,
-            declared: true,
-            granted: true,
-            description: 'Read your contacts',
-            risk: 'HIGH'
-        },
-        {
-            name: 'Storage',
-            icon: Database,
-            declared: true,
-            granted: true,
-            description: 'Read and write files',
-            risk: 'MEDIUM'
-        },
-        {
-            name: 'SMS',
-            icon: MessageSquare,
-            declared: false,
-            granted: false,
-            description: 'Read and send SMS',
-            risk: 'HIGH'
-        },
-    ];
-
     useEffect(() => {
-        // Simulate loading
-        const timer = setTimeout(() => setLoading(false), 500);
+        const timer = setTimeout(() => setLoading(false), 300);
         return () => clearTimeout(timer);
     }, []);
+
+    // Build permission list from app data
+    const buildPermissions = (): PermissionDetail[] => {
+        if (!app) return [];
+
+        const requested = app.requestedPermissions || [];
+        const granted = app.grantedPermissions || [];
+
+        // If we have granted permissions, use them to determine granted status.
+        // Otherwise, we don't know which are granted (we'll mark as unknown by omitting the granted flag).
+        const grantedSet = new Set(granted);
+
+        return requested.map((perm: string) => {
+            const mapped = PERMISSION_MAP[perm] || DEFAULT_PERMISSION;
+            const grantedStatus = granted.length > 0 ? grantedSet.has(perm) : false; // if no granted list, we can't know
+            return {
+                name: mapped.name,
+                icon: mapped.icon,
+                declared: true,
+                granted: grantedStatus,
+                description: mapped.description,
+                risk: mapped.risk,
+            };
+        });
+    };
+
+    const permissions = buildPermissions();
 
     if (loading) {
         return (
@@ -295,36 +504,42 @@ export const AppDetailScreen: React.FC<AppDetailScreenProps> = ({
                 {/* Permissions */}
                 <SecureDroidSectionHeader title="Permissions" />
                 <div className="space-y-2">
-                    {permissions.map((perm, index) => {
-                        const Icon = perm.icon;
-                        return (
-                            <div key={index} className="bg-slate-900/50 p-3 rounded-xl border border-slate-800">
-                                <div className="flex items-center gap-3">
-                                    <div className={`w-8 h-8 rounded-full ${getPermissionRiskColor(perm.risk)} flex items-center justify-center`}>
-                                        <Icon className="w-4 h-4" />
-                                    </div>
-                                    <div className="flex-1">
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-sm font-medium text-slate-200">{perm.name}</span>
-                                            <span className={`text-[9px] px-1.5 py-0.5 rounded-full ${getPermissionRiskColor(perm.risk)}`}>
-                                                {getPermissionRiskLabel(perm.risk)}
-                                            </span>
+                    {permissions.length === 0 ? (
+                        <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-800 text-center text-sm text-slate-400">
+                            No permissions declared
+                        </div>
+                    ) : (
+                        permissions.map((perm, index) => {
+                            const Icon = perm.icon;
+                            return (
+                                <div key={index} className="bg-slate-900/50 p-3 rounded-xl border border-slate-800">
+                                    <div className="flex items-center gap-3">
+                                        <div className={`w-8 h-8 rounded-full ${getPermissionRiskColor(perm.risk)} flex items-center justify-center`}>
+                                            <Icon className="w-4 h-4" />
                                         </div>
-                                        <div className="text-xs text-slate-400">{perm.description}</div>
-                                    </div>
-                                    <div className="text-right">
-                                        {perm.granted ? (
-                                            <span className="text-xs text-emerald-400">Granted</span>
-                                        ) : perm.declared ? (
-                                            <span className="text-xs text-amber-400">Declared</span>
-                                        ) : (
-                                            <span className="text-xs text-slate-500">Not Declared</span>
-                                        )}
+                                        <div className="flex-1">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-sm font-medium text-slate-200">{perm.name}</span>
+                                                <span className={`text-[9px] px-1.5 py-0.5 rounded-full ${getPermissionRiskColor(perm.risk)}`}>
+                                                    {getPermissionRiskLabel(perm.risk)}
+                                                </span>
+                                            </div>
+                                            <div className="text-xs text-slate-400">{perm.description}</div>
+                                        </div>
+                                        <div className="text-right">
+                                            {perm.granted ? (
+                                                <span className="text-xs text-emerald-400">Granted</span>
+                                            ) : perm.declared ? (
+                                                <span className="text-xs text-amber-400">Declared</span>
+                                            ) : (
+                                                <span className="text-xs text-slate-500">Not Declared</span>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        );
-                    })}
+                            );
+                        })
+                    )}
                 </div>
 
                 {/* App Info */}
@@ -343,6 +558,10 @@ export const AppDetailScreen: React.FC<AppDetailScreenProps> = ({
                         <span className="text-slate-200">API {app.targetSdk}</span>
                     </div>
                     <div className="flex justify-between text-sm">
+                        <span className="text-slate-400">Min SDK</span>
+                        <span className="text-slate-200">API {app.minSdk}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
                         <span className="text-slate-400">Installed</span>
                         <span className="text-slate-200">{new Date(app.installTime).toLocaleDateString()}</span>
                     </div>
@@ -352,7 +571,7 @@ export const AppDetailScreen: React.FC<AppDetailScreenProps> = ({
                     </div>
                     <div className="flex justify-between text-sm">
                         <span className="text-slate-400">Install Source</span>
-                        <span className="text-slate-200">{app.installSource}</span>
+                        <span className="text-slate-200">{app.installSource || 'Unknown'}</span>
                     </div>
                     <div className="flex justify-between text-sm">
                         <span className="text-slate-400">System App</span>
@@ -366,6 +585,14 @@ export const AppDetailScreen: React.FC<AppDetailScreenProps> = ({
                             {app.isDebuggable ? 'Yes' : 'No'}
                         </span>
                     </div>
+                    {app.signingCertSha256 && (
+                        <div className="flex justify-between text-sm">
+                            <span className="text-slate-400">Signing Certificate (SHA-256)</span>
+                            <span className="text-slate-200 font-mono text-[10px] truncate max-w-[120px]">
+                                {app.signingCertSha256}
+                            </span>
+                        </div>
+                    )}
                 </div>
 
                 {/* Actions */}
