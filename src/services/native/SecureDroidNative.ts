@@ -1,1481 +1,933 @@
 import { Capacitor } from '@capacitor/core';
 
+import {
+    SecureDroidNativePlugin,
+} from './SecureDroidPlugin';
+
 import type {
-  NativeResult,
-  NativeInstalledApp,
-  NativeAppRiskReport,
-  NativeSecurityEvent,
-  NativeVpnStatus,
+    NativeResult,
+    NativeConnectionStatus,
+    NativeInstalledApp,
+    NativeAppRiskReport,
+    NativeHardeningReport,
+    NativeSecurityEvent,
+    NativeVpnStatus,
+    NativeScanResult,
 } from '../../types/native';
 
-import {
-  SecureDroidNativePlugin,
-} from './SecureDroidPlugin';
+export type { SecureDroidPlugin } from './SecureDroidPlugin';
 
-export type {
-  SecureDroidPlugin,
-} from './SecureDroidPlugin';
+type UnknownRecord = Record<string, unknown>;
 
 /**
- * SecureDroid Native Service
+ * SecureDroid native service.
  *
- * This is the single TypeScript adapter between the React UI
- * and the Android Capacitor plugin.
- *
- * Android plugin name:
- *
- *   @CapacitorPlugin(name = "SecureDroid")
- *
- * The actual Capacitor registration is centralized in:
- *
- *   ./SecureDroidPlugin.ts
+ * Responsibilities:
+ * - Detect native platform.
+ * - Call Capacitor plugin.
+ * - Normalize native responses.
+ * - Preserve native failures.
+ * - Never fabricate security data.
+ * - Never convert malformed native data into success.
  */
 class SecureDroidNativeService {
-  private readonly isNative =
-    Capacitor.isNativePlatform();
+    private readonly isNative = Capacitor.isNativePlatform();
 
-  // ============================================================
-  // CONNECTION
-  // ============================================================
+    // ============================================================
+    // INTERNAL HELPERS
+    // ============================================================
 
-  async checkConnection(): Promise<
-    NativeResult<{
-      connected: boolean;
-      plugin?: string;
-      platform?: string;
-      message?: string;
-      timestamp?: number;
-    }>
-  > {
-    if (!this.isNative) {
-      return {
-        success: false,
-        errorCode: 'SERVICE_UNAVAILABLE',
-        message:
-          'SecureDroid native bridge requires Android execution.',
-        isSupported: false,
-        runtimePlatform: 'web_preview',
-      };
-    }
-
-    try {
-      const raw =
-        await SecureDroidNativePlugin.checkConnection();
-
-      if (!raw || raw.connected === false) {
+    private unavailable<T>(message: string): NativeResult<T> {
         return {
-          success: false,
-          errorCode: 'SERVICE_UNAVAILABLE',
-          message:
-            raw?.message ||
-            'SecureDroid native bridge is unavailable.',
-          isSupported: true,
-          runtimePlatform: 'android_native',
+            success: false,
+            errorCode: 'SERVICE_UNAVAILABLE',
+            message,
+            recoverable: true,
+            isSupported: false,
+            runtimePlatform: this.isNative
+                ? 'android_native'
+                : 'web_preview',
         };
-      }
-
-      return {
-        success: true,
-        data: raw,
-        message:
-          raw.message ||
-          'SecureDroid native bridge available.',
-        isSupported: true,
-        runtimePlatform: 'android_native',
-      };
-    } catch (error: any) {
-      console.error(
-        '[SecureDroid] checkConnection failed:',
-        error
-      );
-
-      return {
-        success: false,
-        errorCode: 'SERVICE_UNAVAILABLE',
-        message:
-          error?.message ||
-          'SecureDroid native bridge is unavailable.',
-        isSupported: false,
-        runtimePlatform: 'android_native',
-      };
-    }
-  }
-
-  // ============================================================
-  // INSTALLED APPLICATIONS
-  // ============================================================
-
-  async getInstalledApps(): Promise<
-    NativeResult<NativeInstalledApp[]>
-  > {
-    if (!this.isNative) {
-      return {
-        success: false,
-        errorCode: 'SERVICE_UNAVAILABLE',
-        message:
-          'Installed-app evidence requires native Android execution.',
-        isSupported: false,
-        runtimePlatform: 'web_preview',
-      };
     }
 
-    try {
-      const raw =
-        await SecureDroidNativePlugin.getInstalledApps();
-
-      if (!raw || raw.success === false) {
+    private nativeFailure<T>(
+        message: string,
+        errorCode: NonNullable<NativeResult<T> extends infer _T ? any : never> = 'UNKNOWN_ERROR',
+    ): NativeResult<T> {
         return {
-          success: false,
-          errorCode:
-            raw?.errorCode ||
-            'SERVICE_UNAVAILABLE',
-          message:
-            raw?.message ||
-            'Installed-app evidence is unavailable from the native Android bridge.',
-          isSupported: false,
-          runtimePlatform: 'android_native',
+            success: false,
+            errorCode,
+            message,
+            recoverable: true,
+            runtimePlatform: 'android_native',
         };
-      }
+    }
 
-      const rawApps =
-        Array.isArray(raw.data)
-          ? raw.data
-          : Array.isArray(raw.apps)
-            ? raw.apps
-            : [];
-
-      const apps: NativeInstalledApp[] =
-        rawApps.map(
-          (app: any): NativeInstalledApp => {
-            const requestedPermissions =
-              Array.isArray(
-                app.requestedPermissions
-              )
-                ? app.requestedPermissions
-                : Array.isArray(
-                    app.permissions
-                  )
-                  ? app.permissions
-                  : [];
-
-            const dangerousPermissions =
-              Array.isArray(
-                app.dangerousPermissions
-              )
-                ? app.dangerousPermissions
-                : requestedPermissions.filter(
-                    (permission: string) =>
-                      this.isDangerousPermission(
-                        permission
-                      )
-                  );
-
-            const installerPackage =
-              app.installerPackage ??
-              app.installerPackageName ??
-              (
-                app.installSource &&
-                app.installSource !== 'UNKNOWN'
-                  ? app.installSource
-                  : undefined
-              );
-
-            return {
-              packageName: String(
-                app.packageName || ''
-              ),
-
-              label: String(
-                app.label ||
-                  app.appName ||
-                  app.packageName ||
-                  'Unknown application'
-              ),
-
-              versionName: String(
-                app.versionName ||
-                  'Unknown'
-              ),
-
-              versionCode: Number(
-                app.versionCode || 0
-              ),
-
-              targetSdk: Number(
-                app.targetSdk || 0
-              ),
-
-              minSdk: Number(
-                app.minSdk || 0
-              ),
-
-              isSystemApp: Boolean(
-                app.isSystemApp
-              ),
-
-              isLaunchable: Boolean(
-                app.isLaunchable
-              ),
-
-              iconBase64:
-                typeof app.iconBase64 ===
-                'string'
-                  ? app.iconBase64
-                  : undefined,
-
-              firstInstallTime: Number(
-                app.firstInstallTime ??
-                  app.installTime ??
-                  0
-              ),
-
-              lastUpdateTime: Number(
-                app.lastUpdateTime ??
-                  app.updateTime ??
-                  0
-              ),
-
-              requestedPermissions,
-
-              grantedPermissions:
-                Array.isArray(
-                  app.grantedPermissions
-                )
-                  ? app.grantedPermissions
-                  : [],
-
-              dangerousPermissions,
-
-              installerPackage,
-
-              isDebuggable: Boolean(
-                app.isDebuggable
-              ),
-
-              signingCertSha256:
-                typeof app.signingCertSha256 ===
-                'string'
-                  ? app.signingCertSha256
-                  : undefined,
-
-              enabled: Boolean(
-                app.enabled ??
-                  app.isEnabled ??
-                  true
-              ),
-            };
-          }
+    private isRecord(value: unknown): value is UnknownRecord {
+        return (
+            typeof value === 'object' &&
+            value !== null &&
+            !Array.isArray(value)
         );
-
-      return {
-        success: true,
-        data: apps,
-        isSupported: true,
-        runtimePlatform: 'android_native',
-      };
-    } catch (error: any) {
-      console.error(
-        '[SecureDroid] getInstalledApps failed:',
-        error
-      );
-
-      return {
-        success: false,
-        errorCode: 'SERVICE_UNAVAILABLE',
-        message:
-          error?.message ||
-          'Installed-app evidence is unavailable from the native Android bridge.',
-        isSupported: false,
-        runtimePlatform: 'android_native',
-      };
-    }
-  }
-
-  // ============================================================
-  // APPLICATION RISK ANALYSIS
-  // ============================================================
-
-  async scanForRisks(): Promise<
-    NativeResult<NativeAppRiskReport[]>
-  > {
-    if (!this.isNative) {
-      return {
-        success: false,
-        errorCode: 'SERVICE_UNAVAILABLE',
-        message:
-          'Application risk analysis requires native Android execution.',
-        isSupported: false,
-        runtimePlatform: 'web_preview',
-      };
     }
 
-    try {
-      const raw =
-        await SecureDroidNativePlugin.scanForRisks();
+    private getArray<T>(
+        record: UnknownRecord,
+        ...keys: string[]
+    ): T[] {
+        for (const key of keys) {
+            const value = record[key];
 
-      if (!raw || raw.success === false) {
-        return {
-          success: false,
-          errorCode:
-            raw?.errorCode ||
-            'SERVICE_UNAVAILABLE',
-          message:
-            raw?.message ||
-            'Application risk analysis is unavailable.',
-          isSupported: false,
-          runtimePlatform: 'android_native',
-        };
-      }
-
-      const rawReports =
-        Array.isArray(raw.data)
-          ? raw.data
-          : Array.isArray(
-              raw.riskDetails
-            )
-            ? raw.riskDetails
-            : [];
-
-      const reports =
-        rawReports.map(
-          (report: any): NativeAppRiskReport => {
-            const rawFindings =
-              Array.isArray(
-                report.findings
-              )
-                ? report.findings
-                : [];
-
-            const findings =
-              rawFindings.map(
-                (
-                  finding: any,
-                  index: number
-                ) => ({
-                  id: String(
-                    finding.id ||
-                      finding.code ||
-                      `finding_${index}`
-                  ),
-
-                  level:
-                    this.normalizeRiskLevel(
-                      finding.level ||
-                        finding.severity
-                    ),
-
-                  summary: String(
-                    finding.summary ||
-                      finding.title ||
-                      finding.description ||
-                      'Security finding'
-                  ),
-                })
-              );
-
-            return {
-              packageName: String(
-                report.packageName ||
-                  ''
-              ),
-
-              label: String(
-                report.label ||
-                  report.appName ||
-                  report.packageName ||
-                  'Unknown application'
-              ),
-
-              overallRisk:
-                this.normalizeRiskLevel(
-                  report.overallRisk ||
-                    report.riskLevel
-                ),
-
-              findings,
-            };
-          }
-        );
-
-      return {
-        success: true,
-        data: reports,
-        isSupported: true,
-        runtimePlatform: 'android_native',
-      };
-    } catch (error: any) {
-      console.error(
-        '[SecureDroid] scanForRisks failed:',
-        error
-      );
-
-      return {
-        success: false,
-        errorCode: 'SERVICE_UNAVAILABLE',
-        message:
-          error?.message ||
-          'Application risk analysis is unavailable.',
-        isSupported: false,
-        runtimePlatform: 'android_native',
-      };
-    }
-  }
-
-  // ============================================================
-  // APPLICATION RISK REPORTS
-  // ============================================================
-
-  async getAppRiskReports(): Promise<
-    NativeResult<NativeAppRiskReport[]>
-  > {
-    if (!this.isNative) {
-      return {
-        success: false,
-        errorCode: 'SERVICE_UNAVAILABLE',
-        message:
-          'Application risk analysis requires native Android execution.',
-        isSupported: false,
-        runtimePlatform: 'web_preview',
-      };
-    }
-
-    try {
-      const raw =
-        await SecureDroidNativePlugin.getAppRiskReports();
-
-      if (!raw || raw.success === false) {
-        return {
-          success: false,
-          errorCode:
-            raw?.errorCode ||
-            'SERVICE_UNAVAILABLE',
-          message:
-            raw?.message ||
-            'App risk reports are unavailable.',
-          isSupported: false,
-          runtimePlatform: 'android_native',
-        };
-      }
-
-      const rawReports =
-        Array.isArray(raw.data)
-          ? raw.data
-          : Array.isArray(raw.reports)
-            ? raw.reports
-            : [];
-
-      const reports =
-        rawReports.map(
-          (report: any): NativeAppRiskReport => {
-            const rawFindings =
-              Array.isArray(
-                report.findings
-              )
-                ? report.findings
-                : [];
-
-            const findings =
-              rawFindings.map(
-                (
-                  finding: any,
-                  index: number
-                ) => ({
-                  id: String(
-                    finding.id ||
-                      finding.code ||
-                      `finding_${index}`
-                  ),
-
-                  level:
-                    this.normalizeRiskLevel(
-                      finding.level ||
-                        finding.severity
-                    ),
-
-                  summary: String(
-                    finding.summary ||
-                      finding.title ||
-                      finding.description ||
-                      'Security finding'
-                  ),
-                })
-              );
-
-            return {
-              packageName: String(
-                report.packageName ||
-                  ''
-              ),
-
-              label: String(
-                report.label ||
-                  report.appName ||
-                  report.packageName ||
-                  'Unknown application'
-              ),
-
-              overallRisk:
-                this.normalizeRiskLevel(
-                  report.overallRisk ||
-                    report.riskLevel
-                ),
-
-              findings,
-            };
-          }
-        );
-
-      return {
-        success: true,
-        data: reports,
-        isSupported: true,
-        runtimePlatform: 'android_native',
-      };
-    } catch (error: any) {
-      console.error(
-        '[SecureDroid] getAppRiskReports failed:',
-        error
-      );
-
-      return {
-        success: false,
-        errorCode: 'SERVICE_UNAVAILABLE',
-        message:
-          error?.message ||
-          'App risk reports are unavailable.',
-        isSupported: false,
-        runtimePlatform: 'android_native',
-      };
-    }
-  }
-
-  // ============================================================
-  // DEVICE HARDENING
-  // ============================================================
-
-  async getHardeningReport(): Promise<
-    NativeResult<any>
-  > {
-    if (!this.isNative) {
-      return {
-        success: false,
-        errorCode: 'SERVICE_UNAVAILABLE',
-        message:
-          'Device hardening analysis requires native Android execution.',
-        isSupported: false,
-        runtimePlatform: 'web_preview',
-      };
-    }
-
-    try {
-      const raw =
-        await SecureDroidNativePlugin.getHardeningReport();
-
-      if (!raw || raw.success === false) {
-        return {
-          success: false,
-          errorCode:
-            raw?.errorCode ||
-            'SERVICE_UNAVAILABLE',
-          message:
-            raw?.message ||
-            'Device hardening report is unavailable.',
-          isSupported: false,
-          runtimePlatform: 'android_native',
-        };
-      }
-
-      const data =
-        raw.data &&
-        typeof raw.data === 'object'
-          ? {
-              ...raw.data,
-              score:
-                raw.data.score ??
-                raw.score,
-
-              findings:
-                raw.data.findings ??
-                raw.findings,
+            if (Array.isArray(value)) {
+                return value as T[];
             }
-          : {
-              score: raw.score,
-              findings: raw.findings,
+        }
+
+        return [];
+    }
+
+    private getNumber(
+        record: UnknownRecord,
+        key: string,
+        fallback = 0,
+    ): number {
+        const value = record[key];
+
+        return typeof value === 'number' &&
+            Number.isFinite(value)
+            ? value
+            : fallback;
+    }
+
+    private getString(
+        record: UnknownRecord,
+        key: string,
+        fallback = '',
+    ): string {
+        const value = record[key];
+
+        return typeof value === 'string'
+            ? value
+            : fallback;
+    }
+
+    private getBoolean(
+        record: UnknownRecord,
+        key: string,
+        fallback = false,
+    ): boolean {
+        const value = record[key];
+
+        return typeof value === 'boolean'
+            ? value
+            : fallback;
+    }
+
+    /**
+     * Extract a native error without hiding malformed responses.
+     */
+    private parseNativeFailure<T>(
+        raw: unknown,
+        fallbackMessage: string,
+    ): NativeResult<T> | null {
+        if (!this.isRecord(raw)) {
+            return this.nativeFailure<T>(
+                'Native plugin returned an invalid response.'
+            );
+        }
+
+        if (raw.success === false) {
+            const errorCode =
+                typeof raw.errorCode === 'string'
+                    ? raw.errorCode
+                    : 'UNKNOWN_ERROR';
+
+            return {
+                success: false,
+                errorCode: errorCode as any,
+                message:
+                    typeof raw.message === 'string'
+                        ? raw.message
+                        : fallbackMessage,
+                recoverable:
+                    typeof raw.recoverable === 'boolean'
+                        ? raw.recoverable
+                        : true,
+                isSupported:
+                    typeof raw.isSupported === 'boolean'
+                        ? raw.isSupported
+                        : undefined,
+                runtimePlatform: 'android_native',
+            };
+        }
+
+        return null;
+    }
+
+    // ============================================================
+    // CONNECTION
+    // ============================================================
+
+    async checkConnection(): Promise<
+        NativeResult<NativeConnectionStatus>
+    > {
+        if (!this.isNative) {
+            return this.unavailable(
+                'SecureDroid native services are unavailable in web preview.'
+            );
+        }
+
+        try {
+            const raw = await SecureDroidNativePlugin.checkConnection();
+
+            const failure =
+                this.parseNativeFailure<NativeConnectionStatus>(
+                    raw,
+                    'Native connection check failed.'
+                );
+
+            if (failure) {
+                return failure;
+            }
+
+            if (!this.isRecord(raw)) {
+                return this.nativeFailure(
+                    'Native connection response is invalid.'
+                );
+            }
+
+            if (raw.connected !== true) {
+                return {
+                    success: false,
+                    errorCode: 'SERVICE_UNAVAILABLE',
+                    message:
+                        this.getString(
+                            raw,
+                            'message',
+                            'SecureDroid native service is not connected.'
+                        ),
+                    recoverable: true,
+                    isSupported: true,
+                    runtimePlatform: 'android_native',
+                };
+            }
+
+            return {
+                success: true,
+                data: {
+                    connected: true,
+                    message:
+                        typeof raw.message === 'string'
+                            ? raw.message
+                            : undefined,
+                    pluginVersion:
+                        typeof raw.pluginVersion === 'string'
+                            ? raw.pluginVersion
+                            : undefined,
+                    androidApiLevel:
+                        typeof raw.androidApiLevel === 'number'
+                            ? raw.androidApiLevel
+                            : undefined,
+                    mode:
+                        typeof raw.mode === 'string'
+                            ? raw.mode
+                            : undefined,
+                    isReal: raw.isReal === true,
+                },
+                isSupported: true,
+                runtimePlatform: 'android_native',
             };
 
-      return {
-        success: true,
-        data,
-        isSupported: true,
-        runtimePlatform: 'android_native',
-        message: raw.message,
-      };
-    } catch (error: any) {
-      console.error(
-        '[SecureDroid] getHardeningReport failed:',
-        error
-      );
-
-      return {
-        success: false,
-        errorCode: 'SERVICE_UNAVAILABLE',
-        message:
-          error?.message ||
-          'Device hardening report is unavailable.',
-        isSupported: false,
-        runtimePlatform: 'android_native',
-      };
-    }
-  }
-
-  async getDeviceHardening(): Promise<
-    NativeResult<any>
-  > {
-    return this.getHardeningReport();
-  }
-
-  // ============================================================
-  // WIFI SECURITY REPORT
-  // ============================================================
-
-  async getWifiSecurityReport(): Promise<NativeResult<any>> {
-    if (!this.isNative) {
-      return {
-        success: true,
-        data: {
-          isConnected: true,
-          isWifi: true,
-          isSecure: true,
-          findings: [
-            {
-              id: 'WEB_PREVIEW_WIFI',
-              level: 'INFO',
-              summary: 'Running in web preview mode.',
-            },
-          ],
-        },
-        isSupported: false,
-        runtimePlatform: 'web_preview',
-      };
+        } catch (error: unknown) {
+            return this.nativeFailure(
+                error instanceof Error
+                    ? error.message
+                    : 'Native connection check failed.'
+            );
+        }
     }
 
-    try {
-      const raw = await SecureDroidNativePlugin.getWifiSecurityReport();
+    // ============================================================
+    // INSTALLED APPS
+    // ============================================================
 
-      if (!raw || raw.success === false) {
-        return {
-          success: false,
-          errorCode: raw?.errorCode || 'SERVICE_UNAVAILABLE',
-          message: raw?.message || 'Wi-Fi security report is unavailable.',
-          isSupported: true,
-          runtimePlatform: 'android_native',
-        };
-      }
+    async getInstalledApps(): Promise<
+        NativeResult<NativeInstalledApp[]>
+    > {
+        if (!this.isNative) {
+            return this.unavailable(
+                'Installed application inventory requires Android.'
+            );
+        }
 
-      const data = raw.data || raw;
+        try {
+            const raw =
+                await SecureDroidNativePlugin.getInstalledApps();
 
-      return {
-        success: true,
-        data,
-        message: raw.message,
-        isSupported: true,
-        runtimePlatform: 'android_native',
-      };
-    } catch (error: any) {
-      console.error('[SecureDroid] getWifiSecurityReport failed:', error);
-      return {
-        success: false,
-        errorCode: 'SERVICE_UNAVAILABLE',
-        message: error?.message || 'Wi-Fi security report is unavailable.',
-        isSupported: false,
-        runtimePlatform: 'android_native',
-      };
-    }
-  }
+            const failure =
+                this.parseNativeFailure<NativeInstalledApp[]>(
+                    raw,
+                    'Failed to retrieve installed applications.'
+                );
 
-  // ============================================================
-  // VPN PERMISSION
-  // ============================================================
+            if (failure) {
+                return failure;
+            }
 
-  async requestVpnPermission(): Promise<
-    NativeResult<{
-      granted: boolean;
-      permissionRequested?: boolean;
-      state?: string;
-    }>
-  > {
-    if (!this.isNative) {
-      return {
-        success: false,
-        errorCode: 'SERVICE_UNAVAILABLE',
-        message:
-          'VPN permission requires native Android execution.',
-        isSupported: false,
-        runtimePlatform: 'web_preview',
-      };
-    }
+            if (!this.isRecord(raw)) {
+                return this.nativeFailure(
+                    'Installed application response is invalid.'
+                );
+            }
 
-    try {
-      const raw =
-        await SecureDroidNativePlugin.requestVpnPermission();
+            const apps =
+                this.getArray<NativeInstalledApp>(
+                    raw,
+                    'data',
+                    'apps'
+                );
 
-      if (!raw || raw.success === false) {
-        return {
-          success: false,
-          errorCode:
-            raw?.errorCode ||
-            'SERVICE_UNAVAILABLE',
-          message:
-            raw?.message ||
-            'Unable to request VPN permission.',
-          isSupported: true,
-          runtimePlatform: 'android_native',
-        };
-      }
+            if (!Array.isArray(apps)) {
+                return this.nativeFailure(
+                    'Native application inventory is malformed.'
+                );
+            }
 
-      return {
-        success: true,
-        data: {
-          granted: !!raw.granted,
-          permissionRequested:
-            !!raw.permissionRequested,
-          state: raw.state,
-        },
-        message: raw.message,
-        isSupported: true,
-        runtimePlatform: 'android_native',
-      };
-    } catch (error: any) {
-      console.error(
-        '[SecureDroid] requestVpnPermission failed:',
-        error
-      );
+            return {
+                success: true,
+                data: apps,
+                isSupported: true,
+                runtimePlatform: 'android_native',
+            };
 
-      return {
-        success: false,
-        errorCode: 'SERVICE_UNAVAILABLE',
-        message:
-          error?.message ||
-          'Unable to request VPN permission.',
-        isSupported: false,
-        runtimePlatform: 'android_native',
-      };
-    }
-  }
-
-  // ============================================================
-  // VPN STATUS
-  // ============================================================
-
-  async getVpnStatus(): Promise<
-    NativeResult<NativeVpnStatus>
-  > {
-    if (!this.isNative) {
-      return {
-        success: false,
-        errorCode: 'SERVICE_UNAVAILABLE',
-        message:
-          'VPN status requires native Android execution.',
-        isSupported: false,
-        runtimePlatform: 'web_preview',
-      };
+        } catch (error: unknown) {
+            return this.nativeFailure(
+                error instanceof Error
+                    ? error.message
+                    : 'Failed to retrieve installed applications.'
+            );
+        }
     }
 
-    try {
-      const raw =
-        await SecureDroidNativePlugin.getVpnStatus();
+    // ============================================================
+    // APP RISK REPORTS
+    // ============================================================
 
-      if (!raw || raw.success === false) {
-        return {
-          success: false,
-          errorCode:
-            raw?.errorCode ||
-            'SERVICE_UNAVAILABLE',
-          message:
-            raw?.message ||
-            'VPN status is unavailable.',
-          isSupported: true,
-          runtimePlatform: 'android_native',
-        };
-      }
+    async getAppRiskReports(): Promise<
+        NativeResult<NativeAppRiskReport[]>
+    > {
+        if (!this.isNative) {
+            return this.unavailable(
+                'Application risk analysis requires Android native services.'
+            );
+        }
 
-      if (!raw.data) {
-        return {
-          success: false,
-          errorCode: 'INVALID_RESPONSE',
-          message:
-            'VPN status response did not contain data.',
-          isSupported: true,
-          runtimePlatform: 'android_native',
-        };
-      }
+        try {
+            const raw =
+                await SecureDroidNativePlugin.getAppRiskReports();
 
-      return {
-        success: true,
-        data: raw.data,
-        message: raw.message,
-        isSupported: true,
-        runtimePlatform: 'android_native',
-      };
-    } catch (error: any) {
-      console.error(
-        '[SecureDroid] getVpnStatus failed:',
-        error
-      );
+            const failure =
+                this.parseNativeFailure<NativeAppRiskReport[]>(
+                    raw,
+                    'Failed to retrieve application risk reports.'
+                );
 
-      return {
-        success: false,
-        errorCode: 'SERVICE_UNAVAILABLE',
-        message:
-          error?.message ||
-          'VPN status is unavailable.',
-        isSupported: false,
-        runtimePlatform: 'android_native',
-      };
-    }
-  }
+            if (failure) {
+                return failure;
+            }
 
-  // ============================================================
-  // VPN START
-  // ============================================================
+            if (!this.isRecord(raw)) {
+                return this.nativeFailure(
+                    'Application risk response is invalid.'
+                );
+            }
 
-  async startVpn(): Promise<
-    NativeResult<{
-      state?: string;
-      permissionRequired?: boolean;
-    }>
-  > {
-    if (!this.isNative) {
-      return {
-        success: false,
-        errorCode: 'SERVICE_UNAVAILABLE',
-        message:
-          'Starting the VPN requires native Android execution.',
-        isSupported: false,
-        runtimePlatform: 'web_preview',
-      };
+            const reports =
+                this.getArray<NativeAppRiskReport>(
+                    raw,
+                    'data',
+                    'reports'
+                );
+
+            return {
+                success: true,
+                data: reports,
+                isSupported: true,
+                runtimePlatform: 'android_native',
+            };
+
+        } catch (error: unknown) {
+            return this.nativeFailure(
+                error instanceof Error
+                    ? error.message
+                    : 'Failed to retrieve application risk reports.'
+            );
+        }
     }
 
-    try {
-      const raw =
-        await SecureDroidNativePlugin.startVpn();
+    // ============================================================
+    // DEVICE HARDENING
+    // ============================================================
 
-      if (!raw) {
-        return {
-          success: false,
-          errorCode: 'INVALID_RESPONSE',
-          message:
-            'VPN start returned no response.',
-          isSupported: true,
-          runtimePlatform: 'android_native',
-        };
-      }
+    async getHardeningReport(): Promise<
+        NativeResult<NativeHardeningReport>
+    > {
+        if (!this.isNative) {
+            return this.unavailable(
+                'Device hardening assessment requires Android native services.'
+            );
+        }
 
-      return {
-        success: !!raw.success,
-        data: {
-          state: raw.state,
-          permissionRequired:
-            !!raw.permissionRequired,
-        },
-        errorCode:
-          raw.success
-            ? undefined
-            : raw.permissionRequired
-              ? 'PERMISSION_REQUIRED'
-              : raw.errorCode ||
-                'VPN_START_FAILED',
-        message:
-          raw.message ||
-          (
-            raw.permissionRequired
-              ? 'VPN permission is required.'
-              : raw.success
-                ? 'VPN start requested.'
-                : 'Unable to start VPN.'
-          ),
-        isSupported: true,
-        runtimePlatform: 'android_native',
-      };
-    } catch (error: any) {
-      console.error(
-        '[SecureDroid] startVpn failed:',
-        error
-      );
+        try {
+            const raw =
+                await SecureDroidNativePlugin.getHardeningReport();
 
-      return {
-        success: false,
-        errorCode: 'SERVICE_UNAVAILABLE',
-        message:
-          error?.message ||
-          'Unable to start VPN.',
-        isSupported: false,
-        runtimePlatform: 'android_native',
-      };
-    }
-  }
+            const failure =
+                this.parseNativeFailure<NativeHardeningReport>(
+                    raw,
+                    'Failed to retrieve device hardening report.'
+                );
 
-  // ============================================================
-  // VPN STOP
-  // ============================================================
+            if (failure) {
+                return failure;
+            }
 
-  async stopVpn(): Promise<
-    NativeResult<{
-      state?: string;
-    }>
-  > {
-    if (!this.isNative) {
-      return {
-        success: false,
-        errorCode: 'SERVICE_UNAVAILABLE',
-        message:
-          'Stopping the VPN requires native Android execution.',
-        isSupported: false,
-        runtimePlatform: 'web_preview',
-      };
-    }
+            if (!this.isRecord(raw)) {
+                return this.nativeFailure(
+                    'Device hardening response is invalid.'
+                );
+            }
 
-    try {
-      const raw =
-        await SecureDroidNativePlugin.stopVpn();
+            const source =
+                this.isRecord(raw.data)
+                    ? raw.data
+                    : raw;
 
-      if (!raw) {
-        return {
-          success: false,
-          errorCode: 'INVALID_RESPONSE',
-          message:
-            'VPN stop returned no response.',
-          isSupported: true,
-          runtimePlatform: 'android_native',
-        };
-      }
+            const score = this.getNumber(
+                source,
+                'score',
+                0
+            );
 
-      return {
-        success: !!raw.success,
-        data: {
-          state: raw.state,
-        },
-        errorCode:
-          raw.success
-            ? undefined
-            : raw.errorCode ||
-              'VPN_STOP_FAILED',
-        message:
-          raw.message ||
-          (
-            raw.success
-              ? 'VPN stop requested.'
-              : 'Unable to stop VPN.'
-          ),
-        isSupported: true,
-        runtimePlatform: 'android_native',
-      };
-    } catch (error: any) {
-      console.error(
-        '[SecureDroid] stopVpn failed:',
-        error
-      );
+            const findings =
+                Array.isArray(source.findings)
+                    ? source.findings
+                    : [];
 
-      return {
-        success: false,
-        errorCode: 'SERVICE_UNAVAILABLE',
-        message:
-          error?.message ||
-          'Unable to stop VPN.',
-        isSupported: false,
-        runtimePlatform: 'android_native',
-      };
-    }
-  }
+            return {
+                success: true,
+                data: {
+                    score: Math.max(
+                        0,
+                        Math.min(100, score)
+                    ),
+                    findings:
+                        findings as NativeHardeningReport['findings'],
+                    timestamp:
+                        typeof source.timestamp === 'number'
+                            ? source.timestamp
+                            : undefined,
+                    isReal:
+                        source.isReal === true,
+                },
+                isSupported: true,
+                runtimePlatform: 'android_native',
+            };
 
-  // ============================================================
-  // DOMAIN BLOCKLIST & ALLOWLIST
-  // ============================================================
-
-  async getBlockedDomains(): Promise<
-    NativeResult<{
-      blockedDomains: string[];
-      allowedDomains: string[];
-    }>
-  > {
-    if (!this.isNative) {
-      return {
-        success: true,
-        data: {
-          blockedDomains: ['ads.example.com', 'tracker.example.com'],
-          allowedDomains: [],
-        },
-        isSupported: false,
-        runtimePlatform: 'web_preview',
-      };
+        } catch (error: unknown) {
+            return this.nativeFailure(
+                error instanceof Error
+                    ? error.message
+                    : 'Failed to retrieve device hardening report.'
+            );
+        }
     }
 
-    try {
-      const raw = await SecureDroidNativePlugin.getBlockedDomains();
+    // ============================================================
+    // VPN STATUS
+    // ============================================================
 
-      if (!raw || raw.success === false) {
-        return {
-          success: false,
-          errorCode: raw?.errorCode || 'SERVICE_UNAVAILABLE',
-          message: raw?.message || 'Domain blocklists are unavailable.',
-          isSupported: true,
-          runtimePlatform: 'android_native',
-        };
-      }
+    async getVpnStatus(): Promise<
+        NativeResult<NativeVpnStatus>
+    > {
+        if (!this.isNative) {
+            return this.unavailable(
+                'VPN status requires Android native services.'
+            );
+        }
 
-      const data = raw.data || raw;
-      const blockedDomains = Array.isArray(data.blockedDomains) ? data.blockedDomains : [];
-      const allowedDomains = Array.isArray(data.allowedDomains) ? data.allowedDomains : [];
+        try {
+            const raw =
+                await SecureDroidNativePlugin.getVpnStatus();
 
-      return {
-        success: true,
-        data: {
-          blockedDomains,
-          allowedDomains,
-        },
-        isSupported: true,
-        runtimePlatform: 'android_native',
-      };
-    } catch (error: any) {
-      console.error('[SecureDroid] getBlockedDomains failed:', error);
-      return {
-        success: false,
-        errorCode: 'SERVICE_UNAVAILABLE',
-        message: error?.message || 'Domain blocklists are unavailable.',
-        isSupported: false,
-        runtimePlatform: 'android_native',
-      };
-    }
-  }
+            const failure =
+                this.parseNativeFailure<NativeVpnStatus>(
+                    raw,
+                    'Failed to retrieve VPN status.'
+                );
 
-  async addBlockedDomain(domain: string): Promise<NativeResult<boolean>> {
-    if (!this.isNative) {
-      return { success: true, data: true, isSupported: false, runtimePlatform: 'web_preview' };
-    }
+            if (failure) {
+                return failure;
+            }
 
-    try {
-      const raw = await SecureDroidNativePlugin.addBlockedDomain({ domain });
-      return {
-        success: !!raw?.success,
-        data: !!raw?.added,
-        message: raw?.message,
-        isSupported: true,
-        runtimePlatform: 'android_native',
-      };
-    } catch (error: any) {
-      console.error('[SecureDroid] addBlockedDomain failed:', error);
-      return { success: false, errorCode: 'SERVICE_UNAVAILABLE', message: error?.message, isSupported: false, runtimePlatform: 'android_native' };
-    }
-  }
+            if (!this.isRecord(raw)) {
+                return this.nativeFailure(
+                    'VPN status response is invalid.'
+                );
+            }
 
-  async removeBlockedDomain(domain: string): Promise<NativeResult<boolean>> {
-    if (!this.isNative) {
-      return { success: true, data: true, isSupported: false, runtimePlatform: 'web_preview' };
+            const source =
+                this.isRecord(raw.data)
+                    ? raw.data
+                    : raw;
+
+            return {
+                success: true,
+                data: source as unknown as NativeVpnStatus,
+                isSupported: true,
+                runtimePlatform: 'android_native',
+            };
+
+        } catch (error: unknown) {
+            return this.nativeFailure(
+                error instanceof Error
+                    ? error.message
+                    : 'Failed to retrieve VPN status.'
+            );
+        }
     }
 
-    try {
-      const raw = await SecureDroidNativePlugin.removeBlockedDomain({ domain });
-      return {
-        success: !!raw?.success,
-        data: !!raw?.removed,
-        message: raw?.message,
-        isSupported: true,
-        runtimePlatform: 'android_native',
-      };
-    } catch (error: any) {
-      console.error('[SecureDroid] removeBlockedDomain failed:', error);
-      return { success: false, errorCode: 'SERVICE_UNAVAILABLE', message: error?.message, isSupported: false, runtimePlatform: 'android_native' };
-    }
-  }
+    // ============================================================
+    // VPN PERMISSION
+    // ============================================================
 
-  async addAllowedDomain(domain: string): Promise<NativeResult<boolean>> {
-    if (!this.isNative) {
-      return { success: true, data: true, isSupported: false, runtimePlatform: 'web_preview' };
-    }
+    async requestVpnPermission(): Promise<
+        NativeResult<{
+            granted: boolean;
+            permissionRequested?: boolean;
+            state: string;
+        }>
+    > {
+        if (!this.isNative) {
+            return this.unavailable(
+                'VPN permission requires Android.'
+            );
+        }
 
-    try {
-      const raw = await SecureDroidNativePlugin.addAllowedDomain({ domain });
-      return {
-        success: !!raw?.success,
-        data: !!raw?.added,
-        message: raw?.message,
-        isSupported: true,
-        runtimePlatform: 'android_native',
-      };
-    } catch (error: any) {
-      console.error('[SecureDroid] addAllowedDomain failed:', error);
-      return { success: false, errorCode: 'SERVICE_UNAVAILABLE', message: error?.message, isSupported: false, runtimePlatform: 'android_native' };
-    }
-  }
+        try {
+            const raw =
+                await SecureDroidNativePlugin.requestVpnPermission();
 
-  async removeAllowedDomain(domain: string): Promise<NativeResult<boolean>> {
-    if (!this.isNative) {
-      return { success: true, data: true, isSupported: false, runtimePlatform: 'web_preview' };
-    }
+            const failure =
+                this.parseNativeFailure<{
+                    granted: boolean;
+                    permissionRequested?: boolean;
+                    state: string;
+                }>(
+                    raw,
+                    'Failed to request VPN permission.'
+                );
 
-    try {
-      const raw = await SecureDroidNativePlugin.removeAllowedDomain({ domain });
-      return {
-        success: !!raw?.success,
-        data: !!raw?.removed,
-        message: raw?.message,
-        isSupported: true,
-        runtimePlatform: 'android_native',
-      };
-    } catch (error: any) {
-      console.error('[SecureDroid] removeAllowedDomain failed:', error);
-      return { success: false, errorCode: 'SERVICE_UNAVAILABLE', message: error?.message, isSupported: false, runtimePlatform: 'android_native' };
-    }
-  }
+            if (failure) {
+                return failure;
+            }
 
-  // ============================================================
-  // SECURITY AUDIT LOGS
-  // ============================================================
+            if (!this.isRecord(raw)) {
+                return this.nativeFailure(
+                    'VPN permission response is invalid.'
+                );
+            }
 
-  async getSecurityLogs(
-    limit = 50,
-    category?: string
-  ): Promise<
-    NativeResult<NativeSecurityEvent[]>
-  > {
-    if (!this.isNative) {
-      return {
-        success: false,
-        errorCode: 'SERVICE_UNAVAILABLE',
-        message:
-          'Security logs require native Android execution.',
-        isSupported: false,
-        runtimePlatform: 'web_preview',
-      };
+            return {
+                success: true,
+                data: {
+                    granted:
+                        this.getBoolean(raw, 'granted'),
+                    permissionRequested:
+                        typeof raw.permissionRequested === 'boolean'
+                            ? raw.permissionRequested
+                            : undefined,
+                    state:
+                        this.getString(
+                            raw,
+                            'state',
+                            'UNKNOWN'
+                        ),
+                },
+                isSupported: true,
+                runtimePlatform: 'android_native',
+            };
+
+        } catch (error: unknown) {
+            return this.nativeFailure(
+                error instanceof Error
+                    ? error.message
+                    : 'Failed to request VPN permission.'
+            );
+        }
     }
 
-    try {
-      const raw =
-        await SecureDroidNativePlugin.getSecurityLogs({
-          limit,
-          category,
-        });
+    // ============================================================
+    // START VPN
+    // ============================================================
 
-      if (!raw || raw.success === false) {
-        return {
-          success: false,
-          errorCode:
-            raw?.errorCode ||
-            'SERVICE_UNAVAILABLE',
-          message:
-            raw?.message ||
-            'Security logs are unavailable.',
-          isSupported: true,
-          runtimePlatform: 'android_native',
-        };
-      }
+    async startVpn(): Promise<
+        NativeResult<{
+            state: string;
+            permissionRequired?: boolean;
+        }>
+    > {
+        if (!this.isNative) {
+            return this.unavailable(
+                'VPN service requires Android.'
+            );
+        }
 
-      const rawEvents =
-        Array.isArray(raw.data)
-          ? raw.data
-          : Array.isArray(raw.value)
-            ? raw.value
-            : [];
+        try {
+            const raw =
+                await SecureDroidNativePlugin.startVpn();
 
-      const events =
-        rawEvents.map(
-          (
-            event: any,
-            index: number
-          ): NativeSecurityEvent => ({
-            id: String(
-              event.id ||
-                `event_${index}`
-            ),
+            const failure =
+                this.parseNativeFailure<{
+                    state: string;
+                    permissionRequired?: boolean;
+                }>(
+                    raw,
+                    'Failed to start VPN.'
+                );
 
-            timestamp: Number(
-              event.timestamp ||
-                Date.now()
-            ),
+            if (failure) {
+                return failure;
+            }
 
-            category:
-              this.normalizeEventCategory(
-                event.category
-              ),
+            if (!this.isRecord(raw)) {
+                return this.nativeFailure(
+                    'VPN start response is invalid.'
+                );
+            }
 
-            severity:
-              this.normalizeEventSeverity(
-                event.severity
-              ),
+            if (raw.success !== true) {
+                return {
+                    success: false,
+                    errorCode: 'SERVICE_UNAVAILABLE',
+                    message:
+                        this.getString(
+                            raw,
+                            'message',
+                            'VPN failed to start.'
+                        ),
+                    recoverable: true,
+                    runtimePlatform: 'android_native',
+                };
+            }
 
-            description: String(
-              event.description ||
-                'Security event'
-            ),
+            return {
+                success: true,
+                data: {
+                    state:
+                        this.getString(
+                            raw,
+                            'state',
+                            'UNKNOWN'
+                        ),
+                    permissionRequired:
+                        typeof raw.permissionRequired === 'boolean'
+                            ? raw.permissionRequired
+                            : undefined,
+                },
+                message:
+                    typeof raw.message === 'string'
+                        ? raw.message
+                        : undefined,
+                isSupported: true,
+                runtimePlatform: 'android_native',
+            };
 
-            source: String(
-              event.source ||
-                'SecureDroid'
-            ),
-
-            metadata:
-              event.metadata &&
-              typeof event.metadata ===
-                'object'
-                ? event.metadata
-                : undefined,
-          })
-        );
-
-      return {
-        success: true,
-        data: events,
-        isSupported: true,
-        runtimePlatform: 'android_native',
-      };
-    } catch (error: any) {
-      console.error(
-        '[SecureDroid] getSecurityLogs failed:',
-        error
-      );
-
-      return {
-        success: false,
-        errorCode: 'SERVICE_UNAVAILABLE',
-        message:
-          error?.message ||
-          'Security logs are unavailable.',
-        isSupported: false,
-        runtimePlatform: 'android_native',
-      };
-    }
-  }
-
-  // ============================================================
-  // WRITE SECURITY EVENT
-  // ============================================================
-
-  async logSecurityEvent(
-    event: Omit<
-      NativeSecurityEvent,
-      'id' | 'timestamp'
-    >
-  ): Promise<
-    NativeResult<NativeSecurityEvent>
-  > {
-    if (!this.isNative) {
-      return {
-        success: false,
-        errorCode: 'SERVICE_UNAVAILABLE',
-        message:
-          'Security event logging requires native Android execution.',
-        isSupported: false,
-        runtimePlatform: 'web_preview',
-      };
+        } catch (error: unknown) {
+            return this.nativeFailure(
+                error instanceof Error
+                    ? error.message
+                    : 'Failed to start VPN.'
+            );
+        }
     }
 
-    try {
-      const raw =
-        await SecureDroidNativePlugin.logSecurityEvent({
-          event,
-        });
+    // ============================================================
+    // STOP VPN
+    // ============================================================
 
-      if (!raw || raw.success === false) {
-        return {
-          success: false,
-          errorCode:
-            raw?.errorCode ||
-            'SERVICE_UNAVAILABLE',
-          message:
-            raw?.message ||
-            'Unable to write security event.',
-          isSupported: true,
-          runtimePlatform: 'android_native',
-        };
-      }
+    async stopVpn(): Promise<
+        NativeResult<{ state: string }>
+    > {
+        if (!this.isNative) {
+            return this.unavailable(
+                'VPN service requires Android.'
+            );
+        }
 
-      const source =
-        raw.data &&
-        typeof raw.data === 'object'
-          ? raw.data
-          : raw;
+        try {
+            const raw =
+                await SecureDroidNativePlugin.stopVpn();
 
-      const normalizedEvent:
-        NativeSecurityEvent = {
-        id: String(
-          source.id ||
-            `evt_${Date.now()}`
-        ),
+            const failure =
+                this.parseNativeFailure<{
+                    state: string;
+                }>(
+                    raw,
+                    'Failed to stop VPN.'
+                );
 
-        timestamp: Number(
-          source.timestamp ||
-            Date.now()
-        ),
+            if (failure) {
+                return failure;
+            }
 
-        category:
-          this.normalizeEventCategory(
-            source.category ||
-              event.category
-          ),
+            if (!this.isRecord(raw)) {
+                return this.nativeFailure(
+                    'VPN stop response is invalid.'
+                );
+            }
 
-        severity:
-          this.normalizeEventSeverity(
-            source.severity ||
-              event.severity
-          ),
+            if (raw.success !== true) {
+                return {
+                    success: false,
+                    errorCode: 'SERVICE_UNAVAILABLE',
+                    message:
+                        this.getString(
+                            raw,
+                            'message',
+                            'VPN failed to stop.'
+                        ),
+                    recoverable: true,
+                    runtimePlatform: 'android_native',
+                };
+            }
 
-        description: String(
-          source.description ||
-            event.description ||
-            'Security event'
-        ),
+            return {
+                success: true,
+                data: {
+                    state:
+                        this.getString(
+                            raw,
+                            'state',
+                            'UNKNOWN'
+                        ),
+                },
+                message:
+                    typeof raw.message === 'string'
+                        ? raw.message
+                        : undefined,
+                isSupported: true,
+                runtimePlatform: 'android_native',
+            };
 
-        source: String(
-          source.source ||
-            event.source ||
-            'SecureDroid'
-        ),
-
-        metadata:
-          source.metadata &&
-          typeof source.metadata ===
-            'object'
-            ? source.metadata
-            : undefined,
-      };
-
-      return {
-        success: true,
-        data: normalizedEvent,
-        isSupported: true,
-        runtimePlatform: 'android_native',
-      };
-    } catch (error: any) {
-      console.error(
-        '[SecureDroid] logSecurityEvent failed:',
-        error
-      );
-
-      return {
-        success: false,
-        errorCode: 'SERVICE_UNAVAILABLE',
-        message:
-          error?.message ||
-          'Unable to write security event.',
-        isSupported: false,
-        runtimePlatform: 'android_native',
-      };
+        } catch (error: unknown) {
+            return this.nativeFailure(
+                error instanceof Error
+                    ? error.message
+                    : 'Failed to stop VPN.'
+            );
+        }
     }
-  }
 
-  // ============================================================
-  // HELPERS
-  // ============================================================
+    // ============================================================
+    // SECURITY LOGS
+    // ============================================================
 
-  private normalizeRiskLevel(
-    value: any
-  ): 'LOW' | 'MEDIUM' | 'HIGH' {
-    switch (
-      String(value || '').toUpperCase()
-    ) {
-      case 'HIGH':
-      case 'CRITICAL':
-        return 'HIGH';
+    async getSecurityLogs(
+        limit = 50
+    ): Promise<NativeResult<NativeSecurityEvent[]>> {
+        if (!this.isNative) {
+            return this.unavailable(
+                'Security audit logs require Android native services.'
+            );
+        }
 
-      case 'MEDIUM':
-      case 'MODERATE':
-        return 'MEDIUM';
+        const safeLimit =
+            Math.max(
+                1,
+                Math.min(
+                    500,
+                    Math.floor(limit)
+                )
+            );
 
-      case 'LOW':
-      default:
-        return 'LOW';
+        try {
+            const raw =
+                await SecureDroidNativePlugin.getSecurityLogs({
+                    limit: safeLimit,
+                });
+
+            const failure =
+                this.parseNativeFailure<NativeSecurityEvent[]>(
+                    raw,
+                    'Failed to retrieve security logs.'
+                );
+
+            if (failure) {
+                return failure;
+            }
+
+            if (!this.isRecord(raw)) {
+                return this.nativeFailure(
+                    'Security log response is invalid.'
+                );
+            }
+
+            const events =
+                this.getArray<NativeSecurityEvent>(
+                    raw,
+                    'data',
+                    'value'
+                );
+
+            return {
+                success: true,
+                data: events,
+                isSupported: true,
+                runtimePlatform: 'android_native',
+            };
+
+        } catch (error: unknown) {
+            return this.nativeFailure(
+                error instanceof Error
+                    ? error.message
+                    : 'Failed to retrieve security logs.'
+            );
+        }
     }
-  }
 
-  private normalizeEventSeverity(
-    value: any
-  ): 'INFO' | 'WARNING' | 'CRITICAL' {
-    switch (
-      String(value || '').toUpperCase()
-    ) {
-      case 'CRITICAL':
-        return 'CRITICAL';
+    // ============================================================
+    // WRITE SECURITY EVENT
+    // ============================================================
 
-      case 'WARNING':
-      case 'WARN':
-        return 'WARNING';
+    async logSecurityEvent(
+        event: NativeSecurityEvent
+    ): Promise<NativeResult<NativeSecurityEvent>> {
+        if (!this.isNative) {
+            return this.unavailable(
+                'Security event logging requires Android native services.'
+            );
+        }
 
-      case 'INFO':
-      default:
-        return 'INFO';
+        if (!event || typeof event !== 'object') {
+            return {
+                success: false,
+                errorCode: 'INVALID_ARGUMENT',
+                message: 'A valid security event is required.',
+                recoverable: false,
+                runtimePlatform: 'android_native',
+            };
+        }
+
+        try {
+            const raw =
+                await SecureDroidNativePlugin.logSecurityEvent({
+                    event,
+                });
+
+            const failure =
+                this.parseNativeFailure<NativeSecurityEvent>(
+                    raw,
+                    'Failed to log security event.'
+                );
+
+            if (failure) {
+                return failure;
+            }
+
+            if (!this.isRecord(raw)) {
+                return this.nativeFailure(
+                    'Security event response is invalid.'
+                );
+            }
+
+            const data =
+                this.isRecord(raw.data)
+                    ? raw.data
+                    : null;
+
+            return {
+                success: true,
+                data:
+                    (data as unknown as NativeSecurityEvent) ||
+                    event,
+                isSupported: true,
+                runtimePlatform: 'android_native',
+            };
+
+        } catch (error: unknown) {
+            return this.nativeFailure(
+                error instanceof Error
+                    ? error.message
+                    : 'Failed to log security event.'
+            );
+        }
     }
-  }
 
-  private normalizeEventCategory(
-    value: any
-  ): NativeSecurityEvent['category'] {
-    switch (
-      String(value || '').toUpperCase()
-    ) {
-      case 'PERMISSION':
-        return 'PERMISSION';
+    // ============================================================
+    // FULL RISK SCAN
+    // ============================================================
 
-      case 'AUTH':
-      case 'AUTHENTICATION':
-        return 'AUTH';
+    async scanForRisks(): Promise<
+        NativeResult<NativeScanResult>
+    > {
+        if (!this.isNative) {
+            return this.unavailable(
+                'Risk scanning requires Android native services.'
+            );
+        }
 
-      case 'NETWORK':
-        return 'NETWORK';
+        try {
+            const raw =
+                await SecureDroidNativePlugin.scanForRisks();
 
-      case 'SCAN':
-      case 'APPLICATIONS':
-        return 'SCAN';
+            const failure =
+                this.parseNativeFailure<NativeScanResult>(
+                    raw,
+                    'Risk scan failed.'
+                );
 
-      case 'CONFIG':
-        return 'CONFIG';
+            if (failure) {
+                return failure;
+            }
 
-      case 'EMERGENCY':
-        return 'EMERGENCY';
+            if (!this.isRecord(raw)) {
+                return this.nativeFailure(
+                    'Risk scan response is invalid.'
+                );
+            }
 
-      case 'BACKUP':
-        return 'BACKUP';
+            const data =
+                this.isRecord(raw.data)
+                    ? raw.data
+                    : raw;
 
-      case 'AUDIT':
-      case 'SECURITY':
-      default:
-        return 'AUDIT';
+            if (
+                typeof data.scanId !== 'string' ||
+                typeof data.timestamp !== 'number'
+            ) {
+                return this.nativeFailure(
+                    'Risk scan returned incomplete data.'
+                );
+            }
+
+            return {
+                success: true,
+                data:
+                    data as unknown as NativeScanResult,
+                isSupported: true,
+                runtimePlatform: 'android_native',
+            };
+
+        } catch (error: unknown) {
+            return this.nativeFailure(
+                error instanceof Error
+                    ? error.message
+                    : 'Risk scan failed.'
+            );
+        }
     }
-  }
-
-  private isDangerousPermission(
-    permission: string
-  ): boolean {
-    const dangerousPermissions =
-      new Set([
-        'android.permission.CAMERA',
-        'android.permission.RECORD_AUDIO',
-        'android.permission.ACCESS_FINE_LOCATION',
-        'android.permission.ACCESS_COARSE_LOCATION',
-        'android.permission.READ_CONTACTS',
-        'android.permission.WRITE_CONTACTS',
-        'android.permission.READ_CALENDAR',
-        'android.permission.WRITE_CALENDAR',
-        'android.permission.READ_SMS',
-        'android.permission.SEND_SMS',
-        'android.permission.RECEIVE_SMS',
-        'android.permission.CALL_PHONE',
-        'android.permission.READ_CALL_LOG',
-        'android.permission.WRITE_CALL_LOG',
-        'android.permission.READ_PHONE_STATE',
-        'android.permission.READ_PHONE_NUMBERS',
-        'android.permission.BODY_SENSORS',
-        'android.permission.ACTIVITY_RECOGNITION',
-        'android.permission.READ_MEDIA_IMAGES',
-        'android.permission.READ_MEDIA_VIDEO',
-        'android.permission.READ_MEDIA_AUDIO',
-        'android.permission.POST_NOTIFICATIONS',
-      ]);
-
-    return dangerousPermissions.has(
-      permission
-    );
-  }
 }
 
 export const SecureDroidNative =
-  new SecureDroidNativeService();
+    new SecureDroidNativeService();
