@@ -13,22 +13,6 @@ import android.security.keystore.KeyInfo
 import java.security.KeyStore
 import javax.crypto.KeyGenerator
 
-/**
- * SecureDroid Security Monitor
- *
- * Purpose:
- * - Collect only information that the application can actually verify.
- * - Never report unsupported OS/kernel/firmware security as verified.
- * - Provide evidence-backed security observations.
- *
- * This class intentionally does NOT claim:
- * - Verified Boot state
- * - SELinux enforcement state
- * - kernel integrity
- * - antivirus effectiveness
- * - OEM security guarantees
- * - hardware security that cannot be directly tested
- */
 class SecurityMonitor(
     private val context: Context
 ) {
@@ -39,9 +23,6 @@ class SecurityMonitor(
     private val keyguardManager: KeyguardManager? =
         context.getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
 
-    /**
-     * Security state used by the monitor.
-     */
     enum class Status {
         VERIFIED,
         SUPPORTED,
@@ -77,9 +58,6 @@ class SecurityMonitor(
         val summary: String
     )
 
-    /**
-     * Run the complete application-visible security assessment.
-     */
     fun getSecurityStatus(): SecurityStatusReport {
         val checks = mutableListOf<Check>()
 
@@ -112,9 +90,6 @@ class SecurityMonitor(
         )
     }
 
-    /**
-     * Compatibility alias for callers that use "scan".
-     */
     fun scan(): SecurityStatusReport {
         return getSecurityStatus()
     }
@@ -673,6 +648,7 @@ class SecurityMonitor(
                     Severity.MEDIUM -> 8
                     Severity.HIGH -> 15
                     Severity.CRITICAL -> 25
+                    else -> 10 // fallback for any other Severity
                 }
                 Status.UNAVAILABLE -> when (check.severity) {
                     Severity.INFO -> 1
@@ -680,6 +656,7 @@ class SecurityMonitor(
                     Severity.MEDIUM -> 5
                     Severity.HIGH -> 10
                     Severity.CRITICAL -> 20
+                    else -> 5 // fallback for any other Severity
                 }
             }
         }
@@ -744,9 +721,6 @@ class SecurityMonitor(
     }
 
     companion object {
-        /**
-         * Convenience factory.
-         */
         fun create(context: Context): SecurityMonitor {
             return SecurityMonitor(context.applicationContext)
         }
