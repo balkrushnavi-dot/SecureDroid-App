@@ -42,4 +42,8 @@ package org.securedroid.security
   get() = checks.count {
   it.status == SecurityStatus.SUPPORTED
   }
+  val warningCount: Int
+    get() = checks.count {
+        it.status == SecurityStatus.WARNING
+    }
   }
