@@ -36,6 +36,7 @@ export interface SecureDroidPluginInterface {
   getAppRiskReports(): Promise<any>;
   getHardeningReport(): Promise<any>;
   getDeviceHardening(): Promise<any>;
+  getWifiSecurityReport(): Promise<any>;
   requestVpnPermission(): Promise<any>;
   getVpnStatus(): Promise<any>;
   startVpn(): Promise<any>;
@@ -93,6 +94,17 @@ const StubPlugin: SecureDroidPluginInterface = {
   },
   async getDeviceHardening() {
     return { success: false, data: { score: 0, findings: [] } };
+  },
+  async getWifiSecurityReport() {
+    return { 
+      success: true, 
+      data: { 
+        isConnected: true, 
+        isWifi: true, 
+        isSecure: true, 
+        findings: [{ id: 'WEB_SIMULATION', level: 'INFO', summary: 'Running in web simulation mode.' }] 
+      } 
+    };
   },
   async requestVpnPermission() {
     return { success: false, granted: false };
