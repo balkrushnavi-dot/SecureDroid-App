@@ -1,204 +1,74 @@
-import React, { useEffect, useState } from 'react';
-import { RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
-import {
-  SecureDroidCard,
-  SecureDroidStatusChip,
-  SecureDroidButton,
-} from '../ui/designSystem';
-import { SecureDroidNative } from '../../services/native/SecureDroidNative';
-import { NativeAppRiskReport } from '../../types/native';
+import React from 'react';
+import { ShieldCheck, AlertTriangle, ArrowLeft } from 'lucide-react';
+import { useAppScanner } from '../../hooks/useAppScanner';
 
 interface AppSecurityAuditorScreenProps {
-  onBack: () => void;
-  isLight?: boolean;
+  onBack?: () => void;
 }
 
-export const AppSecurityAuditorScreen: React.FC<
-  AppSecurityAuditorScreenProps
-> = ({ onBack, isLight = false }) => {
-  const [reports, setReports] = useState<NativeAppRiskReport[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [expandedPackage, setExpandedPackage] = useState<string | null>(null);
-
-  const fetchReports = async () => {
-    setIsLoading(true);
-    try {
-      const res = await SecureDroidNative.getAppRiskReports();
-      if (res.success && res.data) {
-        const order: Record<string, number> = { HIGH: 0, MEDIUM: 1, LOW: 2 };
-        const sorted = [...res.data].sort(
-          (a, b) => order[a.overallRisk] - order[b.overallRisk]
-        );
-        setReports(sorted);
-        setLoadError(null);
-      } else {
-        setReports([]);
-        setLoadError(
-          res.message || 'App risk analysis is unavailable on this device.'
-        );
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchReports();
-  }, []);
-
-  const highCount = reports.filter((r) => r.overallRisk === 'HIGH').length;
-  const mediumCount = reports.filter((r) => r.overallRisk === 'MEDIUM').length;
+export function AppSecurityAuditorScreen({ onBack }: AppSecurityAuditorScreenProps) {
+  const { apps, loading, error, rescan } = useAppScanner();
 
   return (
-    <div
-      className={`min-h-full p-4 pb-24 ${
-        isLight ? 'bg-zinc-50 text-zinc-900' : 'bg-zinc-950 text-zinc-100'
-      }`}
-    >
-      <div className="pt-4">
-        <button
-          onClick={onBack}
-          className="mb-4 px-3 py-2 rounded-xl bg-zinc-800 text-zinc-200"
+    <div className="flex flex-col h-full w-full bg-slate-950 text-slate-100 overflow-y-auto p-4">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center space-x-3">
+          {onBack && (
+            <button onClick={onBack} className="p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-300 hover:text-white">
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+          )}
+          <h1 className="text-xl font-semibold tracking-wide">App Security Auditor</h1>
+        </div>
+        <button 
+          onClick={rescan}
+          className="px-3 py-1.5 text-xs font-medium bg-cyan-600/20 border border-cyan-500/40 text-cyan-400 rounded-lg hover:bg-cyan-600/30 transition-colors"
         >
-          Back
+          Rescan Apps
         </button>
-
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h1 className="text-xl font-semibold">App Security Auditor</h1>
-            <p className="mt-2 text-sm text-zinc-400">
-              Review installed applications for security-relevant signals.
-            </p>
-          </div>
-
-          <SecureDroidButton onClick={fetchReports} isLight={isLight}>
-            <span className="flex items-center gap-1.5">
-              <RefreshCw
-                className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`}
-              />
-              Scan
-            </span>
-          </SecureDroidButton>
-        </div>
-
-        {!isLoading && !loadError && reports.length > 0 && (
-          <div className="mt-4 flex gap-2 text-xs">
-            {highCount > 0 && (
-              <SecureDroidStatusChip
-                status="HIGH"
-                label={`${highCount} High`}
-                isLight={isLight}
-              />
-            )}
-            {mediumCount > 0 && (
-              <SecureDroidStatusChip
-                status="MEDIUM"
-                label={`${mediumCount} Medium`}
-                isLight={isLight}
-              />
-            )}
-            <SecureDroidStatusChip
-              status="INFO"
-              label={`${reports.length} apps scanned`}
-              isLight={isLight}
-            />
-          </div>
-        )}
-
-        <div className="mt-4 space-y-3">
-          {isLoading && (
-            <SecureDroidCard isLight={isLight} className="p-6 text-center text-sm text-zinc-400">
-              Scanning installed applications...
-            </SecureDroidCard>
-          )}
-
-          {!isLoading && loadError && (
-            <SecureDroidCard
-              isLight={isLight}
-              className="p-4 text-xs text-amber-400 whitespace-pre-wrap break-words font-mono"
-            >
-              {loadError}
-            </SecureDroidCard>
-          )}
-
-          {!isLoading && !loadError && reports.length === 0 && (
-            <SecureDroidCard
-              isLight={isLight}
-              className="p-6 text-center text-sm text-zinc-400"
-            >
-              No installed applications were found.
-            </SecureDroidCard>
-          )}
-
-          {!isLoading &&
-            !loadError &&
-            reports.map((report) => {
-              const isExpanded = expandedPackage === report.packageName;
-              return (
-                <SecureDroidCard
-                  key={report.packageName}
-                  isLight={isLight}
-                  className="p-4 cursor-pointer"
-                  onClick={() =>
-                    setExpandedPackage(isExpanded ? null : report.packageName)
-                  }
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <h4 className="font-medium text-sm truncate">
-                        {report.label}
-                      </h4>
-                      <p className="text-xs mt-0.5 truncate text-zinc-500">
-                        {report.packageName}
-                      </p>
-                    </div>
-                    <SecureDroidStatusChip
-                      status={report.overallRisk}
-                      label={report.overallRisk}
-                      isLight={isLight}
-                    />
-                    {isExpanded ? (
-                      <ChevronUp className="w-4 h-4 text-zinc-500 shrink-0" />
-                    ) : (
-                      <ChevronDown className="w-4 h-4 text-zinc-500 shrink-0" />
-                    )}
-                  </div>
-
-                  {isExpanded && (
-                    <div className="mt-3 pt-3 border-t border-zinc-800 space-y-2">
-                      {report.findings.length === 0 ? (
-                        <p className="text-xs text-zinc-500">
-                          No specific risk signals found for this app.
-                        </p>
-                      ) : (
-                        report.findings.map((finding) => (
-                          <div key={finding.id} className="text-xs">
-                            <span
-                              className={`font-medium ${
-                                finding.level === 'HIGH'
-                                  ? 'text-red-400'
-                                  : finding.level === 'MEDIUM'
-                                  ? 'text-amber-400'
-                                  : 'text-zinc-400'
-                              }`}
-                            >
-                              {finding.level}
-                            </span>
-                            <span className="text-zinc-400">
-                              {' '}
-                              &mdash; {finding.summary}
-                            </span>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  )}
-                </SecureDroidCard>
-              );
-            })}
-        </div>
       </div>
+
+      {/* Error Banner */}
+      {error && (
+        <div className="mb-4 p-3 bg-red-950/40 border border-red-800/60 rounded-xl text-red-400 text-sm">
+          {error}
+        </div>
+      )}
+
+      {/* Content States */}
+      {loading ? (
+        <div className="flex flex-col items-center justify-center flex-1 py-20 text-cyan-400">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-cyan-400 mb-3" />
+          <p className="text-sm text-slate-400">Auditing installed applications...</p>
+        </div>
+      ) : apps.length === 0 ? (
+        <div className="flex flex-col items-center justify-center flex-1 py-20 text-center text-slate-400">
+          <ShieldCheck className="w-12 h-12 text-cyan-500/50 mb-3" />
+          <p className="text-base font-medium text-slate-300">No application risks detected</p>
+          <p className="text-xs text-slate-500 mt-1">Your installed apps appear secure or environment is in preview mode.</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {apps.map((app) => (
+            <div key={app.packageName} className="p-4 rounded-xl bg-slate-900/60 border border-slate-800/80 flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-medium text-white">{app.name}</h3>
+                <p className="text-xs text-slate-400 font-mono mt-0.5">{app.packageName}</p>
+              </div>
+              <div className="flex items-center space-x-2">
+                <span className={`px-2 py-0.5 text-xs rounded-full uppercase font-semibold ${
+                  app.riskLevel === 'high' ? 'bg-red-500/10 text-red-400 border border-red-500/30' :
+                  app.riskLevel === 'medium' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30' :
+                  'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
+                }`}>
+                  {app.riskLevel}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
-};
+}
