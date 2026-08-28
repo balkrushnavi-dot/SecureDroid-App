@@ -51,17 +51,6 @@ class DeviceDiagnostics(
                 Settings.Global.DEVELOPMENT_SETTINGS_ENABLED
             )
 
-        /*
-         * Android 8+ does not expose a reliable global
-         * "unknown sources enabled" state.
-         *
-         * INSTALL_NON_MARKET_APPS is not a valid modern
-         * security indicator for the whole device.
-         *
-         * Therefore we report UNKNOWN rather than falsely
-         * claiming that unknown-source installation is enabled
-         * or disabled.
-         */
         val unknownSourcesEnabled =
             false
 
@@ -103,13 +92,6 @@ class DeviceDiagnostics(
         )
     }
 
-    /**
-     * Returns:
-     * Pair(isEncrypted, statusKnown)
-     *
-     * IMPORTANT:
-     * isUserUnlocked() is NOT an encryption check.
-     */
     private fun getEncryptionStatus(): Pair<Boolean, Boolean> {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
             return false to false
@@ -166,16 +148,6 @@ class DeviceDiagnostics(
         }
     }
 
-    /**
-     * Tests whether the device can create a StrongBox-backed key.
-     *
-     * The generated key is deleted immediately.
-     *
-     * This means:
-     * - no permanent test key
-     * - no misleading hardware claim
-     * - actual KeyStore capability is tested
-     */
     fun hasStrongBox(): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
             return false
