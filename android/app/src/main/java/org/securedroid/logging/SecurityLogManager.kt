@@ -4,8 +4,6 @@ import android.content.Context
 import android.content.SharedPreferences
 import org.json.JSONArray
 import org.json.JSONObject
-import java.util.concurrent.locks.ReentrantLock
-import kotlin.concurrent.withLock
 
 class SecurityLogManager(
     context: Context
@@ -23,19 +21,19 @@ class SecurityLogManager(
     }
 
     private val prefs: SharedPreferences =
-        context.getSharedPreferences(
+        context.applicationContext.getSharedPreferences(
             PREFS_NAME,
             Context.MODE_PRIVATE
         )
 
     private val lock =
-        ReentrantLock()
+        Any()
 
     fun logEvent(
         event: SecurityEvent
     ): Boolean {
-        return lock.withLock {
-            try {
+        synchronized(lock) {
+            return try {
                 val events =
                     getEventsInternal()
 
@@ -44,7 +42,8 @@ class SecurityLogManager(
                 )
 
                 while (
-                    events.length() > MAX_EVENTS
+                    events.length() >
+                    MAX_EVENTS
                 ) {
                     events.remove(0)
                 }
@@ -55,7 +54,6 @@ class SecurityLogManager(
                         events.toString()
                     )
                     .commit()
-
             } catch (_: Exception) {
                 false
             }
@@ -70,8 +68,8 @@ class SecurityLogManager(
             return emptyList()
         }
 
-        return lock.withLock {
-            try {
+        synchronized(lock) {
+            return try {
                 val events =
                     getEventsInternal()
 
@@ -96,11 +94,8 @@ class SecurityLogManager(
                         category == null ||
                         eventCategory == category
                     ) {
-                        jsonToEvent(
-                            json
-                        )?.let {
-                            result.add(it)
-                        }
+                        jsonToEvent(json)
+                            ?.let(result::add)
                     }
 
                     if (
@@ -111,7 +106,6 @@ class SecurityLogManager(
                 }
 
                 result
-
             } catch (_: Exception) {
                 emptyList()
             }
@@ -119,12 +113,11 @@ class SecurityLogManager(
     }
 
     fun clearAll(): Boolean {
-        return lock.withLock {
-            try {
+        synchronized(lock) {
+            return try {
                 prefs.edit()
                     .remove(EVENTS_KEY)
                     .commit()
-
             } catch (_: Exception) {
                 false
             }
