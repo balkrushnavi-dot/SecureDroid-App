@@ -1,27 +1,30 @@
 /**
  * SecureDroid Native Android Integration Types
  *
- * Contract between the React/TypeScript UI and the native Android security layer.
+ * Security contract between the React/Capacitor layer and Android native layer.
  *
- * Core rule:
- * A value that cannot be verified by Android must be represented as UNKNOWN/null,
- * not inferred as secure or insecure.
+ * PRINCIPLES:
+ * - Never treat missing data as a security failure.
+ * - Never treat UNKNOWN as VERIFIED.
+ * - Never represent DEMO_ONLY capability as real protection.
+ * - Native evidence must accompany security claims where applicable.
+ * - Capability state determines what the APK can actually enforce.
  */
 
 // ============================================================
-// 0. COMMON SECURITY STATES
+// 0. PLATFORM / MODE
 // ============================================================
 
-export type NativeErrorCode =
-    | 'PERMISSION_DENIED'
-    | 'NOT_SUPPORTED'
-    | 'HARDWARE_UNAVAILABLE'
-    | 'AUTHENTICATION_FAILED'
-    | 'USER_CANCELLED'
-    | 'ANDROID_RESTRICTION'
-    | 'SERVICE_UNAVAILABLE'
-    | 'INVALID_ARGUMENT'
-    | 'UNKNOWN_ERROR';
+export type RuntimePlatform =
+    | 'android_native'
+    | 'web_preview'
+    | 'unknown';
+
+export type SecureDroidMode =
+    | 'NORMAL'
+    | 'MANAGED_PROFILE'
+    | 'DEVICE_OWNER'
+    | 'UNKNOWN';
 
 export type CapabilityState =
     | 'SUPPORTED'
@@ -35,105 +38,162 @@ export type CapabilityState =
     | 'DEMO_ONLY'
     | 'ERROR';
 
-export type SecurityStatus =
-    | 'VERIFIED'
-    | 'SUPPORTED'
-    | 'UNKNOWN'
-    | 'WARNING'
-    | 'UNAVAILABLE'
-    | 'ERROR';
-
-export type SecureDroidMode =
-    | 'NORMAL'
-    | 'MANAGED_PROFILE'
-    | 'DEVICE_OWNER'
+export type ImplementationLayer =
+    | 'APP'
+    | 'CAPACITOR'
+    | 'ANDROID_SDK'
+    | 'DEVICE_POLICY'
+    | 'VPN_SERVICE'
+    | 'KEYSTORE'
+    | 'HARDWARE'
+    | 'OS'
     | 'UNKNOWN';
+
+export type RequiredPrivilege =
+    | 'NONE'
+    | 'RUNTIME_PERMISSION'
+    | 'VPN_PERMISSION'
+    | 'DEVICE_ADMIN'
+    | 'PROFILE_OWNER'
+    | 'DEVICE_OWNER'
+    | 'SYSTEM'
+    | 'ROOT'
+    | 'HARDWARE'
+    | 'UNKNOWN';
+
+// ============================================================
+// 1. NATIVE RESULT
+// ============================================================
+
+export type NativeErrorCode =
+    | 'PERMISSION_DENIED'
+    | 'NOT_SUPPORTED'
+    | 'HARDWARE_UNAVAILABLE'
+    | 'AUTHENTICATION_FAILED'
+    | 'USER_CANCELLED'
+    | 'ANDROID_RESTRICTION'
+    | 'SERVICE_UNAVAILABLE'
+    | 'INVALID_ARGUMENT'
+    | 'TIMEOUT'
+    | 'BUSY'
+    | 'SECURITY_POLICY_BLOCKED'
+    | 'DEVICE_OWNER_REQUIRED'
+    | 'SYSTEM_PRIVILEGE_REQUIRED'
+    | 'UNKNOWN_ERROR';
 
 export interface NativeResult<T> {
     success: boolean;
     data?: T;
+
     errorCode?: NativeErrorCode;
     message?: string;
+
     recoverable?: boolean;
     isSupported?: boolean;
-    runtimePlatform?: 'android_native' | 'web_preview';
+
+    runtimePlatform?: RuntimePlatform;
+
+    /**
+     * True only when the returned value represents
+     * an actual native observation.
+     */
+    isReal?: boolean;
+
+    /**
+     * True only for explicitly enabled development/demo data.
+     * Production security UI must never interpret this as real evidence.
+     */
+    isDemo?: boolean;
 }
 
 // ============================================================
-// 1. CAPABILITY ENGINE
+// 2. CAPABILITY ENGINE
 // ============================================================
 
-export interface SecurityCapability {
+export interface SecureDroidCapability {
     id: string;
     name: string;
     category: string;
 
     state: CapabilityState;
 
-    /**
-     * Evidence explaining why the capability received this state.
-     * Example:
-     * "DevicePolicyManager.isDeviceOwnerApp() returned true."
-     */
     evidence: string;
 
-    /**
-     * What this capability actually means from a security perspective.
-     */
     securityMeaning: string;
 
-    /**
-     * Explicit limitations.
-     */
     limitations: string[];
 
-    /**
-     * User remediation when applicable.
-     */
     remediation?: string;
 
-    /**
-     * True only when the underlying information/action is real.
-     */
+    provider: string;
+
     isReal: boolean;
 
-    /**
-     * Whether SecureDroid can change the state itself.
-     */
     canAppChange: boolean;
 
-    /**
-     * Required privilege, if any.
-     */
-    requiredPrivilege?: string;
+    requiredPrivilege: RequiredPrivilege;
 
-    /**
-     * Layer where the capability is implemented.
-     */
-    implementationLayer:
-        | 'APP'
-        | 'ANDROID_API'
-        | 'DEVICE_POLICY'
-        | 'VPN'
-        | 'KEYSTORE'
-        | 'HARDWARE'
-        | 'OS'
-        | 'UNKNOWN';
-
-    /**
-     * Native provider that produced the result.
-     */
-    provider?: string;
+    implementationLayer: ImplementationLayer;
 }
 
-export interface CapabilitySnapshot {
+export interface CapabilityReport {
     timestamp: number;
+
     mode: SecureDroidMode;
-    capabilities: SecurityCapability[];
+
+    capabilities: SecureDroidCapability[];
+
+    nativeAvailable: boolean;
+
+    androidApiLevel: number;
+
+    deviceOwner: boolean;
+
+    profileOwner: boolean;
+
+    managedProfile: boolean;
+
+    vpnAvailable: boolean;
+
+    biometricAvailable: boolean;
+
+    hardwareKeystoreAvailable: boolean;
+
+    strongBoxAvailable: boolean;
 }
 
 // ============================================================
-// 2. DEVICE INFORMATION
+// 3. DEVICE MANAGEMENT
+// ============================================================
+
+export interface DeviceManagementStatus {
+    mode: SecureDroidMode;
+
+    deviceAdminActive: boolean;
+
+    profileOwner: boolean;
+
+    deviceOwner: boolean;
+
+    managedProfile: boolean;
+
+    organizationOwned?: boolean;
+
+    canApplyDevicePolicies: boolean;
+
+    canBlockApplications: boolean;
+
+    canEnforcePasswordPolicy: boolean;
+
+    canConfigureKiosk: boolean;
+
+    canControlUserRestrictions: boolean;
+
+    limitations: string[];
+}
+
+// ============================================================
+// 4. DEVICE INFORMATION
 // ============================================================
 
 export interface NativeDeviceInfo {
@@ -145,9 +205,10 @@ export interface NativeDeviceInfo {
 
     androidVersion: string;
     sdkVersion: number;
-    securityPatch: string;
 
+    securityPatch: string;
     kernelVersion: string;
+
     cpuArchitecture: string;
     supportedAbis: string[];
 
@@ -163,6 +224,7 @@ export interface NativeDeviceInfo {
 
     locale: string;
     timezone: string;
+
     uptimeSeconds: number;
 
     isCharging: boolean;
@@ -171,25 +233,22 @@ export interface NativeDeviceInfo {
     buildFingerprint: string;
 
     /**
-     * Optional because ordinary applications cannot always independently
-     * verify bootloader state.
+     * These must only be populated when Android exposes
+     * trustworthy evidence for the value.
      */
     bootloaderLocked?: boolean;
-    bootloaderState?: SecurityStatus;
+    verifiedBootState?: 'VERIFIED' | 'SELF_SIGNED' | 'UNVERIFIED' | 'UNKNOWN';
 
-    /**
-     * Do not treat KVM support as proof that a usable VM exists.
-     */
     kvmVirtualizationSupported?: boolean;
-    virtualizationStatus?: SecurityStatus;
 }
 
 // ============================================================
-// 3. BATTERY
+// 5. BATTERY
 // ============================================================
 
 export interface NativeBatteryStatus {
     percentage: number;
+
     isCharging: boolean;
 
     chargingSource:
@@ -212,11 +271,12 @@ export interface NativeBatteryStatus {
     voltageMillivolts: number | null;
     currentNowMicroamperes: number | null;
     capacityMicroampereHours: number | null;
+
     estimatedRemainingMinutes: number | null;
 }
 
 // ============================================================
-// 4. NETWORK
+// 6. NETWORK
 // ============================================================
 
 export interface NativeNetworkState {
@@ -233,11 +293,15 @@ export interface NativeNetworkState {
 
     isValidated: boolean;
     isMetered: boolean;
+
     isVpnActive: boolean;
 
     ipAddress?: string;
+
     dnsServers: string[];
+
     ssid?: string;
+
     linkSpeedMbps?: number;
 
     rxBytes: number;
@@ -250,7 +314,7 @@ export interface NativeNetworkState {
 }
 
 // ============================================================
-// 5. STORAGE
+// 7. STORAGE
 // ============================================================
 
 export interface NativeStorageInfo {
@@ -260,19 +324,21 @@ export interface NativeStorageInfo {
     internalUsagePercent: number;
 
     externalStorageAvailable: boolean;
+
     externalTotalBytes?: number;
     externalAvailableBytes?: number;
     externalUsedBytes?: number;
 }
 
 // ============================================================
-// 6. SENSORS
+// 8. SENSORS
 // ============================================================
 
 export interface NativeSensorInfo {
     id: string;
     name: string;
     vendor: string;
+
     type: number;
     typeName: string;
 
@@ -286,12 +352,14 @@ export interface NativeSensorInfo {
 export interface LiveSensorReading {
     sensorType: string;
     values: number[];
+
     accuracy: number;
+
     timestamp: number;
 }
 
 // ============================================================
-// 7. CAMERA
+// 9. CAMERA
 // ============================================================
 
 export interface NativeCameraCapability {
@@ -301,6 +369,7 @@ export interface NativeCameraCapability {
     hasFlash: boolean;
 
     supportedResolutions: string[];
+
     maxZoomRatio: number;
 
     permissionGranted: boolean;
@@ -309,14 +378,17 @@ export interface NativeCameraCapability {
 export interface CapturePhotoResult {
     filePath?: string;
     dataUrl?: string;
+
     mimeType: string;
+
     width: number;
     height: number;
+
     savedToMediaStore: boolean;
 }
 
 // ============================================================
-// 8. BIOMETRICS
+// 10. BIOMETRICS
 // ============================================================
 
 export interface NativeBiometricStatus {
@@ -330,6 +402,7 @@ export interface NativeBiometricStatus {
         | 'NONE';
 
     hardwarePresent: boolean;
+
     enrolled: boolean;
 
     canAuthenticateStrong: boolean;
@@ -349,7 +422,7 @@ export interface BiometricAuthResult {
 }
 
 // ============================================================
-// 9. RUNTIME PERMISSIONS
+// 11. PERMISSIONS
 // ============================================================
 
 export type RuntimePermissionName =
@@ -366,18 +439,16 @@ export type RuntimePermissionName =
     | 'READ_EXTERNAL_STORAGE'
     | 'WRITE_EXTERNAL_STORAGE';
 
-export interface PermissionStatus {
-    granted: boolean;
-    canRequest: boolean;
-    shouldShowRationale: boolean;
-}
-
 export interface PermissionStatusMap {
-    [permission: string]: PermissionStatus;
+    [permission: string]: {
+        granted: boolean;
+        canRequest: boolean;
+        shouldShowRationale: boolean;
+    };
 }
 
 // ============================================================
-// 10. INSTALLED APPLICATIONS
+// 12. INSTALLED APPS
 // ============================================================
 
 export interface NativeInstalledApp {
@@ -406,17 +477,13 @@ export interface NativeInstalledApp {
 
     isDebuggable: boolean;
 
-    /**
-     * Signing certificate information is observational.
-     * It does NOT prove that an application is trustworthy.
-     */
     signingCertSha256?: string;
 
     enabled: boolean;
 }
 
 // ============================================================
-// 11. CALENDAR
+// 13. CALENDAR
 // ============================================================
 
 export interface NativeCalendarEvent {
@@ -425,6 +492,7 @@ export interface NativeCalendarEvent {
     calendarName: string;
 
     title: string;
+
     description?: string;
     location?: string;
 
@@ -432,15 +500,17 @@ export interface NativeCalendarEvent {
     endTime: number;
 
     allDay: boolean;
+
     organizer?: string;
 }
 
 // ============================================================
-// 12. CONTACTS
+// 14. CONTACTS
 // ============================================================
 
 export interface NativeContact {
     id: string;
+
     displayName: string;
 
     phoneNumbers: {
@@ -454,11 +524,12 @@ export interface NativeContact {
     }[];
 
     photoUri?: string;
+
     starred: boolean;
 }
 
 // ============================================================
-// 13. FILES
+// 15. FILES
 // ============================================================
 
 export interface NativeFileInfo {
@@ -467,18 +538,21 @@ export interface NativeFileInfo {
 
     sizeBytes: number;
     mimeType: string;
+
     lastModified: number;
 
     isDirectory: boolean;
+
     uri?: string;
 }
 
 // ============================================================
-// 14. NOTIFICATIONS
+// 16. NOTIFICATIONS
 // ============================================================
 
 export interface NativeCapturedNotification {
     id: string;
+
     packageName: string;
     appName: string;
 
@@ -488,32 +562,21 @@ export interface NativeCapturedNotification {
     timestamp: number;
 
     category?: string;
+
     isClearable: boolean;
 }
 
 // ============================================================
-// 15. SECURITY CHECKS
+// 17. SECURITY ASSESSMENT
 // ============================================================
-
-export type SecurityCheckCategory =
-    | 'OS_INTEGRITY'
-    | 'DEVICE_ENCRYPTION'
-    | 'AUTHENTICATION'
-    | 'PERMISSIONS'
-    | 'NETWORK'
-    | 'DEBUGGING'
-    | 'APPLICATIONS'
-    | 'DEVICE_MANAGEMENT'
-    | 'KEYSTORE'
-    | 'VPN';
 
 export type SecurityCheckStatus =
     | 'PASSED'
     | 'WARNING'
     | 'FAILED'
+    | 'INFO'
     | 'UNKNOWN'
-    | 'UNAVAILABLE'
-    | 'INFO';
+    | 'NOT_APPLICABLE';
 
 export type SecuritySeverity =
     | 'CRITICAL'
@@ -524,43 +587,47 @@ export type SecuritySeverity =
 
 export interface SecurityCheckItem {
     id: string;
+
     name: string;
 
-    category: SecurityCheckCategory;
+    category:
+        | 'OS_INTEGRITY'
+        | 'DEVICE_ENCRYPTION'
+        | 'AUTHENTICATION'
+        | 'PERMISSIONS'
+        | 'NETWORK'
+        | 'DEBUGGING'
+        | 'APPLICATIONS'
+        | 'DEVICE_MANAGEMENT'
+        | 'HARDWARE'
+        | 'UNKNOWN';
 
     status: SecurityCheckStatus;
+
     severity: SecuritySeverity;
 
     details: string;
 
-    evidence?: string;
+    evidence?: string[];
 
     remediation?: string;
 
     /**
-     * False when the check is informational only or inferred.
+     * Prevents UI from displaying a native observation
+     * as though it were a simulated/demo result.
      */
-    isVerified: boolean;
+    isReal: boolean;
 }
 
-// ============================================================
-// 16. SECURITY ASSESSMENT
-// ============================================================
-
-export type SecurityTier =
-    | 'HARDENED'
-    | 'ELEVATED'
-    | 'BALANCED'
-    | 'ATTENTION_REQUIRED'
-    | 'UNKNOWN';
-
 export interface SystemSecurityAssessment {
-    /**
-     * Null means no trustworthy aggregate score is available.
-     */
-    overallScore: number | null;
+    overallScore: number;
 
-    qualitativeTier: SecurityTier;
+    qualitativeTier:
+        | 'HARDENED'
+        | 'ELEVATED'
+        | 'BALANCED'
+        | 'ATTENTION_REQUIRED'
+        | 'UNKNOWN';
 
     timestamp: number;
 
@@ -568,103 +635,62 @@ export interface SystemSecurityAssessment {
 
     remediationSuggestions: string[];
 
-    /**
-     * Number of checks actually evaluated.
-     */
-    evaluatedChecks: number;
-
-    /**
-     * Number of checks whose result is UNKNOWN.
-     */
-    unknownChecks: number;
-
-    /**
-     * Prevents the UI from presenting an inferred score as verified.
-     */
-    isScoreVerified: boolean;
+    isReal: boolean;
 }
 
 // ============================================================
-// 17. KEYSTORE / SECURE STORAGE
+// 18. SECURE STORAGE
 // ============================================================
 
 export interface SecureStorageItem {
     key: string;
     value: string;
+
     requiresBiometric?: boolean;
-}
 
-export interface NativeKeystoreStatus {
-    available: boolean;
-
-    hardwareBacked:
-        | true
-        | false
-        | null;
-
-    strongBoxAvailable:
-        | true
-        | false
-        | null;
-
-    secureKeyGenerationSupported:
-        | true
-        | false
-        | null;
-
-    status: SecurityStatus;
-
-    evidence: string;
+    createdAt?: number;
+    updatedAt?: number;
 }
 
 // ============================================================
-// 18. SECURITY AUDIT LOG
+// 19. SECURITY AUDIT LOG
 // ============================================================
-
-export type SecurityEventCategory =
-    | 'PERMISSION'
-    | 'AUTH'
-    | 'NETWORK'
-    | 'SCAN'
-    | 'CONFIG'
-    | 'AUDIT'
-    | 'EMERGENCY'
-    | 'BACKUP'
-    | 'DEVICE'
-    | 'APPLICATION'
-    | 'CAPABILITY';
-
-export type SecurityEventSeverity =
-    | 'INFO'
-    | 'WARNING'
-    | 'CRITICAL';
 
 export interface NativeSecurityEvent {
     id: string;
+
     timestamp: number;
 
-    category: SecurityEventCategory;
+    category:
+        | 'PERMISSION'
+        | 'AUTH'
+        | 'NETWORK'
+        | 'SCAN'
+        | 'CONFIG'
+        | 'AUDIT'
+        | 'EMERGENCY'
+        | 'BACKUP'
+        | 'DEVICE'
+        | 'APPLICATION';
 
-    severity: SecurityEventSeverity;
+    severity:
+        | 'INFO'
+        | 'WARNING'
+        | 'CRITICAL';
 
     description: string;
+
     source: string;
 
     metadata?: Record<
         string,
-        string | number | boolean
+        string | number | boolean | null
     >;
 }
 
 // ============================================================
-// 19. VPN
+// 20. VPN
 // ============================================================
-
-export type VpnFilterMode =
-    | 'BLOCKLIST'
-    | 'STRICT'
-    | 'ALLOWLIST'
-    | 'DISABLED';
 
 export interface NativeVpnStatus {
     isActive: boolean;
@@ -678,28 +704,24 @@ export interface NativeVpnStatus {
 
     activeDns: string;
 
-    filterMode: VpnFilterMode;
-
-    /**
-     * Explicitly identifies this as application-level VPN protection.
-     */
-    implementation:
-        | 'APPLICATION_VPN'
-        | 'UNAVAILABLE'
-        | 'UNKNOWN';
-
-    status: SecurityStatus;
+    filterMode:
+        | 'BLOCKLIST'
+        | 'STRICT'
+        | 'ALLOWLIST'
+        | 'DISABLED';
 }
 
 // ============================================================
-// 20. THREAT DETECTION
+// 21. THREAT DETECTION
 // ============================================================
 
 export interface ThreatFinding {
     id: string;
+
     ruleId: string;
 
     title: string;
+
     description: string;
 
     severity:
@@ -714,26 +736,21 @@ export interface ThreatFinding {
 
     recommendation: string;
 
-    /**
-     * Whether the finding is based on directly observed evidence.
-     */
-    isVerified: boolean;
+    isReal: boolean;
 }
-
-export type ThreatRiskLevel =
-    | 'SAFE'
-    | 'LOW_RISK'
-    | 'MODERATE_RISK'
-    | 'HIGH_RISK'
-    | 'CRITICAL_RISK'
-    | 'UNKNOWN';
 
 export interface ThreatAssessmentReport {
     timestamp: number;
 
     scannedAppsCount: number;
 
-    overallRiskLevel: ThreatRiskLevel;
+    overallRiskLevel:
+        | 'SAFE'
+        | 'LOW_RISK'
+        | 'MODERATE_RISK'
+        | 'HIGH_RISK'
+        | 'CRITICAL_RISK'
+        | 'UNKNOWN';
 
     findings: ThreatFinding[];
 
@@ -744,16 +761,11 @@ export interface ThreatAssessmentReport {
         outdatedTargetSdkAppsFound: number;
     };
 
-    /**
-     * This is an application-analysis result, not malware proof.
-     */
-    analysisType:
-        | 'APPLICATION_HEURISTICS'
-        | 'UNKNOWN';
+    isReal: boolean;
 }
 
 // ============================================================
-// 21. BACKUP & RESTORE
+// 22. ENCRYPTED BACKUP
 // ============================================================
 
 export interface EncryptedBackupArchive {
@@ -777,7 +789,7 @@ export interface EncryptedBackupArchive {
 }
 
 // ============================================================
-// 22. VIRTUALIZATION
+// 23. VIRTUALIZATION
 // ============================================================
 
 export interface VmHardwareCapability {
@@ -799,12 +811,19 @@ export interface VmHardwareCapability {
 
     limitationNotice: string;
 
-    status: CapabilityState;
+    isReal: boolean;
 }
 
 // ============================================================
-// 23. APP RISK AUDITOR
+// 24. APP RISK AUDITOR
 // ============================================================
+
+export type AppRiskLevel =
+    | 'LOW'
+    | 'MEDIUM'
+    | 'HIGH'
+    | 'CRITICAL'
+    | 'UNKNOWN';
 
 export interface NativeAppRiskFinding {
     id: string;
@@ -817,45 +836,27 @@ export interface NativeAppRiskFinding {
 
     summary: string;
 
-    /**
-     * Evidence observed from the application package.
-     */
     evidence?: string[];
 
-    /**
-     * Optional machine-readable rule identifier.
-     */
-    ruleId?: string;
+    recommendation?: string;
 }
 
 export interface NativeAppRiskReport {
     packageName: string;
+
     label: string;
 
-    overallRisk:
-        | 'LOW'
-        | 'MEDIUM'
-        | 'HIGH'
-        | 'CRITICAL'
-        | 'UNKNOWN';
+    overallRisk: AppRiskLevel;
+
+    securityScore?: number;
 
     findings: NativeAppRiskFinding[];
 
-    /**
-     * 0–100 only when calculated from verified checks.
-     */
-    securityScore: number | null;
-
-    analysisType:
-        | 'STATIC_PACKAGE_ANALYSIS'
-        | 'APPLICATION_HEURISTICS'
-        | 'UNKNOWN';
-
-    isVerified: boolean;
+    isReal: boolean;
 }
 
 // ============================================================
-// 24. DEVICE HARDENING
+// 25. DEVICE HARDENING
 // ============================================================
 
 export interface NativeHardeningFinding {
@@ -869,65 +870,65 @@ export interface NativeHardeningFinding {
 
     summary: string;
 
-    evidence?: string;
+    evidence?: string[];
 
     remediation?: string;
 
-    isVerified: boolean;
+    isReal: boolean;
 }
 
 export interface NativeHardeningReport {
-    /**
-     * Null means the native layer could not produce a trustworthy
-     * aggregate score.
-     */
-    score: number | null;
+    score: number;
 
     findings: NativeHardeningFinding[];
 
-    evaluatedChecks: number;
+    timestamp?: number;
 
-    unknownChecks: number;
+    isReal: boolean;
+}
 
-    isScoreVerified: boolean;
+// ============================================================
+// 26. NATIVE SERVICE HEALTH
+// ============================================================
+
+export interface NativeServiceHealth {
+    nativeBridge: 'CONNECTED' | 'DISCONNECTED' | 'ERROR';
+
+    pluginRegistered: boolean;
+
+    capabilityEngineAvailable: boolean;
+
+    securityEngineAvailable: boolean;
+
+    vpnServiceAvailable: boolean;
+
+    auditServiceAvailable: boolean;
 
     timestamp: number;
 }
 
 // ============================================================
-// 25. DEVICE MANAGEMENT
+// 27. SECURITY ENGINE STATUS
 // ============================================================
 
-export interface NativeDeviceManagementStatus {
-    mode: SecureDroidMode;
+export interface SecurityEngineStatus {
+    initialized: boolean;
 
-    isDeviceOwner: boolean;
-    isProfileOwner: boolean;
-    isManagedProfile: boolean;
+    running: boolean;
 
-    canManageApplications: boolean;
-    canEnforcePolicies: boolean;
-    canControlNetworkPolicies: boolean;
-    canLockDevice: boolean;
-    canWipeDevice: boolean;
+    lastScanTimestamp?: number;
 
-    evidence: string[];
+    lastAssessmentTimestamp?: number;
 
-    status: CapabilityState;
-}
+    findingsCount: number;
 
-// ============================================================
-// 26. SECUREDROID RUNTIME STATUS
-// ============================================================
+    currentRisk:
+        | 'SAFE'
+        | 'LOW_RISK'
+        | 'MODERATE_RISK'
+        | 'HIGH_RISK'
+        | 'CRITICAL_RISK'
+        | 'UNKNOWN';
 
-export interface SecureDroidRuntimeStatus {
-    connected: boolean;
-
-    mode: SecureDroidMode;
-
-    nativeApiLevel: number;
-
-    capabilities: CapabilitySnapshot;
-
-    timestamp: number;
+    isReal: boolean;
 }
