@@ -6,6 +6,7 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import android.util.Log
+import java.nio.ByteBuffer
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -34,15 +35,18 @@ class VaultStorage(
         private const val AES_KEY_SIZE =
             256
 
-        private const val GCM_TAG_LENGTH =
+        private const val GCM_TAG_LENGTH_BITS =
             128
 
         private const val GCM_IV_LENGTH =
             12
+
+        private const val MIN_ENCRYPTED_LENGTH =
+            GCM_IV_LENGTH + 16 // minimum 128-bit GCM tag
     }
 
     private val prefs: SharedPreferences =
-        context.getSharedPreferences(
+        context.applicationContext.getSharedPreferences(
             PREFS_NAME,
             Context.MODE_PRIVATE
         )
@@ -63,15 +67,9 @@ class VaultStorage(
                         null
                     )
 
-                if (entry is KeyStore.SecretKeyEntry) {
-                    return entry.secretKey
-                }
-
-                /*
-                 * Alias exists but contains the wrong key type.
-                 * Delete it and recreate the expected AES key.
-                 */
-                keyStore.deleteEntry(KEYSTORE_ALIAS)
+                return (
+                    entry as? KeyStore.SecretKeyEntry
+                    )?.secretKey
             }
 
             val keyGenerator =
@@ -92,17 +90,18 @@ class VaultStorage(
                     .setEncryptionPaddings(
                         KeyProperties.ENCRYPTION_PADDING_NONE
                     )
-                    .setKeySize(AES_KEY_SIZE)
+                    .setKeySize(
+                        AES_KEY_SIZE
+                    )
                     .build()
 
             keyGenerator.init(spec)
 
             keyGenerator.generateKey()
-
         } catch (e: Exception) {
             Log.e(
                 TAG,
-                "Failed to get or create vault key",
+                "Unable to access Android Keystore",
                 e
             )
 
@@ -111,6 +110,7 @@ class VaultStorage(
     }
 
     private fun encrypt(
+        key: String,
         value: String
     ): String? {
         return try {
@@ -128,59 +128,44 @@ class VaultStorage(
                 secretKey
             )
 
+            /*
+             * Bind ciphertext to its logical vault key.
+             * This prevents a valid ciphertext from one vault
+             * entry being silently reused under another key.
+             */
+            cipher.updateAAD(
+                key.toByteArray(
+                    Charsets.UTF_8
+                )
+            )
+
+            val ciphertext =
+                cipher.doFinal(
+                    value.toByteArray(
+                        Charsets.UTF_8
+                    )
+                )
+
             val iv =
                 cipher.iv
 
             if (iv.size != GCM_IV_LENGTH) {
-                Log.e(
-                    TAG,
-                    "Unexpected GCM IV length: ${iv.size}"
-                )
-
                 return null
             }
 
-            val plaintext =
-                value.toByteArray(
-                    Charsets.UTF_8
-                )
-
-            val ciphertext =
-                cipher.doFinal(
-                    plaintext
-                )
-
-            /*
-             * Format:
-             *
-             * [12-byte IV][ciphertext + 16-byte GCM tag]
-             */
             val combined =
-                ByteArray(
-                    iv.size + ciphertext.size
-                )
-
-            System.arraycopy(
-                iv,
-                0,
-                combined,
-                0,
-                iv.size
-            )
-
-            System.arraycopy(
-                ciphertext,
-                0,
-                combined,
-                iv.size,
-                ciphertext.size
-            )
+                ByteBuffer
+                    .allocate(
+                        iv.size + ciphertext.size
+                    )
+                    .put(iv)
+                    .put(ciphertext)
+                    .array()
 
             Base64.encodeToString(
                 combined,
                 Base64.NO_WRAP
             )
-
         } catch (e: Exception) {
             Log.e(
                 TAG,
@@ -193,6 +178,7 @@ class VaultStorage(
     }
 
     private fun decrypt(
+        key: String,
         encrypted: String
     ): String? {
         return try {
@@ -206,17 +192,7 @@ class VaultStorage(
                     Base64.NO_WRAP
                 )
 
-            /*
-             * Minimum:
-             *
-             * IV (12 bytes)
-             * +
-             * GCM authentication tag (16 bytes)
-             */
-            if (combined.size <
-                GCM_IV_LENGTH +
-                GCM_TAG_LENGTH / 8
-            ) {
+            if (combined.size < MIN_ENCRYPTED_LENGTH) {
                 return null
             }
 
@@ -239,7 +215,7 @@ class VaultStorage(
 
             val spec =
                 GCMParameterSpec(
-                    GCM_TAG_LENGTH,
+                    GCM_TAG_LENGTH_BITS,
                     iv
                 )
 
@@ -249,17 +225,25 @@ class VaultStorage(
                 spec
             )
 
-            val plaintext =
-                cipher.doFinal(
-                    ciphertext
+            cipher.updateAAD(
+                key.toByteArray(
+                    Charsets.UTF_8
                 )
+            )
+
+            val plaintext =
+                cipher.doFinal(ciphertext)
 
             String(
                 plaintext,
                 Charsets.UTF_8
             )
-
         } catch (e: Exception) {
+            /*
+             * Includes authentication failure and malformed
+             * ciphertext. Do not expose plaintext or crypto
+             * internals to the caller.
+             */
             Log.e(
                 TAG,
                 "Decryption failed",
@@ -280,17 +264,17 @@ class VaultStorage(
 
         return try {
             val encrypted =
-                encrypt(value)
-                    ?: return false
+                encrypt(
+                    key,
+                    value
+                ) ?: return false
 
-            /*
-             * commit() is intentional here because the method returns
-             * whether persistence actually succeeded.
-             */
             prefs.edit()
-                .putString(key, encrypted)
+                .putString(
+                    key,
+                    encrypted
+                )
                 .commit()
-
         } catch (e: Exception) {
             Log.e(
                 TAG,
@@ -316,8 +300,10 @@ class VaultStorage(
                     null
                 ) ?: return null
 
-            decrypt(encrypted)
-
+            decrypt(
+                key,
+                encrypted
+            )
         } catch (e: Exception) {
             Log.e(
                 TAG,
@@ -340,7 +326,6 @@ class VaultStorage(
             prefs.edit()
                 .remove(key)
                 .commit()
-
         } catch (e: Exception) {
             Log.e(
                 TAG,
@@ -355,8 +340,11 @@ class VaultStorage(
     fun contains(
         key: String
     ): Boolean {
-        return key.isNotBlank() &&
-            prefs.contains(key)
+        if (key.isBlank()) {
+            return false
+        }
+
+        return prefs.contains(key)
     }
 
     fun clearAll(): Boolean {
@@ -364,7 +352,6 @@ class VaultStorage(
             prefs.edit()
                 .clear()
                 .commit()
-
         } catch (e: Exception) {
             Log.e(
                 TAG,
