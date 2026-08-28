@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Wifi, Shield, ArrowLeft, Power, Plus, Trash2, Globe, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Wifi, Shield, ArrowLeft, Power, Plus, Trash2, Globe, CheckCircle2, AlertTriangle, Activity } from 'lucide-react';
 import { useSecureDroid } from '../hooks/useSecureDroid';
 import { SecureDroidNative } from '../services/native/SecureDroidNative';
 
@@ -13,8 +13,7 @@ export function NetworkControlScreen({ onBack }: NetworkControlScreenProps) {
   
   const [blockedDomains, setBlockedDomains] = useState<string[]>([]);
   const [allowedDomains, setAllowedDomains] = useState<string[]>([]);
-  const [inputBlocked, setInputBlocked] = useState('');
-  const [inputAllowed, setInputAllowed] = useState('');
+  const [inputDomain, setInputDomain] = useState('');
   const [activeTab, setActiveTab] = useState<'blocked' | 'allowed'>('blocked');
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [wifiReport, setWifiReport] = useState<any>(null);
@@ -60,248 +59,195 @@ export function NetworkControlScreen({ onBack }: NetworkControlScreenProps) {
     }
   };
 
-  const handleAddBlocked = async (e: React.FormEvent) => {
+  const handleAddDomain = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputBlocked.trim()) return;
-    const res = await SecureDroidNative.addBlockedDomain(inputBlocked.trim());
+    if (!inputDomain.trim()) return;
+
+    const domain = inputDomain.trim();
+    const res = activeTab === 'blocked' 
+      ? await SecureDroidNative.addBlockedDomain(domain)
+      : await SecureDroidNative.addAllowedDomain(domain);
+
     if (res.success) {
-      setInputBlocked('');
+      setInputDomain('');
       loadData();
-      setActionMessage('Domain added to blocklist');
-      setTimeout(() => setActionMessage(null), 3000);
+      setActionMessage(`Added ${domain} to ${activeTab}`);
+      setTimeout(() => setActionMessage(null), 2500);
     }
   };
 
-  const handleRemoveBlocked = async (domain: string) => {
-    const res = await SecureDroidNative.removeBlockedDomain(domain);
-    if (res.success) {
-      loadData();
-    }
-  };
+  const handleRemoveDomain = async (domain: string) => {
+    const res = activeTab === 'blocked'
+      ? await SecureDroidNative.removeBlockedDomain(domain)
+      : await SecureDroidNative.removeAllowedDomain(domain);
 
-  const handleAddAllowed = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inputAllowed.trim()) return;
-    const res = await SecureDroidNative.addAllowedDomain(inputAllowed.trim());
-    if (res.success) {
-      setInputAllowed('');
-      loadData();
-      setActionMessage('Domain added to allowlist');
-      setTimeout(() => setActionMessage(null), 3000);
-    }
-  };
-
-  const handleRemoveAllowed = async (domain: string) => {
-    const res = await SecureDroidNative.removeAllowedDomain(domain);
     if (res.success) {
       loadData();
     }
   };
 
   return (
-    <div className="flex flex-col h-full w-full bg-slate-950 text-slate-100 overflow-y-auto p-4 space-y-4 pb-24">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <div className="flex flex-col h-full w-full bg-slate-950 text-slate-100 overflow-y-auto p-4 space-y-4 pb-28">
+      {/* Minimal Header */}
+      <div className="flex items-center justify-between py-1">
         <div className="flex items-center space-x-3">
           {onBack && (
-            <button onClick={onBack} className="p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-300 hover:text-white">
-              <ArrowLeft className="w-5 h-5" />
+            <button 
+              onClick={onBack} 
+              className="p-2 rounded-xl bg-slate-900/80 border border-slate-800/80 text-slate-300 hover:text-white transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" />
             </button>
           )}
-          <h1 className="text-xl font-semibold tracking-wide">Network Protection</h1>
+          <div>
+            <h1 className="text-base font-semibold tracking-tight text-white">Network Protection</h1>
+            <p className="text-[11px] text-slate-400">Tunnel telemetry & DNS filters</p>
+          </div>
         </div>
       </div>
 
       {actionMessage && (
-        <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs flex items-center gap-2">
+        <div className="px-3.5 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs flex items-center space-x-2 animate-fadeIn">
           <CheckCircle2 className="w-4 h-4 shrink-0" />
-          <span>{actionMessage}</span>
+          <span className="font-medium">{actionMessage}</span>
         </div>
       )}
 
       {loading ? (
-        <div className="flex flex-col items-center justify-center py-20 text-cyan-400">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-cyan-400 mb-3" />
-          <p className="text-sm text-slate-400">Checking network tunnels...</p>
+        <div className="flex flex-col items-center justify-center py-24 text-cyan-400 space-y-3">
+          <div className="animate-spin rounded-full h-7 w-7 border-2 border-cyan-400 border-t-transparent" />
+          <p className="text-xs text-slate-400 font-medium">Analyzing network state...</p>
         </div>
       ) : (
-        <div className="space-y-4">
-          {/* Status Card */}
-          <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 flex flex-col items-center text-center">
-            <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-3 ${
-              vpnActive ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30' : 'bg-slate-800 text-slate-400'
-            }`}>
-              <Wifi className="w-8 h-8" />
+        <div className="space-y-3.5">
+          {/* Hero Tunnel Status Card */}
+          <div className="relative overflow-hidden p-5 rounded-2xl bg-gradient-to-b from-slate-900/90 to-slate-900/40 border border-slate-800/80 flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 transition-colors ${
+                vpnActive 
+                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 shadow-lg shadow-emerald-950/40' 
+                  : 'bg-slate-800/80 text-slate-400 border border-slate-700/50'
+              }`}>
+                <Wifi className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="flex items-center space-x-2">
+                  <h3 className="text-sm font-semibold text-white tracking-tight">Secure VPN Tunnel</h3>
+                  <span className={`w-2 h-2 rounded-full ${vpnActive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
+                </div>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  {vpnActive ? 'Active loopback encryption & filter' : 'Tunnel is currently disconnected'}
+                </p>
+              </div>
             </div>
-            <h3 className="text-base font-medium text-white">Secure VPN Tunnel</h3>
-            <p className="text-xs text-slate-400 mt-1">
-              {vpnActive ? 'All device traffic is encrypted and filtered locally.' : 'VPN protection is currently inactive.'}
-            </p>
 
             <button
               onClick={handleToggleVpn}
               disabled={toggling}
-              className={`mt-5 px-5 py-2.5 rounded-xl font-medium text-sm flex items-center space-x-2 transition-colors ${
+              className={`px-4 py-2 rounded-xl font-medium text-xs flex items-center space-x-1.5 transition-all ${
                 vpnActive 
-                  ? 'bg-red-500/10 border border-red-500/30 text-red-400 hover:bg-red-500/20' 
-                  : 'bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/20'
+                  ? 'bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20' 
+                  : 'bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 hover:bg-cyan-500/20'
               }`}
             >
-              <Power className="w-4 h-4" />
-              <span>{toggling ? 'Updating...' : vpnActive ? 'Disconnect VPN' : 'Connect VPN'}</span>
+              <Power className="w-3.5 h-3.5" />
+              <span>{toggling ? '...' : vpnActive ? 'Disconnect' : 'Connect'}</span>
             </button>
           </div>
 
-          {/* Wi-Fi & Network Environment Security Card */}
-          <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800/80 space-y-3">
-            <div className="flex items-center justify-between">
-              <h4 className="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-2">
-                <Wifi className="w-4 h-4 text-cyan-400" />
-                Network Environment Security
-              </h4>
-              <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
-                wifiReport?.isSecure ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30' : 'bg-amber-500/10 text-amber-400 border border-amber-500/30'
-              }`}>
-                {wifiReport?.isSecure ? 'Secure' : 'Warning'}
-              </span>
+          {/* Environment & Wi-Fi Security Pill */}
+          <div className="p-3.5 rounded-xl bg-slate-900/50 border border-slate-800/60 flex items-center justify-between">
+            <div className="flex items-center space-x-2.5">
+              <div className="p-2 rounded-lg bg-slate-800/60 text-cyan-400">
+                <Activity className="w-4 h-4" />
+              </div>
+              <div>
+                <p className="text-xs font-medium text-slate-200">Network Environment</p>
+                <p className="text-[10px] text-slate-400">
+                  {wifiReport?.findings?.[0]?.summary || 'Standard encrypted connection'}
+                </p>
+              </div>
             </div>
-
-            <div className="space-y-2">
-              {!wifiReport?.findings || wifiReport.findings.length === 0 ? (
-                <p className="text-xs text-slate-500 text-center py-2">No active network security findings.</p>
-              ) : (
-                wifiReport.findings.map((finding: any, idx: number) => (
-                  <div key={idx} className="flex items-start space-x-2.5 p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/60">
-                    {finding.level === 'WARNING' || finding.level === 'CRITICAL' ? (
-                      <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                    ) : (
-                      <Shield className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
-                    )}
-                    <div className="flex-1 text-xs">
-                      <p className="text-slate-200 font-medium">{finding.summary}</p>
-                      <span className="text-[10px] text-slate-400 uppercase tracking-wider">{finding.id}</span>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
+            <span className={`text-[10px] px-2.5 py-1 rounded-lg font-medium ${
+              wifiReport?.isSecure !== false 
+                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
+                : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+            }`}>
+              {wifiReport?.isSecure !== false ? 'Secure' : 'Warning'}
+            </span>
           </div>
 
-          {/* Domain Filtering & Blocklist Section */}
-          <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800/80 space-y-3">
+          {/* Restructured Domain Filters Section */}
+          <div className="p-4 rounded-2xl bg-slate-900/50 border border-slate-800/80 space-y-3">
             <div className="flex items-center justify-between">
-              <h4 className="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+              <div className="flex items-center space-x-2">
                 <Globe className="w-4 h-4 text-sky-400" />
-                Domain Filtering Rules
-              </h4>
-              <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800">
+                <h4 className="text-xs font-semibold text-slate-200 tracking-wide uppercase">Domain Filtering</h4>
+              </div>
+              
+              {/* Minimal Segmented Tabs */}
+              <div className="flex bg-slate-950 p-0.5 rounded-xl border border-slate-800/80">
                 <button
                   onClick={() => setActiveTab('blocked')}
-                  className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
-                    activeTab === 'blocked' ? 'bg-sky-500 text-white' : 'text-slate-400 hover:text-white'
+                  className={`px-3 py-1 rounded-lg text-[11px] font-medium transition-all ${
+                    activeTab === 'blocked' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
                   }`}
                 >
-                  Blocklist ({blockedDomains.length})
+                  Blocked ({blockedDomains.length})
                 </button>
                 <button
                   onClick={() => setActiveTab('allowed')}
-                  className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
-                    activeTab === 'allowed' ? 'bg-sky-500 text-white' : 'text-slate-400 hover:text-white'
+                  className={`px-3 py-1 rounded-lg text-[11px] font-medium transition-all ${
+                    activeTab === 'allowed' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
                   }`}
                 >
-                  Allowlist ({allowedDomains.length})
+                  Allowed ({allowedDomains.length})
                 </button>
               </div>
             </div>
 
-            {/* Input Form */}
-            {activeTab === 'blocked' ? (
-              <form onSubmit={handleAddBlocked} className="flex gap-2">
-                <input
-                  type="text"
-                  value={inputBlocked}
-                  onChange={(e) => setInputBlocked(e.target.value)}
-                  placeholder="Add domain to block (e.g. tracker.com)..."
-                  className="flex-1 p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
-                />
-                <button
-                  type="submit"
-                  className="px-4 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-600 text-white text-xs font-medium flex items-center gap-1 transition-colors"
-                >
-                  <Plus className="w-4 h-4" />
-                  Add
-                </button>
-              </form>
-            ) : (
-              <form onSubmit={handleAddAllowed} className="flex gap-2">
-                <input
-                  type="text"
-                  value={inputAllowed}
-                  onChange={(e) => setInputAllowed(e.target.value)}
-                  placeholder="Add domain to allow (e.g. trusted.com)..."
-                  className="flex-1 p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
-                />
-                <button
-                  type="submit"
-                  className="px-4 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-600 text-white text-xs font-medium flex items-center gap-1 transition-colors"
-                >
-                  <Plus className="w-4 h-4" />
-                  Add
-                </button>
-              </form>
-            )}
+            {/* Clean Input Form */}
+            <form onSubmit={handleAddDomain} className="flex gap-2 pt-1">
+              <input
+                type="text"
+                value={inputDomain}
+                onChange={(e) => setInputDomain(e.target.value)}
+                placeholder={activeTab === 'blocked' ? 'Add domain to block (e.g. tracker.com)' : 'Add domain to allow (e.g. site.com)'}
+                className="flex-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800/80 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500/60 transition-colors"
+              />
+              <button
+                type="submit"
+                className="px-3.5 py-2 rounded-xl bg-sky-500/10 border border-sky-500/30 hover:bg-sky-500/20 text-sky-400 text-xs font-medium flex items-center space-x-1 transition-colors shrink-0"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add</span>
+              </button>
+            </form>
 
-            {/* Domain List */}
-            <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
-              {activeTab === 'blocked' ? (
-                blockedDomains.length === 0 ? (
-                  <p className="text-xs text-slate-500 text-center py-4">No custom blocked domains added.</p>
-                ) : (
-                  blockedDomains.map((domain) => (
-                    <div key={domain} className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/60">
-                      <span className="text-xs font-mono text-slate-200">{domain}</span>
-                      <button
-                        onClick={() => handleRemoveBlocked(domain)}
-                        className="text-slate-500 hover:text-red-400 transition-colors p-1"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ))
-                )
+            {/* Domain List Stream */}
+            <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
+              {(activeTab === 'blocked' ? blockedDomains : allowedDomains).length === 0 ? (
+                <div className="text-center py-6 text-slate-500 text-xs">
+                  No custom {activeTab} domains configured.
+                </div>
               ) : (
-                allowedDomains.length === 0 ? (
-                  <p className="text-xs text-slate-500 text-center py-4">No custom allowed domains added.</p>
-                ) : (
-                  allowedDomains.map((domain) => (
-                    <div key={domain} className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/60">
-                      <span className="text-xs font-mono text-slate-200">{domain}</span>
-                      <button
-                        onClick={() => handleRemoveAllowed(domain)}
-                        className="text-slate-500 hover:text-red-400 transition-colors p-1"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ))
-                )
+                (activeTab === 'blocked' ? blockedDomains : allowedDomains).map((domain) => (
+                  <div 
+                    key={domain} 
+                    className="flex items-center justify-between px-3 py-2 rounded-xl bg-slate-950/60 border border-slate-900 hover:border-slate-800 transition-colors group"
+                  >
+                    <span className="text-xs font-mono text-slate-300 truncate max-w-[240px]">{domain}</span>
+                    <button
+                      onClick={() => handleRemoveDomain(domain)}
+                      className="text-slate-600 group-hover:text-red-400 transition-colors p-1 rounded-lg hover:bg-red-500/10"
+                      title="Remove domain"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))
               )}
             </div>
-          </div>
-
-          {/* Features Info */}
-          <div className="p-4 rounded-xl bg-slate-900/40 border border-slate-800/60">
-            <h4 className="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">Network Security Features</h4>
-            <ul className="space-y-2 text-xs text-slate-400">
-              <li className="flex items-center space-x-2">
-                <Shield className="w-4 h-4 text-cyan-400 shrink-0" />
-                <span>DNS Leak Protection & Malicious Domain Blocking</span>
-              </li>
-              <li className="flex items-center space-x-2">
-                <Shield className="w-4 h-4 text-cyan-400 shrink-0" />
-                <span>Local Loopback Tunnel for Traffic Inspection</span>
-              </li>
-            </ul>
           </div>
         </div>
       )}
