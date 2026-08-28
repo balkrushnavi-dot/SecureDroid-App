@@ -33,6 +33,17 @@ import {
     Globe,
     ShieldOff,
 } from 'lucide-react';
+import { useSecureDroid } from './hooks/useSecureDroid';
+import { ThreatModelCenterScreen } from './components/security/ThreatModelCenterScreen';
+import { SecurityAuditLogScreen } from './components/security/SecurityAuditLogScreen';
+import { AppSecurityAuditorScreen } from './components/security/AppSecurityAuditorScreen';
+import { NetworkControlScreen } from './components/NetworkControlScreen';
+import { DeviceSecurityScreen } from './components/DeviceSecurityScreen';
+import { PrivacyRadarScreen } from './components/PrivacyRadarScreen';
+import { SecurityReportScreen } from './components/SecurityReportScreen';
+import { AppDetailScreen } from './components/AppDetailScreen';
+import { AiAssistantScreen } from './components/AiAssistantScreen';
+import { FamilyScreen } from './components/FamilyScreen';
 import {
     SecureDroidTopBar,
     SecureDroidCard,
@@ -54,36 +65,51 @@ type Screen =
     | 'settings';
 
 // ============================================================
-// DUMMY HOOK — no native calls, no errors
+// LOADING SCREEN
 // ============================================================
-function useDummySecureDroid() {
-    return {
-        apps: [
-            { packageName: 'com.example.app', appName: 'Example App', isSystemApp: false },
-            { packageName: 'com.android.chrome', appName: 'Chrome', isSystemApp: true },
-        ],
-        risks: [
-            { packageName: 'com.example.app', riskLevel: 'HIGH' },
-        ],
-        loading: false,
-        connected: true,
-        error: null,
-        score: 75,
-        reload: () => {},
-        hardeningFindings: [],
-    };
+function LoadingScreen({ message }: { message?: string }) {
+    return (
+        <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center">
+            <div className="text-center space-y-4">
+                <div className="w-16 h-16 rounded-full border-4 border-sky-400/30 border-t-sky-400 animate-spin mx-auto" />
+                <h1 className="text-3xl font-bold text-white">SecureDroid</h1>
+                <p className="text-slate-400 text-sm">{message || 'Loading security data...'}</p>
+            </div>
+        </div>
+    );
 }
 
 // ============================================================
-// HOME SCREEN
+// ERROR SCREEN
+// ============================================================
+function ErrorScreen({ message, onRetry }: { message: string; onRetry: () => void }) {
+    return (
+        <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4">
+            <div className="text-center max-w-sm space-y-4">
+                <XCircle className="w-16 h-16 text-red-400 mx-auto" />
+                <h2 className="text-xl font-bold text-white">Connection Error</h2>
+                <p className="text-slate-400 text-sm">{message}</p>
+                <button
+                    onClick={onRetry}
+                    className="px-6 py-2 rounded-xl bg-sky-500 hover:bg-sky-600 text-white font-medium transition-colors"
+                >
+                    Retry
+                </button>
+            </div>
+        </div>
+    );
+}
+
+// ============================================================
+// HOME SCREEN (same as dummy but using real data)
 // ============================================================
 function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
-    const { apps, risks, loading, connected, error, score, reload } = useDummySecureDroid();
+    const { apps, risks, loading, connected, error, score, reload } = useSecureDroid();
 
-    const highRiskCount = risks.filter((r: any) => r.riskLevel === 'HIGH' || r.riskLevel === 'CRITICAL').length;
-    const mediumRiskCount = risks.filter((r: any) => r.riskLevel === 'MEDIUM').length;
+    const highRiskCount = risks.filter(r => r.riskLevel === 'HIGH' || r.riskLevel === 'CRITICAL').length;
+    const mediumRiskCount = risks.filter(r => r.riskLevel === 'MEDIUM').length;
     const totalRisks = risks.length;
-    const userApps = apps.filter((a: any) => !a.isSystemApp).length;
+    const userApps = apps.filter(a => !a.isSystemApp).length;
 
     const protectionStatus = (() => {
         if (!connected) return { label: 'Disconnected', color: 'text-red-400', bg: 'bg-red-500/10', icon: XCircle };
@@ -238,23 +264,82 @@ function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
 }
 
 // ============================================================
-// SETTINGS SCREEN (minimal)
+// SETTINGS SCREEN
 // ============================================================
 function SettingsScreen() {
+    const [darkMode, setDarkMode] = useState(true);
+    const [notifications, setNotifications] = useState(true);
+
     return (
-        <div className="p-4 pb-24">
+        <div className="p-4 pb-24 space-y-4">
             <SecureDroidSectionHeader title="Settings" />
-            <SecureDroidCard>
-                <div className="flex items-start gap-3">
-                    <Info className="w-5 h-5 text-slate-400 mt-0.5" />
-                    <div>
-                        <div className="font-semibold text-slate-100">About SecureDroid</div>
-                        <div className="text-sm text-slate-400 mt-1">
-                            SecureDroid reports on real, checkable signals about your device and installed apps.
+            <div className="space-y-3">
+                <div className="bg-slate-900/50 p-4 rounded-2xl border border-slate-800">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <Moon className="w-4 h-4 text-slate-400" />
+                            <span className="text-sm text-slate-200">Dark Mode</span>
+                        </div>
+                        <button
+                            onClick={() => setDarkMode(!darkMode)}
+                            className={`w-11 h-6 rounded-full transition-colors ${darkMode ? 'bg-sky-500' : 'bg-slate-600'}`}
+                        >
+                            <div className={`w-5 h-5 rounded-full bg-white transition-transform ${darkMode ? 'translate-x-5' : 'translate-x-0'}`} />
+                        </button>
+                    </div>
+                </div>
+                <div className="bg-slate-900/50 p-4 rounded-2xl border border-slate-800">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <Bell className="w-4 h-4 text-slate-400" />
+                            <span className="text-sm text-slate-200">Notifications</span>
+                        </div>
+                        <button
+                            onClick={() => setNotifications(!notifications)}
+                            className={`w-11 h-6 rounded-full transition-colors ${notifications ? 'bg-sky-500' : 'bg-slate-600'}`}
+                        >
+                            <div className={`w-5 h-5 rounded-full bg-white transition-transform ${notifications ? 'translate-x-5' : 'translate-x-0'}`} />
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <SecureDroidSectionHeader title="About" />
+            <div className="space-y-3">
+                <div className="bg-slate-900/50 p-4 rounded-2xl border border-slate-800">
+                    <div className="flex items-start gap-3">
+                        <Info className="w-4 h-4 text-slate-400 mt-0.5" />
+                        <div>
+                            <div className="font-semibold text-slate-100">About SecureDroid</div>
+                            <div className="text-sm text-slate-400 mt-1 leading-relaxed">
+                                SecureDroid reports on real, checkable signals about your device and installed
+                                apps. It does not perform malware scanning, hardware attestation, or bootloader
+                                verification, and does not claim capabilities it does not have.
+                            </div>
                         </div>
                     </div>
                 </div>
-            </SecureDroidCard>
+                <div className="bg-slate-900/50 p-4 rounded-2xl border border-slate-800">
+                    <div className="flex items-start gap-3">
+                        <Shield className="w-4 h-4 text-slate-400 mt-0.5" />
+                        <div>
+                            <div className="font-semibold text-slate-100">Privacy Policy</div>
+                            <div className="text-sm text-slate-400 mt-1 leading-relaxed">
+                                All security analysis is performed locally on your device. No data is sent
+                                to external servers unless explicitly configured.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div className="bg-slate-900/50 p-4 rounded-2xl border border-slate-800">
+                    <div className="flex items-start gap-3">
+                        <Users className="w-4 h-4 text-slate-400 mt-0.5" />
+                        <div>
+                            <div className="font-semibold text-slate-100">Version</div>
+                            <div className="text-sm text-slate-400 mt-1">v1.0.0 • Built with ❤️</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     );
 }
@@ -263,10 +348,31 @@ function SettingsScreen() {
 // MAIN APP
 // ============================================================
 export default function App() {
+    const { loading, connected, error, reload } = useSecureDroid();
     const [currentScreen, setCurrentScreen] = useState<Screen>('home');
+    const [selectedApp, setSelectedApp] = useState<string | null>(null);
 
+    // Show loading while initial data is loading
+    if (loading && !connected && !error) {
+        return <LoadingScreen message="Loading security data..." />;
+    }
+
+    // Show error screen if connection failed
+    if (!connected && error) {
+        return <ErrorScreen message={error} onRetry={reload} />;
+    }
+
+    // Once connected, render the full app
     const navigateTo = (screen: Screen) => setCurrentScreen(screen);
     const handleBack = () => setCurrentScreen('home');
+    const handleAppDetail = (packageName: string) => {
+        setSelectedApp(packageName);
+        setCurrentScreen('app_detail');
+    };
+    const handleAppDetailBack = () => {
+        setSelectedApp(null);
+        setCurrentScreen('app_auditor');
+    };
 
     const NAV_ITEMS = [
         { id: 'home' as Screen, label: 'HOME', icon: Home },
@@ -303,6 +409,20 @@ export default function App() {
             />
             <main className="flex-1 overflow-y-auto">
                 {currentScreen === 'home' && <HomeScreen onNavigate={navigateTo} />}
+                {currentScreen === 'threat_model' && <ThreatModelCenterScreen onBack={handleBack} />}
+                {currentScreen === 'app_auditor' && (
+                    <AppSecurityAuditorScreen onBack={handleBack} onAppSelect={handleAppDetail} />
+                )}
+                {currentScreen === 'security_log' && <SecurityAuditLogScreen onBack={handleBack} />}
+                {currentScreen === 'network' && <NetworkControlScreen onBack={handleBack} />}
+                {currentScreen === 'device_security' && <DeviceSecurityScreen onBack={handleBack} />}
+                {currentScreen === 'privacy_radar' && <PrivacyRadarScreen onBack={handleBack} />}
+                {currentScreen === 'security_report' && <SecurityReportScreen onBack={handleBack} />}
+                {currentScreen === 'app_detail' && selectedApp && (
+                    <AppDetailScreen onBack={handleAppDetailBack} packageName={selectedApp} />
+                )}
+                {currentScreen === 'ai_assistant' && <AiAssistantScreen onBack={handleBack} />}
+                {currentScreen === 'family' && <FamilyScreen onBack={handleBack} />}
                 {currentScreen === 'settings' && <SettingsScreen />}
             </main>
             <nav className="fixed bottom-0 left-0 right-0 z-40 bg-slate-950/95 backdrop-blur-lg border-t border-slate-800/80 max-w-7xl mx-auto">
