@@ -1,54 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
-import { registerPlugin } from '@capacitor/core';
+import { SecureDroidNative } from '../services/native/SecureDroidNative';
+import type { NativeInstalledApp, NativeAppRiskReport } from '../types/native';
 
-interface SecureDroidPluginShape {
-  checkConnection(): Promise<{
-    connected?: boolean;
-    message?: string;
-  }>;
-
-  getInstalledApps(): Promise<{
-    success?: boolean;
-    apps?: AppInfo[];
-    count?: number;
-    message?: string;
-  }>;
-
-  scanForRisks(): Promise<{
-    success?: boolean;
-    totalApps?: number;
-    totalRiskyApps?: number;
-    riskDetails?: RiskInfo[];
-    message?: string;
-  }>;
-}
-
-const SecureDroid =
-  registerPlugin<SecureDroidPluginShape>('SecureDroid');
-
-export interface AppInfo {
-  packageName: string;
-  appName: string;
-  versionName: string;
-  versionCode: number;
-  targetSdk?: number;
-  minSdk?: number;
-  isSystemApp: boolean;
-  isEnabled?: boolean;
-  isLaunchable?: boolean;
-  installTime: number;
-  updateTime: number;
-  installSource: string;
-  installerKnown?: boolean;
-  isSideloaded: boolean;
-  isDebuggable?: boolean;
-  permissions: string[];
-}
+// Re-export types for convenience
+export type AppInfo = NativeInstalledApp;
 
 export interface RiskInfo {
   appName: string;
   packageName: string;
-  riskLevel: 'HIGH' | 'MEDIUM' | 'LOW' | 'CRITICAL' | string;
+  riskLevel: string;
   securityScore?: number;
   findingCount?: number;
   findings?: Array<{
@@ -64,137 +24,103 @@ export interface RiskInfo {
 }
 
 export const useSecureDroid = () => {
-
   const [apps, setApps] = useState<AppInfo[]>([]);
   const [risks, setRisks] = useState<RiskInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [score, setScore] = useState(100);
+  const [hardeningFindings, setHardeningFindings] = useState<any[]>([]);
 
   const loadData = useCallback(async () => {
-
     setLoading(true);
     setError(null);
 
     try {
-
-      // Connection
-      const connection = await SecureDroid.checkConnection();
-
-      if (!connection?.connected) {
+      // 1. Check connection
+      const connResult = await SecureDroidNative.checkConnection();
+      if (!connResult.success || !connResult.data?.connected) {
         setConnected(false);
-        setError(connection?.message || 'SecureDroid native bridge is unavailable.');
+        setError(connResult.message || 'Native bridge unavailable.');
         setApps([]);
         setRisks([]);
         setScore(0);
         return;
       }
-
       setConnected(true);
 
-      // Get installed apps
-      const appsResult = await SecureDroid.getInstalledApps();
-
-      if (!appsResult || !Array.isArray(appsResult.apps)) {
-        throw new Error(appsResult?.message || 'Installed application evidence is unavailable.');
+      // 2. Get installed apps
+      const appsResult = await SecureDroidNative.getInstalledApps();
+      if (!appsResult.success || !appsResult.data) {
+        throw new Error(appsResult.message || 'Failed to get installed apps.');
       }
-
-      const appList = appsResult.apps;
+      const appList = appsResult.data;
       setApps(appList);
 
-      // Get risk scan
-      const riskResult = await SecureDroid.scanForRisks();
-
-      const allRiskDetails = Array.isArray(riskResult?.riskDetails)
-        ? riskResult.riskDetails
+      // 3. Get risk reports (using scanForRisks or getAppRiskReports – scanForRisks includes totalRiskyApps)
+      // We'll use getAppRiskReports for consistent structure.
+      const riskResult = await SecureDroidNative.getAppRiskReports();
+      const allRiskDetails = riskResult.success && riskResult.data
+        ? riskResult.data.map((report: NativeAppRiskReport) => ({
+            appName: report.label,
+            packageName: report.packageName,
+            riskLevel: report.overallRisk,
+            findings: report.findings,
+            isSystemApp: false, // not directly known; we'll cross-reference
+          }))
         : [];
 
-      // DEBUG: Log what we got from native
-      console.log('🔍 [useSecureDroid] Total risk details from native:', allRiskDetails.length);
-      console.log('🔍 [useSecureDroid] Total apps:', appList.length);
-      console.log('🔍 [useSecureDroid] System apps:', appList.filter(a => a.isSystemApp).length);
-      console.log('🔍 [useSecureDroid] User apps:', appList.filter(a => !a.isSystemApp).length);
-
-      // Filter out system apps
+      // Filter out system apps using the app list
       const userAppPackageNames = new Set(
-        appList
-          .filter(app => !app.isSystemApp)
-          .map(app => app.packageName)
+        appList.filter(app => !app.isSystemApp).map(app => app.packageName)
+      );
+      const userAppRisks = allRiskDetails.filter(risk =>
+        userAppPackageNames.has(risk.packageName)
       );
 
-      console.log('🔍 [useSecureDroid] User app package names:', userAppPackageNames.size);
-
-      const userAppRisks = allRiskDetails.filter((risk) => {
-        if (risk.isSystemApp === true) {
-          return false;
-        }
-        return userAppPackageNames.has(risk.packageName);
-      });
-
-      console.log('🔍 [useSecureDroid] User app risks after filtering:', userAppRisks.length);
-
-      // Log which risks were filtered out
-      const filteredOut = allRiskDetails.filter((risk) => {
-        if (risk.isSystemApp === true) return true;
-        return !userAppPackageNames.has(risk.packageName);
-      });
-      
-      console.log('🔍 [useSecureDroid] Filtered out risks (system apps):', filteredOut.length);
-      if (filteredOut.length > 0) {
-        console.log('🔍 [useSecureDroid] Sample filtered out:', filteredOut.slice(0, 5).map(r => r.appName));
-      }
-
-      // Only MEDIUM/HIGH/CRITICAL count as "risky apps"
-      const meaningfulRisks = userAppRisks.filter((risk) =>
-        risk.riskLevel === 'MEDIUM' ||
-        risk.riskLevel === 'HIGH' ||
-        risk.riskLevel === 'CRITICAL'
+      // Keep only MEDIUM/HIGH/CRITICAL for display
+      const meaningfulRisks = userAppRisks.filter(risk =>
+        ['MEDIUM', 'HIGH', 'CRITICAL'].includes(risk.riskLevel.toUpperCase())
       );
-
-      console.log('🔍 [useSecureDroid] Meaningful risks (MEDIUM+):', meaningfulRisks.length);
-
       setRisks(meaningfulRisks);
 
-      // Calculate score
-      const highRiskCount = meaningfulRisks.filter(
-        (risk) => risk.riskLevel === 'HIGH' || risk.riskLevel === 'CRITICAL'
-      ).length;
+      // 4. Get device hardening report
+      const hardeningResult = await SecureDroidNative.getHardeningReport();
+      let deviceScore = 0;
+      if (hardeningResult.success && hardeningResult.data) {
+        deviceScore = hardeningResult.data.score;
+        setHardeningFindings(hardeningResult.data.findings || []);
+      } else {
+        // If hardening report fails, set score to -1 to indicate unknown.
+        deviceScore = -1;
+        setHardeningFindings([]);
+      }
 
-      const mediumRiskCount = meaningfulRisks.filter(
-        (risk) => risk.riskLevel === 'MEDIUM'
-      ).length;
+      // Use hardening score as the primary security score
+      // If unknown, keep 0 but indicate with a flag (we can later add a separate state)
+      if (deviceScore >= 0) {
+        setScore(deviceScore);
+      } else {
+        setScore(0);
+        // Optionally set a flag for UI to show "Unknown"
+      }
 
-      const penalty = (highRiskCount * 8) + (mediumRiskCount * 3);
-      const calculatedScore = Math.max(0, Math.min(100, 100 - penalty));
-
-      console.log('🔍 [useSecureDroid] High risk:', highRiskCount, 'Medium risk:', mediumRiskCount, 'Score:', calculatedScore);
-
-      setScore(calculatedScore);
+      // Optionally, we could combine hardening score with app risks, but we keep it separate for clarity.
 
     } catch (err: unknown) {
-
       console.error('SecureDroid data load failed:', err);
-
       setApps([]);
       setRisks([]);
       setScore(0);
       setConnected(false);
-
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'SecureDroid security data could not be loaded.',
-      );
-
+      setError(err instanceof Error ? err.message : 'Failed to load security data.');
     } finally {
       setLoading(false);
     }
-
   }, []);
 
   useEffect(() => {
-    void loadData();
+    loadData();
   }, [loadData]);
 
   return {
@@ -204,6 +130,7 @@ export const useSecureDroid = () => {
     connected,
     error,
     score,
+    hardeningFindings,
     reload: loadData,
   };
 };
