@@ -1,6 +1,7 @@
 {
-  "name": "SecureDroid VM",
-  "description": "SecureDroid OS hardened mobile platform & VM manager with PWA standalone install support, native mobile hardware navigation, fail-closed sensor killswitches, and hardware KeyMint security.",
+  "name": "SecureDroid",
+  "description": "Premium Android Security & Privacy platform providing device security checks, app risk auditing, threat modeling, network protection, and security activity logging.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
+
