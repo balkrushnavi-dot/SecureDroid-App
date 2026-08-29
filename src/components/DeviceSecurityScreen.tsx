@@ -38,10 +38,10 @@ import {
     SecureDroidSectionHeader,
     SecureDroidStatusChip,
     SecureDroidButton,
-    SecureDroidListItem,
     SecureDroidBadge,
     SecureDroidProgressRing,
-    SecureDroidSwitch,
+    SecureDroidStatCard,
+    SecureDroidGlassCard,
 } from './ui/designSystem';
 import { useSecureDroid } from '../hooks/useSecureDroid';
 
@@ -68,7 +68,6 @@ export const DeviceSecurityScreen: React.FC<DeviceSecurityScreenProps> = ({
     const { apps, risks, loading, connected, error, score, hardeningFindings, reload } = useSecureDroid();
     const [expandedCheck, setExpandedCheck] = useState<string | null>(null);
 
-    // Compute device model info (placeholder, could be fetched from native)
     const deviceInfo = {
         model: 'Android Device',
         androidVersion: 'Android 14',
@@ -77,11 +76,9 @@ export const DeviceSecurityScreen: React.FC<DeviceSecurityScreenProps> = ({
         adminEnabled: true,
     };
 
-    // Build security checks from hardening findings
     const securityChecks = useMemo((): SecurityCheckItem[] => {
         const checks: SecurityCheckItem[] = [];
 
-        // Screen lock
         const screenLock = hardeningFindings.find(f =>
             f.id === 'NO_SCREEN_LOCK' || f.id === 'SCREEN_LOCK_ENABLED'
         );
@@ -110,7 +107,6 @@ export const DeviceSecurityScreen: React.FC<DeviceSecurityScreenProps> = ({
             });
         }
 
-        // Encryption
         const encryption = hardeningFindings.find(f =>
             f.id === 'DEVICE_ENCRYPTED' || f.id === 'DEVICE_NOT_ENCRYPTED'
         );
@@ -139,7 +135,6 @@ export const DeviceSecurityScreen: React.FC<DeviceSecurityScreenProps> = ({
             });
         }
 
-        // Security patch
         const patch = hardeningFindings.find(f =>
             f.id === 'SECURITY_PATCH_GOOD' || f.id === 'STALE_SECURITY_PATCH' || f.id === 'PATCH_DATE_UNKNOWN'
         );
@@ -170,7 +165,6 @@ export const DeviceSecurityScreen: React.FC<DeviceSecurityScreenProps> = ({
             });
         }
 
-        // USB debugging
         const usb = hardeningFindings.find(f =>
             f.id === 'USB_DEBUGGING_ENABLED' || f.id === 'USB_DEBUGGING_DISABLED'
         );
@@ -197,7 +191,6 @@ export const DeviceSecurityScreen: React.FC<DeviceSecurityScreenProps> = ({
             });
         }
 
-        // Developer options
         const dev = hardeningFindings.find(f =>
             f.id === 'DEVELOPER_OPTIONS_ENABLED' || f.id === 'DEVELOPER_OPTIONS_DISABLED'
         );
@@ -224,7 +217,6 @@ export const DeviceSecurityScreen: React.FC<DeviceSecurityScreenProps> = ({
             });
         }
 
-        // Unknown sources
         const unknown = hardeningFindings.find(f =>
             f.id === 'UNKNOWN_SOURCES_ENABLED' || f.id === 'UNKNOWN_SOURCES_DISABLED'
         );
@@ -254,23 +246,23 @@ export const DeviceSecurityScreen: React.FC<DeviceSecurityScreenProps> = ({
         return checks;
     }, [hardeningFindings]);
 
-    // Statistics
     const passCount = securityChecks.filter(c => c.status === 'PASS').length;
     const warningCount = securityChecks.filter(c => c.status === 'WARNING').length;
     const failCount = securityChecks.filter(c => c.status === 'FAIL').length;
     const unknownCount = securityChecks.filter(c => c.status === 'UNKNOWN').length;
     const totalChecks = securityChecks.length;
+    const securityScore = totalChecks > 0 ? Math.round((passCount / totalChecks) * 100) : 0;
 
     const toggleExpanded = (id: string) => {
         setExpandedCheck(expandedCheck === id ? null : id);
     };
 
-    const getStatusIcon = (status: SecurityCheckItem['status']) => {
+    const getStatusLabel = (status: SecurityCheckItem['status']) => {
         switch (status) {
-            case 'PASS': return CheckCircle2;
-            case 'WARNING': return AlertTriangle;
-            case 'FAIL': return XCircle;
-            default: return Info;
+            case 'PASS': return 'Secure';
+            case 'WARNING': return 'Needs Review';
+            case 'FAIL': return 'Vulnerable';
+            default: return 'Unknown';
         }
     };
 
@@ -283,28 +275,12 @@ export const DeviceSecurityScreen: React.FC<DeviceSecurityScreenProps> = ({
         }
     };
 
-    const getStatusLabel = (status: SecurityCheckItem['status']) => {
-        switch (status) {
-            case 'PASS': return 'Secure';
-            case 'WARNING': return 'Needs Review';
-            case 'FAIL': return 'Vulnerable';
-            default: return 'Unknown';
-        }
-    };
-
     const overallStatus = useMemo(() => {
-        if (failCount > 0) return { label: 'At Risk', color: 'text-rose-400', bg: 'bg-rose-500/10' };
-        if (warningCount > 0) return { label: 'Needs Attention', color: 'text-amber-400', bg: 'bg-amber-500/10' };
-        if (passCount === totalChecks) return { label: 'Protected', color: 'text-emerald-400', bg: 'bg-emerald-500/10' };
-        return { label: 'Unknown', color: 'text-slate-400', bg: 'bg-slate-500/10' };
+        if (failCount > 0) return { label: 'At Risk', color: 'text-rose-400' };
+        if (warningCount > 0) return { label: 'Needs Attention', color: 'text-amber-400' };
+        if (passCount === totalChecks) return { label: 'Protected', color: 'text-emerald-400' };
+        return { label: 'Unknown', color: 'text-slate-400' };
     }, [failCount, warningCount, passCount, totalChecks]);
-
-    const securityScore = useMemo(() => {
-        if (totalChecks === 0) return 0;
-        const passed = passCount;
-        const total = totalChecks;
-        return Math.round((passed / total) * 100);
-    }, [passCount, totalChecks]);
 
     return (
         <div className={`min-h-full pb-24 transition-colors ${isLight ? 'bg-zinc-50' : 'bg-slate-950'}`}>
@@ -317,7 +293,7 @@ export const DeviceSecurityScreen: React.FC<DeviceSecurityScreenProps> = ({
                     <button
                         onClick={reload}
                         disabled={loading}
-                        className="p-2 rounded-xl bg-slate-800/50 hover:bg-slate-700/50 transition-colors disabled:opacity-50"
+                        className="p-2.5 rounded-xl bg-slate-800/50 hover:bg-slate-700/50 transition-colors disabled:opacity-50"
                     >
                         <RefreshCw className={`w-4 h-4 text-slate-400 ${loading ? 'animate-spin' : ''}`} />
                     </button>
@@ -325,10 +301,9 @@ export const DeviceSecurityScreen: React.FC<DeviceSecurityScreenProps> = ({
             />
 
             <div className="p-4 space-y-4 max-w-7xl mx-auto">
-                {/* Overall Status Card */}
-                <div className="bg-gradient-to-br from-slate-900 to-slate-800/50 p-6 rounded-2xl border border-slate-700/50">
+                <SecureDroidGlassCard className="p-6">
                     <div className="flex items-center gap-6">
-                        <SecureDroidProgressRing value={securityScore} size={80} strokeWidth={6} isLight={false}>
+                        <SecureDroidProgressRing value={securityScore} size={80} strokeWidth={7} color={overallStatus.color === 'text-rose-400' ? 'rose' : overallStatus.color === 'text-amber-400' ? 'amber' : 'emerald'}>
                             <span className="text-2xl font-bold text-zinc-100">{securityScore}</span>
                         </SecureDroidProgressRing>
                         <div>
@@ -360,39 +335,22 @@ export const DeviceSecurityScreen: React.FC<DeviceSecurityScreenProps> = ({
                             </div>
                         </div>
                     </div>
-                </div>
+                </SecureDroidGlassCard>
 
-                {/* Device Info */}
                 <SecureDroidSectionHeader title="Device Information" isLight={isLight} />
-                <div className="grid grid-cols-2 gap-2">
-                    <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-800">
-                        <div className="text-[10px] text-slate-500 uppercase tracking-wider">Model</div>
-                        <div className="text-sm font-medium text-zinc-200 mt-0.5">{deviceInfo.model}</div>
-                    </div>
-                    <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-800">
-                        <div className="text-[10px] text-slate-500 uppercase tracking-wider">Android Version</div>
-                        <div className="text-sm font-medium text-zinc-200 mt-0.5">{deviceInfo.androidVersion}</div>
-                    </div>
-                    <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-800">
-                        <div className="text-[10px] text-slate-500 uppercase tracking-wider">Security Patch</div>
-                        <div className="text-sm font-medium text-zinc-200 mt-0.5">{deviceInfo.patchLevel}</div>
-                    </div>
-                    <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-800">
-                        <div className="text-[10px] text-slate-500 uppercase tracking-wider">Play Protect</div>
-                        <div className="text-sm font-medium text-emerald-400 mt-0.5 flex items-center gap-1">
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                            Certified
-                        </div>
-                    </div>
+                <div className="grid grid-cols-4 gap-2">
+                    <SecureDroidStatCard label="Model" value={deviceInfo.model} icon={Smartphone} color="slate" />
+                    <SecureDroidStatCard label="Android" value={deviceInfo.androidVersion} icon={Globe} color="slate" />
+                    <SecureDroidStatCard label="Patch" value={deviceInfo.patchLevel} icon={Calendar} color="emerald" />
+                    <SecureDroidStatCard label="Play Protect" value="✅" icon={Shield} color="emerald" />
                 </div>
 
-                {/* Security Checks */}
                 <SecureDroidSectionHeader title="Security Checks" isLight={isLight} />
 
                 <div className="space-y-2.5">
                     {securityChecks.map((check) => {
-                        const StatusIcon = getStatusIcon(check.status);
                         const isExpanded = expandedCheck === check.id;
+                        const StatusIcon = check.status === 'PASS' ? CheckCircle2 : check.status === 'WARNING' ? AlertTriangle : check.status === 'FAIL' ? XCircle : Info;
 
                         return (
                             <SecureDroidCard
@@ -406,7 +364,7 @@ export const DeviceSecurityScreen: React.FC<DeviceSecurityScreenProps> = ({
                                 >
                                     <div className="flex items-center gap-3">
                                         <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${getStatusColor(check.status)}`}>
-                                            <check.icon className={`w-4 h-4 ${check.status === 'PASS' ? 'text-emerald-400' : check.status === 'WARNING' ? 'text-amber-400' : check.status === 'FAIL' ? 'text-rose-400' : 'text-slate-400'}`} />
+                                            <check.icon className="w-4 h-4" />
                                         </div>
 
                                         <div className="flex-1 min-w-0">
@@ -449,7 +407,6 @@ export const DeviceSecurityScreen: React.FC<DeviceSecurityScreenProps> = ({
                     })}
                 </div>
 
-                {/* Device Admin Status */}
                 <SecureDroidSectionHeader title="System Privileges" isLight={isLight} />
                 <SecureDroidCard className="p-4" isLight={isLight}>
                     <div className="flex items-center gap-3">
@@ -459,18 +416,13 @@ export const DeviceSecurityScreen: React.FC<DeviceSecurityScreenProps> = ({
                             <div className="text-sm text-slate-400">Enabled • SecureDroid has admin privileges</div>
                         </div>
                         <div className="ml-auto">
-                            <span className="text-xs font-medium text-emerald-400">Active</span>
+                            <SecureDroidStatusChip status="PROTECTED" isLight={isLight} size="sm" />
                         </div>
                     </div>
                 </SecureDroidCard>
 
-                {/* Recommendations Summary */}
                 {(failCount > 0 || warningCount > 0) && (
-                    <div className={`p-4 rounded-xl border ${
-                        failCount > 0
-                            ? 'bg-rose-950/20 border-rose-800/30'
-                            : 'bg-amber-950/20 border-amber-800/30'
-                    }`}>
+                    <div className={`p-4 rounded-xl border ${failCount > 0 ? 'bg-rose-950/20 border-rose-800/30' : 'bg-amber-950/20 border-amber-800/30'}`}>
                         <div className="flex items-start gap-3">
                             {failCount > 0 ? (
                                 <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
@@ -478,7 +430,7 @@ export const DeviceSecurityScreen: React.FC<DeviceSecurityScreenProps> = ({
                                 <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
                             )}
                             <div>
-                                <p className="text-sm font-medium ${failCount > 0 ? 'text-rose-400' : 'text-amber-400'}">
+                                <p className={`text-sm font-medium ${failCount > 0 ? 'text-rose-400' : 'text-amber-400'}`}>
                                     {failCount > 0
                                         ? `${failCount} critical issue${failCount > 1 ? 's' : ''} found`
                                         : `${warningCount} item${warningCount > 1 ? 's' : ''} need review`}
@@ -487,22 +439,6 @@ export const DeviceSecurityScreen: React.FC<DeviceSecurityScreenProps> = ({
                                     {failCount > 0
                                         ? 'Immediate action recommended to secure your device.'
                                         : 'Review the warnings to improve your device security posture.'}
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {unknownCount > 0 && (
-                    <div className="p-4 rounded-xl border bg-slate-800/30 border-slate-700/50">
-                        <div className="flex items-start gap-3">
-                            <Info className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
-                            <div>
-                                <p className="text-sm font-medium text-zinc-300">
-                                    Some information is unavailable
-                                </p>
-                                <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                                    Your device may not expose all security settings. The checks shown are based on available data.
                                 </p>
                             </div>
                         </div>
