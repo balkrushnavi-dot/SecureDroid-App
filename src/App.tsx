@@ -28,40 +28,17 @@ import {
     Smartphone,
 } from 'lucide-react';
 import { useSecureDroid } from './hooks/useSecureDroid';
-import { ThreatModelCenterScreen } from './components/security/ThreatModelCenterScreen';
-import { SecurityAuditLogScreen } from './components/security/SecurityAuditLogScreen';
-import { AppSecurityAuditorScreen } from './components/security/AppSecurityAuditorScreen';
-import { NetworkControlScreen } from './components/NetworkControlScreen';
-import { DeviceSecurityScreen } from './components/DeviceSecurityScreen';
-import { PrivacyRadarScreen } from './components/PrivacyRadarScreen';
-import { SecurityReportScreen } from './components/SecurityReportScreen';
-import { AppDetailScreen } from './components/AppDetailScreen';
-import { AiAssistantScreen } from './components/AiAssistantScreen';
-import { FamilyScreen } from './components/FamilyScreen';
 import {
     SecureDroidTopBar,
     SecureDroidCard,
     SecureDroidSectionHeader,
-    SecureDroidButton,
     SecureDroidBadge,
     SecureDroidProgressRing,
     SecureDroidStatCard,
     SecureDroidGlassCard,
 } from './components/ui/designSystem';
 
-type Screen =
-    | 'home'
-    | 'threat_model'
-    | 'app_auditor'
-    | 'security_log'
-    | 'network'
-    | 'device_security'
-    | 'privacy_radar'
-    | 'security_report'
-    | 'app_detail'
-    | 'ai_assistant'
-    | 'family'
-    | 'settings';
+type Screen = 'home' | 'settings';
 
 function LoadingScreen({ message }: { message?: string }) {
     return (
@@ -347,7 +324,6 @@ function SettingsScreen() {
 export default function App() {
     const { loading, connected, error, reload } = useSecureDroid();
     const [currentScreen, setCurrentScreen] = useState<Screen>('home');
-    const [selectedApp, setSelectedApp] = useState<string | null>(null);
 
     if (loading && !connected && !error) {
         return <LoadingScreen message="Loading security data..." />;
@@ -359,37 +335,15 @@ export default function App() {
 
     const navigateTo = (screen: Screen) => setCurrentScreen(screen);
     const handleBack = () => setCurrentScreen('home');
-    const handleAppDetail = (packageName: string) => {
-        setSelectedApp(packageName);
-        setCurrentScreen('app_detail');
-    };
-    const handleAppDetailBack = () => {
-        setSelectedApp(null);
-        setCurrentScreen('app_auditor');
-    };
 
     const NAV_ITEMS = [
         { id: 'home' as Screen, label: 'HOME', icon: Home },
-        { id: 'app_auditor' as Screen, label: 'APPS', icon: ShieldCheck },
-        { id: 'threat_model' as Screen, label: 'THREATS', icon: AlertTriangle },
-        { id: 'network' as Screen, label: 'NETWORK', icon: Wifi },
-        { id: 'security_log' as Screen, label: 'LOG', icon: ScrollText },
         { id: 'settings' as Screen, label: 'SETTINGS', icon: SettingsIcon },
     ];
 
     const getTitle = () => {
         const titles: Record<Screen, string> = {
             home: 'SecureDroid',
-            threat_model: 'Threat Model Center',
-            app_auditor: 'App Security Auditor',
-            security_log: 'Security Audit Log',
-            network: 'Network Protection',
-            device_security: 'Device Security',
-            privacy_radar: 'Privacy Radar',
-            security_report: 'Security Report',
-            app_detail: 'App Detail',
-            ai_assistant: 'AI Assistant',
-            family: 'Family Protection',
             settings: 'Settings',
         };
         return titles[currentScreen] || 'SecureDroid';
@@ -404,20 +358,6 @@ export default function App() {
 
             <main className="flex-1 overflow-y-auto">
                 {currentScreen === 'home' && <HomeScreen onNavigate={navigateTo} />}
-                {currentScreen === 'threat_model' && <ThreatModelCenterScreen onBack={handleBack} />}
-                {currentScreen === 'app_auditor' && (
-                    <AppSecurityAuditorScreen onBack={handleBack} onAppSelect={handleAppDetail} />
-                )}
-                {currentScreen === 'security_log' && <SecurityAuditLogScreen onBack={handleBack} />}
-                {currentScreen === 'network' && <NetworkControlScreen onBack={handleBack} />}
-                {currentScreen === 'device_security' && <DeviceSecurityScreen onBack={handleBack} />}
-                {currentScreen === 'privacy_radar' && <PrivacyRadarScreen onBack={handleBack} />}
-                {currentScreen === 'security_report' && <SecurityReportScreen onBack={handleBack} />}
-                {currentScreen === 'app_detail' && selectedApp && (
-                    <AppDetailScreen onBack={handleAppDetailBack} packageName={selectedApp} />
-                )}
-                {currentScreen === 'ai_assistant' && <AiAssistantScreen onBack={handleBack} />}
-                {currentScreen === 'family' && <FamilyScreen onBack={handleBack} />}
                 {currentScreen === 'settings' && <SettingsScreen />}
             </main>
 
