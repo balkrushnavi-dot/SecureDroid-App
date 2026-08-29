@@ -202,8 +202,10 @@ export const useSecureDroid = () => {
       let connResult;
       try {
         connResult = await SecureDroidNative.checkConnection();
-      } catch {
+      } catch (err) {
+        console.warn('Connection check failed, using mock data:', err);
         setUsingMock(true);
+        setConnected(true); // Still show UI with mock data
         setError('Native bridge unavailable — using mock data.');
         setLoading(false);
         return;
@@ -211,6 +213,7 @@ export const useSecureDroid = () => {
 
       if (!connResult.success || !connResult.data?.connected) {
         setUsingMock(true);
+        setConnected(true); // Still show UI with mock data
         setError('Native bridge unavailable — using mock data.');
         setLoading(false);
         return;
@@ -222,8 +225,10 @@ export const useSecureDroid = () => {
       let appsResult;
       try {
         appsResult = await SecureDroidNative.getInstalledApps();
-      } catch {
+      } catch (err) {
+        console.warn('Failed to get apps, using mock data:', err);
         setUsingMock(true);
+        setConnected(true);
         setLoading(false);
         return;
       }
@@ -266,7 +271,8 @@ export const useSecureDroid = () => {
       let riskResult;
       try {
         riskResult = await SecureDroidNative.getAppRiskReports();
-      } catch {
+      } catch (err) {
+        console.warn('Failed to get risk reports, using mock data:', err);
         setUsingMock(true);
         setLoading(false);
         return;
@@ -304,7 +310,6 @@ export const useSecureDroid = () => {
         if (meaningfulRisks.length > 0) {
           setRisks(meaningfulRisks);
         } else if (allRiskDetails.length > 0) {
-          // If there are risks but none are medium/high/critical, keep them all (but we'll still filter for display)
           setRisks(userAppRisks);
         }
       }
@@ -313,7 +318,8 @@ export const useSecureDroid = () => {
       let hardeningResult;
       try {
         hardeningResult = await SecureDroidNative.getHardeningReport();
-      } catch {
+      } catch (err) {
+        console.warn('Failed to get hardening report, using mock data:', err);
         setUsingMock(true);
         setLoading(false);
         return;
@@ -335,6 +341,7 @@ export const useSecureDroid = () => {
     } catch (err) {
       console.error('SecureDroid loadData error:', err);
       setUsingMock(true);
+      setConnected(true);
       setError('Failed to load real data — using mock data.');
     } finally {
       setLoading(false);
