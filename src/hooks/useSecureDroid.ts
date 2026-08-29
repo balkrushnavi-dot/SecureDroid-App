@@ -2,762 +2,472 @@ import { useState, useEffect, useCallback } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { SecureDroidNative } from '../services/native/SecureDroidNative';
 import type {
-  NativeInstalledApp,
-  NativeAppRiskReport,
+NativeInstalledApp,
+NativeAppRiskReport,
 } from '../types/native';
 
-// ============================================================
-// PUBLIC TYPES
-// ============================================================
-
 export interface AppInfo {
-  packageName: string;
-  appName: string;
-  label?: string;
-  versionName: string;
-  versionCode: number;
-  targetSdk?: number;
-  minSdk?: number;
-  isSystemApp: boolean;
-  isEnabled?: boolean;
-  isLaunchable?: boolean;
-  firstInstallTime: number;
-  lastUpdateTime: number;
-  installTime: number;
-  updateTime: number;
-  requestedPermissions: string[];
-  grantedPermissions: string[];
-  dangerousPermissions: string[];
-  installerPackage?: string;
-  installSource: string;
-  installerKnown?: boolean;
-  isSideloaded: boolean;
-  isDebuggable?: boolean;
-  enabled?: boolean;
-  permissions: string[];
-  signingCertSha256?: string;
+packageName: string;
+appName: string;
+label?: string;
+versionName: string;
+versionCode: number;
+targetSdk?: number;
+minSdk?: number;
+isSystemApp: boolean;
+isEnabled?: boolean;
+isLaunchable?: boolean;
+firstInstallTime: number;
+lastUpdateTime: number;
+installTime: number;
+updateTime: number;
+requestedPermissions: string[];
+grantedPermissions: string[];
+dangerousPermissions: string[];
+installerPackage?: string;
+installSource: string;
+installerKnown?: boolean;
+isSideloaded: boolean;
+isDebuggable?: boolean;
+enabled?: boolean;
+permissions: string[];
+signingCertSha256?: string;
 }
 
 export interface RiskInfo {
-  appName: string;
-  packageName: string;
-  riskLevel: string;
-  securityScore?: number;
-  findingCount?: number;
-  findings?: Array<{
-    code?: string;
-    title?: string;
-    description?: string;
-    severity?: string;
-    points?: number;
-  }>;
-  reason?: string;
-  installSource?: string;
-  isSystemApp?: boolean;
+appName: string;
+packageName: string;
+riskLevel: string;
+securityScore?: number;
+findingCount?: number;
+findings?: Array<{
+code?: string;
+title?: string;
+description?: string;
+severity?: string;
+points?: number;
+}>;
+reason?: string;
+installSource?: string;
+isSystemApp?: boolean;
 }
 
 export interface HardeningFinding {
-  id: string;
-  level: 'GOOD' | 'WARNING' | 'CRITICAL';
-  summary: string;
+id: string;
+level: 'GOOD' | 'WARNING' | 'CRITICAL';
+summary: string;
 }
 
-// ============================================================
-// NORMALIZATION HELPERS
-// ============================================================
+const stringValue = (value: unknown, fallback = '') =>
+typeof value === 'string' ? value : fallback;
 
-const asString = (value: unknown, fallback = ''): string =>
-  typeof value === 'string' ? value : fallback;
+const numberValue = (value: unknown, fallback = 0) =>
+typeof value === 'number' && Number.isFinite(value)
+? value
+: fallback;
 
-const asNumber = (value: unknown, fallback = 0): number =>
-  typeof value === 'number' && Number.isFinite(value)
-    ? value
-    : fallback;
+const booleanValue = (value: unknown, fallback = false) =>
+typeof value === 'boolean' ? value : fallback;
 
-const asBoolean = (
-  value: unknown,
-  fallback = false,
-): boolean =>
-  typeof value === 'boolean' ? value : fallback;
-
-const asStringArray = (value: unknown): string[] =>
-  Array.isArray(value)
-    ? value.filter(
-        (item): item is string => typeof item === 'string',
-      )
-    : [];
+const stringArray = (value: unknown): string[] =>
+Array.isArray(value)
+? value.filter((item): item is string => typeof item === 'string')
+: [];
 
 const normalizeApp = (app: NativeInstalledApp): AppInfo => {
-  const raw = app as unknown as Record<string, unknown>;
+const raw = app as unknown as Record<string, unknown>;
 
-  const requestedPermissions = asStringArray(
-    raw.requestedPermissions ?? raw.permissions,
-  );
+const requestedPermissions = stringArray(
+raw.requestedPermissions ?? raw.permissions
+);
 
-  const grantedPermissions = asStringArray(
-    raw.grantedPermissions,
-  );
+const grantedPermissions = stringArray(raw.grantedPermissions);
 
-  const dangerousPermissions = asStringArray(
-    raw.dangerousPermissions,
-  );
+const dangerousPermissions = stringArray(
+raw.dangerousPermissions
+);
 
-  const installerPackage =
-    asString(
-      raw.installerPackage ??
-        raw.installerPackageName ??
-        raw.installSource,
-      '',
-    ) || undefined;
+const firstInstallTime = numberValue(
+raw.firstInstallTime ?? raw.installTime
+);
 
-  const installSource =
-    asString(
-      raw.installSource ??
-        raw.installerPackage ??
-        raw.installerPackageName,
-      'UNKNOWN',
-    );
+const lastUpdateTime = numberValue(
+raw.lastUpdateTime ?? raw.updateTime
+);
 
-  const firstInstallTime = asNumber(
-    raw.firstInstallTime ?? raw.installTime,
-    0,
-  );
+const installerPackage =
+stringValue(
+raw.installerPackage ??
+raw.installerPackageName ??
+raw.installSource
+) || undefined;
 
-  const lastUpdateTime = asNumber(
-    raw.lastUpdateTime ?? raw.updateTime,
-    0,
-  );
+const installSource = stringValue(
+raw.installSource ??
+raw.installerPackage ??
+raw.installerPackageName,
+'UNKNOWN'
+);
 
-  const enabled = asBoolean(
-    raw.enabled ?? raw.isEnabled,
-    true,
-  );
+const enabled = booleanValue(
+raw.enabled ?? raw.isEnabled,
+true
+);
 
-  return {
-    packageName: asString(
-      raw.packageName,
-      'UNKNOWN',
-    ),
-
-    appName: asString(
-      raw.label ?? raw.appName ?? raw.packageName,
-      'Unknown application',
-    ),
-
-    label:
-      asString(
-        raw.label ?? raw.appName,
-        '',
-      ) || undefined,
-
-    versionName: asString(
-      raw.versionName,
-      'Unknown',
-    ),
-
-    versionCode: asNumber(
-      raw.versionCode,
-      0,
-    ),
-
-    targetSdk: asNumber(
-      raw.targetSdk,
-      0,
-    ),
-
-    minSdk: asNumber(
-      raw.minSdk,
-      0,
-    ),
-
-    isSystemApp: asBoolean(
-      raw.isSystemApp,
-      false,
-    ),
-
-    isEnabled: enabled,
-
-    isLaunchable:
-      typeof raw.isLaunchable === 'boolean'
-        ? raw.isLaunchable
-        : undefined,
-
-    firstInstallTime,
-    lastUpdateTime,
-
-    installTime: firstInstallTime,
-    updateTime: lastUpdateTime,
-
-    requestedPermissions,
-    grantedPermissions,
-    dangerousPermissions,
-
-    installerPackage,
-
-    installSource,
-
-    installerKnown:
-      typeof raw.installerKnown === 'boolean'
-        ? raw.installerKnown
-        : installerPackage !== undefined,
-
-    isSideloaded: asBoolean(
-      raw.isSideloaded,
-      false,
-    ),
-
-    isDebuggable:
-      typeof raw.isDebuggable === 'boolean'
-        ? raw.isDebuggable
-        : undefined,
-
-    enabled,
-
-    permissions: requestedPermissions,
-
-    signingCertSha256:
-      asString(
-        raw.signingCertSha256,
-        '',
-      ) || undefined,
-  };
+return {
+packageName: stringValue(raw.packageName, 'UNKNOWN'),
+appName: stringValue(
+raw.label ?? raw.appName ?? raw.packageName,
+'Unknown application'
+),
+label:
+stringValue(raw.label ?? raw.appName) || undefined,
+versionName: stringValue(raw.versionName, 'Unknown'),
+versionCode: numberValue(raw.versionCode),
+targetSdk: numberValue(raw.targetSdk),
+minSdk: numberValue(raw.minSdk),
+isSystemApp: booleanValue(raw.isSystemApp),
+isEnabled: enabled,
+isLaunchable:
+typeof raw.isLaunchable === 'boolean'
+? raw.isLaunchable
+: undefined,
+firstInstallTime,
+lastUpdateTime,
+installTime: firstInstallTime,
+updateTime: lastUpdateTime,
+requestedPermissions,
+grantedPermissions,
+dangerousPermissions,
+installerPackage,
+installSource,
+installerKnown:
+typeof raw.installerKnown === 'boolean'
+? raw.installerKnown
+: installerPackage !== undefined,
+isSideloaded: booleanValue(raw.isSideloaded),
+isDebuggable:
+typeof raw.isDebuggable === 'boolean'
+? raw.isDebuggable
+: undefined,
+enabled,
+permissions: requestedPermissions,
+signingCertSha256:
+stringValue(raw.signingCertSha256) || undefined,
+};
 };
 
 const normalizeRisk = (
-  report: NativeAppRiskReport,
-  appByPackage: Map<string, AppInfo>,
+report: NativeAppRiskReport,
+appMap: Map<string, AppInfo>
 ): RiskInfo => {
-  const raw = report as unknown as Record<string, unknown>;
+const raw = report as unknown as Record<string, unknown>;
 
-  const packageName = asString(
-    raw.packageName,
-    '',
-  );
+const packageName = stringValue(raw.packageName);
+const app = appMap.get(packageName);
 
-  const relatedApp = appByPackage.get(packageName);
+const rawFindings = Array.isArray(raw.findings)
+? raw.findings
+: [];
 
-  const rawFindings = Array.isArray(raw.findings)
-    ? raw.findings
-    : [];
+const findings = rawFindings.map((finding) => {
+const item = finding as Record<string, unknown>;
 
-  const findings = rawFindings.map((finding) => {
-    const item =
-      finding as Record<string, unknown>;
-
-    return {
-      code:
-        asString(
-          item.id ?? item.code,
-          '',
-        ) || undefined,
-
-      title:
-        asString(
-          item.title ?? item.summary,
-          'Security finding',
-        ),
-
-      description:
-        asString(
-          item.summary ?? item.description,
-          '',
-        ),
-
-      severity:
-        asString(
-          item.severity ?? item.level,
-          'UNKNOWN',
-        ),
-
-      points:
-        typeof item.points === 'number'
-          ? item.points
-          : undefined,
-    };
-  });
-
-  const riskLevel = asString(
-    raw.overallRisk ??
-      raw.riskLevel ??
-      raw.severity,
-    'UNKNOWN',
-  );
-
-  const securityScore =
-    typeof raw.securityScore === 'number'
-      ? raw.securityScore
-      : typeof raw.score === 'number'
-        ? raw.score
-        : undefined;
-
-  return {
-    appName:
-      asString(
-        raw.label ?? raw.appName,
-        relatedApp?.appName ?? packageName,
-      ),
-
-    packageName,
-
-    riskLevel,
-
-    securityScore,
-
-    findingCount: findings.length,
-
-    findings,
-
-    reason:
-      asString(
-        raw.reason ?? raw.summary,
-        '',
-      ) || undefined,
-
-    installSource:
-      relatedApp?.installSource,
-
-    isSystemApp:
-      relatedApp?.isSystemApp,
-  };
+return {
+  code:
+    stringValue(item.id ?? item.code) || undefined,
+  title:
+    stringValue(
+      item.title ?? item.summary,
+      'Security finding'
+    ),
+  description:
+    stringValue(
+      item.summary ?? item.description
+    ),
+  severity:
+    stringValue(
+      item.severity ?? item.level,
+      'UNKNOWN'
+    ),
+  points:
+    typeof item.points === 'number'
+      ? item.points
+      : undefined,
 };
 
-// ============================================================
-// HOOK
-// ============================================================
+});
+
+const riskLevel = stringValue(
+raw.overallRisk ??
+raw.riskLevel ??
+raw.severity,
+'UNKNOWN'
+);
+
+const securityScore =
+typeof raw.securityScore === 'number'
+? raw.securityScore
+: typeof raw.score === 'number'
+? raw.score
+: undefined;
+
+return {
+appName: stringValue(
+raw.label ?? raw.appName,
+app?.appName ?? packageName
+),
+packageName,
+riskLevel,
+securityScore,
+findingCount: findings.length,
+findings,
+reason:
+stringValue(raw.reason ?? raw.summary) || undefined,
+installSource: app?.installSource,
+isSystemApp: app?.isSystemApp,
+};
+};
 
 export const useSecureDroid = () => {
-  const isNative = Capacitor.isNativePlatform();
+const isNative = Capacitor.isNativePlatform();
 
-  /*
-   * IMPORTANT:
-   *
-   * Empty state means "no data loaded".
-   *
-   * It does NOT mean:
-   * - safe
-   * - protected
-   * - no threats
-   * - no risky apps
-   * - score = 100
-   */
-  const [apps, setApps] = useState<AppInfo[]>([]);
-  const [risks, setRisks] = useState<RiskInfo[]>([]);
+const [apps, setApps] = useState<AppInfo[]>([]);
+const [risks, setRisks] = useState<RiskInfo[]>([]);
+const [loading, setLoading] = useState(true);
+const [connected, setConnected] = useState(false);
+const [error, setError] = useState<string | null>(null);
+const [score, setScore] = useState(0);
+const [hardeningFindings, setHardeningFindings] = useState<
+HardeningFinding[]
 
-  const [loading, setLoading] =
-    useState<boolean>(false);
+«([]);»
 
-  const [connected, setConnected] =
-    useState<boolean>(false);
+const usingMock = false;
 
-  const [error, setError] =
-    useState<string | null>(null);
+const loadData = useCallback(async () => {
+setLoading(true);
+setError(null);
 
-  /*
-   * A score of 0 here means "no score available".
-   *
-   * It must not be interpreted by the UI as:
-   * "device has a security score of zero".
-   *
-   * The current consuming screens expect a number,
-   * so the public type is preserved.
-   */
-  const [score, setScore] =
-    useState<number>(0);
+if (!isNative) {
+  setApps([]);
+  setRisks([]);
+  setScore(0);
+  setHardeningFindings([]);
+  setConnected(false);
+  setLoading(false);
+  return;
+}
 
-  const [hardeningFindings, setHardeningFindings] =
-    useState<HardeningFinding[]>([]);
+try {
+  let nativeConnected = false;
 
-  /*
-   * Kept for compatibility with existing consumers.
-   *
-   * This is permanently false in production.
-   * There is no mock-data fallback.
-   */
-  const [usingMock] =
-    useState<boolean>(false);
+  try {
+    const result =
+      await SecureDroidNative.checkConnection();
 
-  // ==========================================================
-  // LOAD REAL NATIVE DATA
-  // ==========================================================
+    nativeConnected =
+      result.success === true &&
+      result.data?.connected === true;
+  } catch {
+    nativeConnected = false;
+  }
 
-  const loadData = useCallback(async () => {
-    /*
-     * WEB PREVIEW
-     *
-     * There is no Android PackageManager here.
-     * Therefore there is no legitimate installed-app inventory.
-     */
-    if (!isNative) {
-      setApps([]);
-      setRisks([]);
-      setScore(0);
-      setHardeningFindings([]);
-      setConnected(false);
-      setError(
-        'SecureDroid security data is unavailable in web preview. Run the Android application to access native security data.',
-      );
-      setLoading(false);
-      return;
-    }
+  setConnected(nativeConnected);
 
-    setLoading(true);
-    setError(null);
+  if (!nativeConnected) {
+    setError(
+      'Native SecureDroid bridge is not connected.'
+    );
+    setLoading(false);
+    return;
+  }
 
-    /*
-     * Clear stale data before loading.
-     *
-     * This prevents an old scan from being displayed as
-     * current security information after a failed reload.
-     */
-    setApps([]);
-    setRisks([]);
-    setScore(0);
-    setHardeningFindings([]);
+  const errors: string[] = [];
 
-    let connectionSucceeded = false;
-    const errors: string[] = [];
+  try {
+    const result =
+      await SecureDroidNative.getInstalledApps();
 
-    try {
-      // ======================================================
-      // 1. NATIVE CONNECTION
-      // ======================================================
-
-      try {
-        const connection =
-          await SecureDroidNative.checkConnection();
-
-        if (
-          connection.success &&
-          connection.data?.connected === true
-        ) {
-          connectionSucceeded = true;
-          setConnected(true);
-        } else {
-          setConnected(false);
-
-          errors.push(
-            connection.message ??
-              'SecureDroid native bridge is unavailable.',
-          );
-        }
-      } catch (connectionError: unknown) {
-        setConnected(false);
-
-        errors.push(
-          connectionError instanceof Error
-            ? connectionError.message
-            : 'SecureDroid native connection check failed.',
-        );
-      }
-
-      /*
-       * Do not continue pretending native services work
-       * when the bridge itself is unavailable.
-       */
-      if (!connectionSucceeded) {
-        setError(
-          errors.join(' ') ||
-            'SecureDroid native services are unavailable.',
-        );
-
-        return;
-      }
-
-      // ======================================================
-      // 2. INSTALLED APPLICATION INVENTORY
-      // ======================================================
-
-      let appsResult;
-
-      try {
-        appsResult =
-          await SecureDroidNative.getInstalledApps();
-      } catch (appsError: unknown) {
-        errors.push(
-          appsError instanceof Error
-            ? appsError.message
-            : 'Failed to retrieve installed applications.',
-        );
-
-        setError(errors.join(' '));
-
-        return;
-      }
-
-      if (
-        !appsResult.success ||
-        !Array.isArray(appsResult.data)
-      ) {
-        errors.push(
-          appsResult.message ??
-            'Installed application inventory is unavailable.',
-        );
-
-        setError(errors.join(' '));
-
-        return;
-      }
-
-      const normalizedApps =
-        appsResult.data
+    if (
+      result.success &&
+      Array.isArray(result.data)
+    ) {
+      const normalized =
+        result.data
           .map(normalizeApp)
           .filter(
-            (app) =>
+            app =>
               app.packageName !== 'UNKNOWN' &&
-              app.packageName.trim().length > 0,
+              app.packageName.length > 0
           );
 
-      setApps(normalizedApps);
+      setApps(normalized);
 
-      const appByPackage =
-        new Map<string, AppInfo>(
-          normalizedApps.map((app) => [
-            app.packageName,
-            app,
-          ]),
-        );
-
-      // ======================================================
-      // 3. APPLICATION RISK ANALYSIS
-      // ======================================================
+      const appMap = new Map(
+        normalized.map(app => [
+          app.packageName,
+          app,
+        ])
+      );
 
       try {
         const riskResult =
           await SecureDroidNative.getAppRiskReports();
 
         if (
-          !riskResult.success ||
-          !Array.isArray(riskResult.data)
+          riskResult.success &&
+          Array.isArray(riskResult.data)
         ) {
-          errors.push(
-            riskResult.message ??
-              'Application risk analysis is unavailable.',
-          );
-        } else {
           const normalizedRisks =
             riskResult.data
-              .map((report) =>
+              .map(report =>
                 normalizeRisk(
                   report,
-                  appByPackage,
-                ),
+                  appMap
+                )
               )
-              .filter(
-                (risk) =>
-                  risk.packageName.length > 0 &&
-                  appByPackage.has(
-                    risk.packageName,
-                  ),
+              .filter(risk =>
+                appMap.has(risk.packageName)
               );
 
-          /*
-           * IMPORTANT:
-           *
-           * Do not manufacture risk entries for applications
-           * that the native analyzer did not report.
-           *
-           * Also do not convert "no findings" into "safe".
-           */
           setRisks(normalizedRisks);
-        }
-      } catch (riskError: unknown) {
-        errors.push(
-          riskError instanceof Error
-            ? riskError.message
-            : 'Application risk analysis failed.',
-        );
-      }
-
-      // ======================================================
-      // 4. DEVICE HARDENING
-      // ======================================================
-
-      try {
-        const hardeningResult =
-          await SecureDroidNative.getHardeningReport();
-
-        if (
-          !hardeningResult.success ||
-          !hardeningResult.data
-        ) {
-          errors.push(
-            hardeningResult.message ??
-              'Device hardening assessment is unavailable.',
-          );
         } else {
-          const nativeScore =
-            hardeningResult.data.score;
-
-          /*
-           * Only accept a finite numeric score.
-           * Do not invent a default such as 85.
-           */
-          if (
-            typeof nativeScore === 'number' &&
-            Number.isFinite(nativeScore)
-          ) {
-            setScore(
-              Math.max(
-                0,
-                Math.min(
-                  100,
-                  nativeScore,
-                ),
-              ),
-            );
-          } else {
-            setScore(0);
-
-            errors.push(
-              'Device hardening returned no valid security score.',
-            );
-          }
-
-          const findings =
-            Array.isArray(
-              hardeningResult.data.findings,
-            )
-              ? hardeningResult.data.findings
-                  .map((finding) => {
-                    const item =
-                      finding as Record<
-                        string,
-                        unknown
-                      >;
-
-                    const level =
-                      asString(
-                        item.level,
-                        'UNKNOWN',
-                      );
-
-                    if (
-                      level !== 'GOOD' &&
-                      level !== 'WARNING' &&
-                      level !== 'CRITICAL'
-                    ) {
-                      return null;
-                    }
-
-                    return {
-                      id: asString(
-                        item.id,
-                        'UNKNOWN',
-                      ),
-
-                      level,
-
-                      summary: asString(
-                        item.summary,
-                        '',
-                      ),
-                    } satisfies HardeningFinding;
-                  })
-                  .filter(
-                    (
-                      finding,
-                    ): finding is HardeningFinding =>
-                      finding !== null,
-                  )
-              : [];
-
-          setHardeningFindings(
-            findings,
+          errors.push(
+            riskResult.message ||
+              'Risk analysis unavailable.'
           );
         }
-      } catch (hardeningError: unknown) {
+      } catch {
         errors.push(
-          hardeningError instanceof Error
-            ? hardeningError.message
-            : 'Device hardening assessment failed.',
+          'Risk analysis failed.'
         );
       }
-
-      // ======================================================
-      // 5. FINAL STATE
-      // ======================================================
-
-      /*
-       * Connection succeeded even if an individual security
-       * subsystem failed.
-       *
-       * Therefore:
-       *
-       * connected = native bridge is alive
-       *
-       * error = one or more security data sources failed
-       *
-       * This prevents a partial native failure from being
-       * falsely represented as total bridge failure.
-       */
-      setConnected(true);
-
-      if (errors.length > 0) {
-        setError(
-          errors.join(' '),
-        );
-      } else {
-        setError(null);
-      }
-    } catch (fatalError: unknown) {
-      /*
-       * Unexpected failure.
-       *
-       * Never substitute demo data.
-       */
-      setConnected(
-        connectionSucceeded,
+    } else {
+      errors.push(
+        result.message ||
+          'Installed applications unavailable.'
       );
-
-      setApps([]);
-      setRisks([]);
-      setScore(0);
-      setHardeningFindings([]);
-
-      setError(
-        fatalError instanceof Error
-          ? fatalError.message
-          : 'SecureDroid failed to load security data.',
-      );
-    } finally {
-      setLoading(false);
     }
-  }, [isNative]);
+  } catch {
+    errors.push(
+      'Failed to load installed applications.'
+    );
+  }
 
-  // ==========================================================
-  // INITIAL LOAD
-  // ==========================================================
+  try {
+    const result =
+      await SecureDroidNative.getHardeningReport();
 
-  useEffect(() => {
-    void loadData();
-  }, [loadData]);
+    if (
+      result.success &&
+      result.data
+    ) {
+      const value = result.data.score;
 
-  // ==========================================================
-  // PUBLIC API
-  // ==========================================================
+      if (
+        typeof value === 'number' &&
+        Number.isFinite(value)
+      ) {
+        setScore(
+          Math.max(
+            0,
+            Math.min(100, value)
+          )
+        );
+      }
 
-  return {
-    apps,
-    risks,
+      const findings =
+        Array.isArray(result.data.findings)
+          ? result.data.findings
+              .map(finding => {
+                const item =
+                  finding as Record<
+                    string,
+                    unknown
+                  >;
 
-    loading,
+                const level =
+                  stringValue(
+                    item.level
+                  );
 
-    connected,
+                if (
+                  level !== 'GOOD' &&
+                  level !== 'WARNING' &&
+                  level !== 'CRITICAL'
+                ) {
+                  return null;
+                }
 
-    error,
+                return {
+                  id: stringValue(
+                    item.id,
+                    'UNKNOWN'
+                  ),
+                  level,
+                  summary: stringValue(
+                    item.summary
+                  ),
+                } satisfies HardeningFinding;
+              })
+              .filter(
+                (
+                  item
+                ): item is HardeningFinding =>
+                  item !== null
+              )
+          : [];
 
-    score,
+      setHardeningFindings(findings);
+    } else {
+      errors.push(
+        result.message ||
+          'Device security information unavailable.'
+      );
+    }
+  } catch {
+    errors.push(
+      'Device hardening check failed.'
+    );
+  }
 
-    hardeningFindings,
+  setConnected(true);
 
-    /*
-     * Legacy compatibility field.
-     *
-     * Always false because production SecureDroid must not
-     * present simulated security data.
-     */
-    usingMock,
+  if (errors.length > 0) {
+    setError(errors.join(' '));
+  }
+} catch (e) {
+  setConnected(false);
+  setApps([]);
+  setRisks([]);
+  setScore(0);
+  setHardeningFindings([]);
 
-    reload: loadData,
-  };
+  setError(
+    e instanceof Error
+      ? e.message
+      : 'SecureDroid failed to load.'
+  );
+} finally {
+  setLoading(false);
+}
+
+}, [isNative]);
+
+useEffect(() => {
+void loadData();
+}, [loadData]);
+
+return {
+apps,
+risks,
+loading,
+connected,
+error,
+score,
+hardeningFindings,
+usingMock,
+reload: loadData,
+};
 };
