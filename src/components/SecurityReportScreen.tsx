@@ -121,4 +121,266 @@ export const SecurityReportScreen: React.FC<SecurityReportScreenProps> = ({
         return { total, risky, clean };
     }, [apps, totalRisks]);
 
-    const score
+    const scoreBreakdown = useMemo(() => {
+        const appSecurity = Math.max(0, 100 - (highRiskCount * 5 + mediumRiskCount * 2));
+        const privacy = Math.max(0, 100 - (highRiskCount * 8 + mediumRiskCount * 3));
+        return {
+            deviceSecurity: score,
+            appSecurity,
+            privacy,
+            networkProtection: 0,
+        };
+    }, [score, highRiskCount, mediumRiskCount]);
+
+    const recommendations = useMemo(() => {
+        const recs: { id: string; text: string; priority: 'high' | 'medium' | 'low'; action?: string }[] = [];
+
+        if (highRiskCount > 0) {
+            recs.push({
+                id: 'rec-high-risk',
+                text: `${highRiskCount} app${highRiskCount > 1 ? 's' : ''} with high-risk permissions require review`,
+                priority: 'high',
+                action: 'Review Apps',
+            });
+        }
+
+        if (deviceIssues > 0) {
+            recs.push({
+                id: 'rec-device',
+                text: `${deviceIssues} device security issue${deviceIssues > 1 ? 's' : ''} need attention`,
+                priority: 'high',
+                action: 'Check Device',
+            });
+        }
+
+        if (score < 50) {
+            recs.push({
+                id: 'rec-score',
+                text: 'Improve your overall security score by checking screen lock, encryption, and security patches',
+                priority: 'high',
+                action: 'View Details',
+            });
+        }
+
+        if (mediumRiskCount > 0) {
+            recs.push({
+                id: 'rec-medium',
+                text: `${mediumRiskCount} app${mediumRiskCount > 1 ? 's' : ''} with medium-risk permissions should be reviewed`,
+                priority: 'medium',
+                action: 'Review Apps',
+            });
+        }
+
+        if (recs.length === 0) {
+            recs.push({
+                id: 'rec-clean',
+                text: 'Your device is in excellent security condition — continue monitoring regularly',
+                priority: 'low',
+                action: 'Stay Secure',
+            });
+        }
+
+        return recs;
+    }, [highRiskCount, mediumRiskCount, deviceIssues, score]);
+
+    const formatDate = (timestamp: number) => {
+        return new Date(timestamp).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+        });
+    };
+
+    const getEventSeverityColor = (severity: string) => {
+        switch (severity?.toUpperCase()) {
+            case 'CRITICAL': return 'text-rose-400 bg-rose-500/10';
+            case 'WARNING': return 'text-amber-400 bg-amber-500/10';
+            case 'INFO': return 'text-emerald-400 bg-emerald-500/10';
+            default: return 'text-slate-400 bg-slate-500/10';
+        }
+    };
+
+    return (
+        <div className={`min-h-full pb-24 transition-colors ${isLight ? 'bg-zinc-50' : 'bg-slate-950'}`}>
+            <SecureDroidTopBar
+                title="Security Report"
+                subtitle="Comprehensive security summary"
+                onBack={onBack}
+                isLight={isLight}
+                rightAction={
+                    <button
+                        onClick={() => {
+                            reload();
+                            loadSecurityEvents();
+                        }}
+                        disabled={loading || loadingEvents}
+                        className="p-2.5 rounded-xl bg-slate-800/50 hover:bg-slate-700/50 transition-colors disabled:opacity-50"
+                    >
+                        <RefreshCw className={`w-4 h-4 text-slate-400 ${loading || loadingEvents ? 'animate-spin' : ''}`} />
+                    </button>
+                }
+            />
+
+            <div className="p-4 space-y-4 max-w-7xl mx-auto">
+                <div className="flex gap-2">
+                    <SecureDroidButton variant="secondary" className="flex-1" icon={Download}>
+                        Export PDF
+                    </SecureDroidButton>
+                    <SecureDroidButton variant="secondary" className="flex-1" icon={Share2}>
+                        Share
+                    </SecureDroidButton>
+                </div>
+
+                <div className="flex gap-1 bg-slate-900/50 p-1 rounded-xl border border-slate-800">
+                    {(['week', 'month', 'all'] as const).map((range) => (
+                        <button
+                            key={range}
+                            onClick={() => setTimeRange(range)}
+                            className={`flex-1 py-1.5 rounded-lg text-[10px] font-medium transition-all ${timeRange === range ? 'bg-slate-800 text-zinc-100' : 'text-slate-400 hover:text-zinc-200'}`}
+                        >
+                            {range.charAt(0).toUpperCase() + range.slice(1)}
+                        </button>
+                    ))}
+                </div>
+
+                <SecureDroidGlassCard className="p-6">
+                    <div className="flex items-center gap-6">
+                        <SecureDroidProgressRing value={score} size={80} strokeWidth={7} color={score >= 70 ? 'emerald' : score >= 40 ? 'amber' : 'rose'}>
+                            <span className="text-2xl font-bold text-zinc-100">{score}</span>
+                        </SecureDroidProgressRing>
+                        <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                                {score >= 70 ? (
+                                    <ShieldCheck className="w-5 h-5 text-emerald-400" />
+                                ) : score >= 40 ? (
+                                    <Shield className="w-5 h-5 text-amber-400" />
+                                ) : (
+                                    <ShieldAlert className="w-5 h-5 text-rose-400" />
+                                )}
+                                <span className={`text-lg font-semibold ${score >= 70 ? 'text-emerald-400' : score >= 40 ? 'text-amber-400' : 'text-rose-400'}`}>
+                                    {score >= 70 ? 'Good' : score >= 40 ? 'Fair' : 'Poor'}
+                                </span>
+                            </div>
+                            <div className="text-xs text-slate-400 mt-1">Overall Security Score • Based on device posture and app risks</div>
+                            <div className="flex items-center gap-3 mt-2 text-xs text-slate-500">
+                                <span className="flex items-center gap-1">
+                                    <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                                    {totalChecks - deviceIssues} checks passed
+                                </span>
+                                <span className="flex items-center gap-1">
+                                    <AlertTriangle className="w-3 h-3 text-amber-400" />
+                                    {deviceIssues} issues
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </SecureDroidGlassCard>
+
+                <SecureDroidSectionHeader title="Score Breakdown" isLight={isLight} />
+                <div className="space-y-2.5">
+                    {Object.entries(scoreBreakdown).map(([key, value]) => (
+                        <SecureDroidCard key={key} className="p-3" isLight={isLight}>
+                            <div className="flex justify-between items-center mb-1">
+                                <span className="text-xs text-slate-400 capitalize">
+                                    {key.replace(/([A-Z])/g, ' $1').trim()}
+                                </span>
+                                <span className={`text-xs font-bold ${value >= 70 ? 'text-emerald-400' : value >= 40 ? 'text-amber-400' : 'text-rose-400'}`}>
+                                    {value}%
+                                </span>
+                            </div>
+                            <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                                <div
+                                    className={`h-full transition-all duration-500 ${value >= 70 ? 'bg-emerald-500' : value >= 40 ? 'bg-amber-500' : 'bg-rose-500'}`}
+                                    style={{ width: `${value}%` }}
+                                />
+                            </div>
+                        </SecureDroidCard>
+                    ))}
+                </div>
+
+                <SecureDroidSectionHeader title="Key Metrics" isLight={isLight} />
+                <div className="grid grid-cols-2 gap-2">
+                    <SecureDroidStatCard label="User Apps" value={appRiskBreakdown.total} icon={Smartphone} color="slate" />
+                    <SecureDroidStatCard label="Risks" value={totalRisks} icon={AlertTriangle} color={totalRisks > 0 ? 'amber' : 'emerald'} />
+                    <SecureDroidStatCard label="Device Checks" value={totalChecks} icon={Shield} color="slate" />
+                    <SecureDroidStatCard label="Events" value={filteredEvents.length} icon={ScrollText} color="slate" />
+                </div>
+
+                <SecureDroidSectionHeader title="Recent Activity" isLight={isLight} />
+                <SecureDroidCard className="p-4" isLight={isLight}>
+                    {loadingEvents ? (
+                        <div className="flex items-center justify-center py-4">
+                            <RefreshCw className="w-5 h-5 text-sky-400 animate-spin" />
+                            <span className="ml-2 text-sm text-slate-400">Loading events...</span>
+                        </div>
+                    ) : filteredEvents.length === 0 ? (
+                        <div className="text-center py-4 text-sm text-slate-400">No security events found for this period.</div>
+                    ) : (
+                        <div className="space-y-2 max-h-60 overflow-y-auto">
+                            {filteredEvents.slice(0, 8).map((event) => (
+                                <div key={event.id} className="flex items-center justify-between text-sm border-b border-slate-800/50 pb-2.5 last:border-0 last:pb-0">
+                                    <div className="flex items-center gap-3 min-w-0">
+                                        <span className={`w-2 h-2 rounded-full ${event.severity === 'CRITICAL' ? 'bg-rose-500' : event.severity === 'WARNING' ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+                                        <div className="min-w-0">
+                                            <p className="text-slate-200 truncate text-xs">{event.description || event.category}</p>
+                                            <p className="text-[10px] text-slate-500">{formatDate(event.timestamp)}</p>
+                                        </div>
+                                    </div>
+                                    <span className={`text-[9px] px-1.5 py-0.5 rounded-full ${getEventSeverityColor(event.severity)}`}>
+                                        {event.severity || 'INFO'}
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                    {eventError && <div className="text-xs text-rose-400 mt-2">{eventError}</div>}
+                </SecureDroidCard>
+
+                <SecureDroidSectionHeader title="Recommendations" isLight={isLight} />
+                <div className="space-y-2.5">
+                    {recommendations.map((rec) => (
+                        <SecureDroidCard key={rec.id} className={`p-3.5 ${rec.priority === 'high' ? 'border-rose-800/30' : rec.priority === 'medium' ? 'border-amber-800/30' : ''}`} isLight={isLight}>
+                            <div className="flex items-center gap-3">
+                                <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${rec.priority === 'high' ? 'bg-rose-500/10 text-rose-400' : rec.priority === 'medium' ? 'bg-amber-500/10 text-amber-400' : 'bg-emerald-500/10 text-emerald-400'}`}>
+                                    {rec.priority === 'high' && <AlertTriangle className="w-4 h-4" />}
+                                    {rec.priority === 'medium' && <AlertTriangle className="w-4 h-4" />}
+                                    {rec.priority === 'low' && <CheckCircle2 className="w-4 h-4" />}
+                                </div>
+                                <div className="flex-1">
+                                    <p className="text-sm text-zinc-200">{rec.text}</p>
+                                    {rec.action && <p className="text-xs text-sky-400 mt-0.5">{rec.action}</p>}
+                                </div>
+                                <ChevronRight className="w-4 h-4 text-slate-500" />
+                            </div>
+                        </SecureDroidCard>
+                    ))}
+                </div>
+
+                <SecureDroidCard className="p-4" isLight={isLight}>
+                    <div className="flex items-center gap-4">
+                        <FileSpreadsheet className="w-5 h-5 text-slate-400" />
+                        <div>
+                            <div className="text-sm font-medium text-zinc-200">Export Full Report</div>
+                            <div className="text-xs text-slate-400">PDF • CSV • JSON</div>
+                        </div>
+                        <div className="ml-auto flex gap-2">
+                            <button className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors">
+                                <FileText className="w-4 h-4 text-slate-400" />
+                            </button>
+                            <button className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors">
+                                <Download className="w-4 h-4 text-slate-400" />
+                            </button>
+                        </div>
+                    </div>
+                </SecureDroidCard>
+
+                <div className="text-center text-[10px] text-slate-500 pt-2">
+                    Report generated from live device data • v1.0.0
+                </div>
+            </div>
+        </div>
+    );
+};
+
+export default SecurityReportScreen;
