@@ -238,11 +238,9 @@ const [loading, setLoading] = useState(true);
 const [connected, setConnected] = useState(false);
 const [error, setError] = useState<string | null>(null);
 const [score, setScore] = useState(0);
-const [hardeningFindings, setHardeningFindings] = useState<
-HardeningFinding[]
-
-«([]);»
-
+const [hardeningFindings, setHardeningFindings] =
+  useState<HardeningFinding[]>([]);
+  
 const usingMock = false;
 
 const loadData = useCallback(async () => {
