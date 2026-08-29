@@ -32,7 +32,6 @@ import {
     Zap,
     Bell,
     FileText,
-    Settings,
 } from 'lucide-react';
 import {
     SecureDroidTopBar,
@@ -42,8 +41,8 @@ import {
     SecureDroidButton,
     SecureDroidSearchBar,
     SecureDroidBadge,
-    SecureDroidListItem,
-    SecureDroidProgressRing,
+    SecureDroidStatCard,
+    SecureDroidGlassCard,
 } from '../ui/designSystem';
 import { SecureDroidNative } from '../../services/native/SecureDroidNative';
 import { useSecureDroid } from '../../hooks/useSecureDroid';
@@ -75,18 +74,6 @@ const CATEGORY_ICONS: Record<string, React.ElementType> = {
     AUTH: User,
     CONFIG: Settings,
     AUDIT: FileText,
-};
-
-const SEVERITY_COLORS: Record<string, string> = {
-    CRITICAL: 'text-rose-400 bg-rose-500/10',
-    WARNING: 'text-amber-400 bg-amber-500/10',
-    INFO: 'text-emerald-400 bg-emerald-500/10',
-};
-
-const SEVERITY_ICONS: Record<string, React.ElementType> = {
-    CRITICAL: XCircle,
-    WARNING: AlertTriangle,
-    INFO: CheckCircle2,
 };
 
 export const SecurityAuditLogScreen: React.FC<SecurityAuditLogScreenProps> = ({
@@ -187,17 +174,25 @@ export const SecurityAuditLogScreen: React.FC<SecurityAuditLogScreenProps> = ({
     };
 
     const getCategoryIcon = (category: string) => {
-        const Icon = CATEGORY_ICONS[category] || Info;
-        return Icon;
+        return CATEGORY_ICONS[category] || Info;
     };
 
     const getSeverityColor = (severity: string) => {
-        return SEVERITY_COLORS[severity] || 'text-slate-400 bg-slate-500/10';
+        switch (severity) {
+            case 'CRITICAL': return 'text-rose-400 bg-rose-500/10';
+            case 'WARNING': return 'text-amber-400 bg-amber-500/10';
+            case 'INFO': return 'text-emerald-400 bg-emerald-500/10';
+            default: return 'text-slate-400 bg-slate-500/10';
+        }
     };
 
     const getSeverityIcon = (severity: string) => {
-        const Icon = SEVERITY_ICONS[severity] || Info;
-        return Icon;
+        switch (severity) {
+            case 'CRITICAL': return XCircle;
+            case 'WARNING': return AlertTriangle;
+            case 'INFO': return CheckCircle2;
+            default: return Info;
+        }
     };
 
     const getSeverityLabel = (severity: string) => {
@@ -231,6 +226,13 @@ export const SecurityAuditLogScreen: React.FC<SecurityAuditLogScreenProps> = ({
         return counts;
     }, [filteredEvents]);
 
+    const stats = {
+        events: filteredEvents.length,
+        critical: filteredEvents.filter(e => e.severity === 'CRITICAL').length,
+        warning: filteredEvents.filter(e => e.severity === 'WARNING').length,
+        info: filteredEvents.filter(e => e.severity === 'INFO').length,
+    };
+
     const categoryOptions: EventCategory[] = ['ALL', 'SECURITY', 'PRIVACY', 'APPLICATIONS', 'NETWORK', 'PERMISSION', 'AUTH', 'CONFIG'];
 
     return (
@@ -244,7 +246,7 @@ export const SecurityAuditLogScreen: React.FC<SecurityAuditLogScreenProps> = ({
                     <button
                         onClick={loadEvents}
                         disabled={loadingEvents}
-                        className="p-2 rounded-xl bg-slate-800/50 hover:bg-slate-700/50 transition-colors disabled:opacity-50"
+                        className="p-2.5 rounded-xl bg-slate-800/50 hover:bg-slate-700/50 transition-colors disabled:opacity-50"
                     >
                         <RefreshCw className={`w-4 h-4 text-slate-400 ${loadingEvents ? 'animate-spin' : ''}`} />
                     </button>
@@ -252,70 +254,38 @@ export const SecurityAuditLogScreen: React.FC<SecurityAuditLogScreenProps> = ({
             />
 
             <div className="p-4 space-y-4 max-w-7xl mx-auto">
-                {/* Stats */}
                 <div className="grid grid-cols-4 gap-2">
-                    <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-800 text-center">
-                        <div className="text-lg font-bold text-zinc-100">{filteredEvents.length}</div>
-                        <div className="text-[10px] text-slate-500 uppercase tracking-wider">Events</div>
-                    </div>
-                    <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-800 text-center">
-                        <div className="text-lg font-bold text-rose-400">
-                            {filteredEvents.filter(e => e.severity === 'CRITICAL').length}
-                        </div>
-                        <div className="text-[10px] text-slate-500 uppercase tracking-wider">Critical</div>
-                    </div>
-                    <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-800 text-center">
-                        <div className="text-lg font-bold text-amber-400">
-                            {filteredEvents.filter(e => e.severity === 'WARNING').length}
-                        </div>
-                        <div className="text-[10px] text-slate-500 uppercase tracking-wider">Warnings</div>
-                    </div>
-                    <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-800 text-center">
-                        <div className="text-lg font-bold text-emerald-400">
-                            {filteredEvents.filter(e => e.severity === 'INFO').length}
-                        </div>
-                        <div className="text-[10px] text-slate-500 uppercase tracking-wider">Info</div>
-                    </div>
+                    <SecureDroidStatCard label="Events" value={stats.events} icon={ScrollText} color="slate" />
+                    <SecureDroidStatCard label="Critical" value={stats.critical} icon={XCircle} color={stats.critical > 0 ? 'rose' : 'emerald'} />
+                    <SecureDroidStatCard label="Warnings" value={stats.warning} icon={AlertTriangle} color={stats.warning > 0 ? 'amber' : 'emerald'} />
+                    <SecureDroidStatCard label="Info" value={stats.info} icon={CheckCircle2} color="emerald" />
                 </div>
 
-                {/* Time Range */}
                 <div className="flex gap-1 bg-slate-900/50 p-1 rounded-xl border border-slate-800">
                     {['today', '7days', '30days', 'all'].map((range) => (
                         <button
                             key={range}
                             onClick={() => setTimeRange(range as TimeRange)}
-                            className={`flex-1 py-1.5 rounded-lg text-[10px] font-medium transition-all ${
-                                timeRange === range
-                                    ? 'bg-slate-800 text-zinc-100'
-                                    : 'text-slate-400 hover:text-zinc-200'
-                            }`}
+                            className={`flex-1 py-1.5 rounded-lg text-[10px] font-medium transition-all ${timeRange === range ? 'bg-slate-800 text-zinc-100' : 'text-slate-400 hover:text-zinc-200'}`}
                         >
                             {range === 'today' ? 'Today' : range === '7days' ? '7 Days' : range === '30days' ? '30 Days' : 'All'}
                         </button>
                     ))}
                 </div>
 
-                {/* Category Filter */}
                 <div className="flex gap-1 overflow-x-auto pb-1">
                     {categoryOptions.map((cat) => (
                         <button
                             key={cat}
                             onClick={() => setCategoryFilter(cat)}
-                            className={`px-3 py-1.5 rounded-full text-[10px] font-medium whitespace-nowrap transition-all ${
-                                categoryFilter === cat
-                                    ? 'bg-sky-500/20 text-sky-400 border border-sky-500/30'
-                                    : 'bg-slate-800/50 text-slate-400 border border-slate-800 hover:border-slate-600'
-                            }`}
+                            className={`px-3 py-1.5 rounded-full text-[10px] font-medium whitespace-nowrap transition-all ${categoryFilter === cat ? 'bg-sky-500/20 text-sky-400 border border-sky-500/30' : 'bg-slate-800/50 text-slate-400 border border-slate-800 hover:border-slate-600'}`}
                         >
                             {cat === 'ALL' ? 'All' : getCategoryLabel(cat)}
-                            <span className="ml-1 text-[8px] opacity-60">
-                                ({eventCounts[cat] || 0})
-                            </span>
+                            <span className="ml-1 text-[8px] opacity-60">({eventCounts[cat] || 0})</span>
                         </button>
                     ))}
                 </div>
 
-                {/* Search */}
                 <SecureDroidSearchBar
                     value={searchQuery}
                     onChange={setSearchQuery}
@@ -324,7 +294,6 @@ export const SecurityAuditLogScreen: React.FC<SecurityAuditLogScreenProps> = ({
                     onClear={() => setSearchQuery('')}
                 />
 
-                {/* Event List */}
                 {loadingEvents ? (
                     <div className="p-8 text-center">
                         <RefreshCw className="w-8 h-8 text-sky-400 animate-spin mx-auto mb-3" />
