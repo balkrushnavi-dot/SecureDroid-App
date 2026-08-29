@@ -11,19 +11,16 @@ import {
     Filter,
     Activity,
     Lock,
-    ChevronRight,
     Info,
     CheckCircle2,
     XCircle,
     Plus,
-    Minus,
     Trash2,
     Globe,
     Zap,
     Power,
     PowerOff,
     Signal,
-    ShieldAlert,
 } from 'lucide-react';
 import {
     SecureDroidTopBar,
@@ -31,9 +28,10 @@ import {
     SecureDroidSectionHeader,
     SecureDroidButton,
     SecureDroidStatusChip,
-    SecureDroidListItem,
     SecureDroidBadge,
     SecureDroidSearchBar,
+    SecureDroidStatCard,
+    SecureDroidGlassCard,
 } from './ui/designSystem';
 import { SecureDroidNative } from '../services/native/SecureDroidNative';
 import { NativeVpnStatus } from '../types/native';
@@ -45,7 +43,6 @@ interface NetworkControlScreenProps {
 
 type ConnectionState = 'DISCONNECTED' | 'CONNECTING' | 'CONNECTED' | 'DISCONNECTING' | 'ERROR' | 'UNKNOWN';
 
-// Domain blocklist/allowlist types
 interface DomainEntry {
     domain: string;
     type: 'blocked' | 'allowed';
@@ -63,10 +60,15 @@ export const NetworkControlScreen: React.FC<NetworkControlScreenProps> = ({
     const [needsPermission, setNeedsPermission] = useState(false);
     const [connectionTime, setConnectionTime] = useState<number | null>(null);
     const [elapsedTime, setElapsedTime] = useState<string>('00:00');
-
-    // Domain lists
-    const [blockedDomains, setBlockedDomains] = useState<DomainEntry[]>([]);
-    const [allowedDomains, setAllowedDomains] = useState<DomainEntry[]>([]);
+    const [blockedDomains, setBlockedDomains] = useState<DomainEntry[]>([
+        { domain: 'ads.example.com', type: 'blocked', addedAt: Date.now() - 3600000 },
+        { domain: 'tracker.malware.net', type: 'blocked', addedAt: Date.now() - 7200000 },
+        { domain: 'spyware.io', type: 'blocked', addedAt: Date.now() - 10800000 },
+    ]);
+    const [allowedDomains, setAllowedDomains] = useState<DomainEntry[]>([
+        { domain: 'trusted-site.com', type: 'allowed', addedAt: Date.now() - 1800000 },
+        { domain: 'api.myapp.com', type: 'allowed', addedAt: Date.now() - 3600000 },
+    ]);
     const [newDomain, setNewDomain] = useState('');
     const [activeTab, setActiveTab] = useState<'blocked' | 'allowed'>('blocked');
     const [domainError, setDomainError] = useState<string | null>(null);
@@ -159,16 +161,6 @@ export const NetworkControlScreen: React.FC<NetworkControlScreenProps> = ({
 
     useEffect(() => {
         refreshStatus();
-        // Load mock domain lists (replace with real native calls)
-        setBlockedDomains([
-            { domain: 'ads.example.com', type: 'blocked', addedAt: Date.now() - 3600000 },
-            { domain: 'tracker.malware.net', type: 'blocked', addedAt: Date.now() - 7200000 },
-            { domain: 'spyware.io', type: 'blocked', addedAt: Date.now() - 10800000 },
-        ]);
-        setAllowedDomains([
-            { domain: 'trusted-site.com', type: 'allowed', addedAt: Date.now() - 1800000 },
-            { domain: 'api.myapp.com', type: 'allowed', addedAt: Date.now() - 3600000 },
-        ]);
         return () => {
             if (pollInterval.current) {
                 clearInterval(pollInterval.current);
@@ -191,7 +183,7 @@ export const NetworkControlScreen: React.FC<NetworkControlScreenProps> = ({
 
             if (isActive) {
                 const res = await SecureDroidNative.stopVpn();
-                if (res.success && res.data?.state) {
+                if (res.data?.state) {
                     setConnectionState(res.data.state as ConnectionState);
                 }
                 if (!res.success) {
@@ -202,7 +194,7 @@ export const NetworkControlScreen: React.FC<NetworkControlScreenProps> = ({
             } else {
                 const res = await SecureDroidNative.startVpn();
 
-                if (res.success && res.data?.permissionRequired) {
+                if (res.data?.permissionRequired) {
                     setNeedsPermission(true);
                     setError(null);
                     setIsBusy(false);
@@ -257,7 +249,6 @@ export const NetworkControlScreen: React.FC<NetworkControlScreenProps> = ({
         }
     };
 
-    // Domain management
     const handleAddDomain = () => {
         const domain = newDomain.trim().toLowerCase();
         if (!domain) {
@@ -297,16 +288,6 @@ export const NetworkControlScreen: React.FC<NetworkControlScreenProps> = ({
     const isConnecting = connectionState === 'CONNECTING' || connectionState === 'DISCONNECTING';
     const isError = connectionState === 'ERROR';
 
-    const getStatusDisplay = () => {
-        if (isConnected) return { label: 'Protected', icon: ShieldCheck, color: 'text-emerald-400', bg: 'bg-emerald-500/10' };
-        if (isConnecting) return { label: 'Connecting...', icon: RefreshCw, color: 'text-amber-400', bg: 'bg-amber-500/10' };
-        if (isError) return { label: 'Error', icon: AlertTriangle, color: 'text-rose-400', bg: 'bg-rose-500/10' };
-        return { label: 'Disconnected', icon: ShieldOff, color: 'text-slate-400', bg: 'bg-slate-800/50' };
-    };
-
-    const statusDisplay = getStatusDisplay();
-    const StatusIcon = statusDisplay.icon;
-
     const currentList = activeTab === 'blocked' ? blockedDomains : allowedDomains;
 
     return (
@@ -318,26 +299,42 @@ export const NetworkControlScreen: React.FC<NetworkControlScreenProps> = ({
                 subtitle="VPN & Domain Control"
                 onBack={onBack}
                 isLight={isLight}
+                rightAction={
+                    <button
+                        onClick={refreshStatus}
+                        disabled={isBusy}
+                        className="p-2.5 rounded-xl bg-slate-800/50 hover:bg-slate-700/50 transition-colors disabled:opacity-50"
+                    >
+                        <RefreshCw className={`w-4 h-4 text-slate-400 ${isBusy ? 'animate-spin' : ''}`} />
+                    </button>
+                }
             />
 
             <div className="p-4 space-y-4 max-w-7xl mx-auto">
-                {/* Main VPN Status Card */}
-                <SecureDroidCard isLight={isLight} highlight className="p-6">
+                {/* VPN Status Card */}
+                <SecureDroidGlassCard className="p-6">
                     <div className="flex flex-col items-center text-center">
                         <div
-                            className={`w-20 h-20 rounded-full flex items-center justify-center mb-4 transition-all ${statusDisplay.bg} ${
-                                isConnected ? 'ring-4 ring-emerald-500/20' : ''
+                            className={`w-20 h-20 rounded-full flex items-center justify-center mb-4 transition-all ${
+                                isConnected ? 'bg-emerald-500/10 ring-4 ring-emerald-500/20' :
+                                isConnecting ? 'bg-amber-500/10 ring-4 ring-amber-500/20' :
+                                isError ? 'bg-rose-500/10 ring-4 ring-rose-500/20' :
+                                'bg-slate-800/50 ring-4 ring-slate-700/20'
                             }`}
                         >
                             {isConnecting ? (
-                                <RefreshCw className={`w-10 h-10 ${statusDisplay.color} animate-spin`} />
+                                <RefreshCw className={`w-10 h-10 text-amber-400 animate-spin`} />
+                            ) : isConnected ? (
+                                <ShieldCheck className="w-10 h-10 text-emerald-400" />
+                            ) : isError ? (
+                                <AlertTriangle className="w-10 h-10 text-rose-400" />
                             ) : (
-                                <StatusIcon className={`w-10 h-10 ${statusDisplay.color}`} />
+                                <ShieldOff className="w-10 h-10 text-slate-400" />
                             )}
                         </div>
 
-                        <h2 className={`text-2xl font-bold ${statusDisplay.color}`}>
-                            {statusDisplay.label}
+                        <h2 className={`text-2xl font-bold ${isConnected ? 'text-emerald-400' : isConnecting ? 'text-amber-400' : isError ? 'text-rose-400' : 'text-slate-400'}`}>
+                            {isConnected ? 'Protected' : isConnecting ? 'Connecting...' : isError ? 'Error' : 'Disconnected'}
                         </h2>
 
                         <p className="text-sm text-slate-400 mt-1 max-w-xs">
@@ -396,20 +393,21 @@ export const NetworkControlScreen: React.FC<NetworkControlScreenProps> = ({
                             disabled={isBusy || isConnecting}
                             variant={isConnected ? 'danger' : 'primary'}
                             className="mt-4 px-8 py-3 text-base min-w-[160px]"
+                            size="lg"
                         >
                             <span className="flex items-center justify-center gap-2">
                                 {isConnecting ? (
                                     <RefreshCw className="w-4 h-4 animate-spin" />
                                 ) : isConnected ? (
-                                    <Lock className="w-4 h-4" />
+                                    <PowerOff className="w-4 h-4" />
                                 ) : (
-                                    <Shield className="w-4 h-4" />
+                                    <Power className="w-4 h-4" />
                                 )}
                                 {isConnected ? 'Disconnect' : isConnecting ? 'Connecting...' : 'Connect'}
                             </span>
                         </SecureDroidButton>
                     </div>
-                </SecureDroidCard>
+                </SecureDroidGlassCard>
 
                 {/* Connection Details */}
                 {status && (
@@ -449,10 +447,9 @@ export const NetworkControlScreen: React.FC<NetworkControlScreenProps> = ({
                     </>
                 )}
 
-                {/* Domain Management */}
+                {/* Domain Control */}
                 <SecureDroidSectionHeader title="Domain Control" subtitle="Manage blocked and allowed domains" isLight={isLight} />
 
-                {/* Tabs */}
                 <div className="flex gap-1 bg-slate-900/50 p-1 rounded-xl border border-slate-800">
                     <button
                         onClick={() => setActiveTab('blocked')}
@@ -462,10 +459,7 @@ export const NetworkControlScreen: React.FC<NetworkControlScreenProps> = ({
                                 : 'text-slate-400 hover:text-zinc-200'
                         }`}
                     >
-                        <span className="flex items-center justify-center gap-2">
-                            <XCircle className="w-3.5 h-3.5" />
-                            Blocked ({blockedDomains.length})
-                        </span>
+                        Blocked ({blockedDomains.length})
                     </button>
                     <button
                         onClick={() => setActiveTab('allowed')}
@@ -475,14 +469,10 @@ export const NetworkControlScreen: React.FC<NetworkControlScreenProps> = ({
                                 : 'text-slate-400 hover:text-zinc-200'
                         }`}
                     >
-                        <span className="flex items-center justify-center gap-2">
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                            Allowed ({allowedDomains.length})
-                        </span>
+                        Allowed ({allowedDomains.length})
                     </button>
                 </div>
 
-                {/* Add Domain */}
                 <div className="flex gap-2">
                     <input
                         type="text"
@@ -492,7 +482,7 @@ export const NetworkControlScreen: React.FC<NetworkControlScreenProps> = ({
                             setDomainError(null);
                         }}
                         placeholder="Enter domain (e.g., ads.example.com)"
-                        className="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-900/50 border border-slate-800 text-zinc-100 placeholder-slate-500 text-sm focus:outline-none focus:border-slate-600"
+                        className="flex-1 px-4 py-2.5 rounded-xl bg-slate-900/50 border border-slate-800 text-zinc-100 placeholder-slate-500 text-sm focus:outline-none focus:border-sky-500"
                         onKeyDown={(e) => e.key === 'Enter' && handleAddDomain()}
                     />
                     <button
@@ -508,12 +498,9 @@ export const NetworkControlScreen: React.FC<NetworkControlScreenProps> = ({
                     <div className="text-xs text-rose-400 mt-1">{domainError}</div>
                 )}
 
-                {/* Domain List */}
                 <div className="space-y-1.5 max-h-48 overflow-y-auto">
                     {currentList.length === 0 ? (
-                        <div className="p-4 text-center text-sm text-slate-400">
-                            No domains in this list
-                        </div>
+                        <div className="p-4 text-center text-sm text-slate-400">No domains in this list</div>
                     ) : (
                         currentList.map((entry) => (
                             <div
@@ -541,7 +528,7 @@ export const NetworkControlScreen: React.FC<NetworkControlScreenProps> = ({
                     )}
                 </div>
 
-                {/* Wi-Fi Security - Real-time feed placeholder */}
+                {/* Wi-Fi Security */}
                 <SecureDroidSectionHeader title="Wi-Fi Security" subtitle="Active network status" isLight={isLight} />
 
                 <SecureDroidCard isLight={isLight} className="p-4">
@@ -554,12 +541,12 @@ export const NetworkControlScreen: React.FC<NetworkControlScreenProps> = ({
                             <div className="text-xs text-slate-400">WPA2-Enterprise • DNS over TLS enabled</div>
                         </div>
                         <div className="ml-auto">
-                            <SecureDroidStatusChip status="Secure" isLight={isLight} size="sm" />
+                            <SecureDroidStatusChip status="PROTECTED" isLight={isLight} size="sm" />
                         </div>
                     </div>
                 </SecureDroidCard>
 
-                {/* Honest Disclaimer */}
+                {/* Disclaimer */}
                 <div className="p-4 rounded-xl border bg-amber-950/10 border-amber-800/30">
                     <div className="flex items-start gap-3">
                         <Info className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
