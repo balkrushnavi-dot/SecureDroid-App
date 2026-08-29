@@ -166,7 +166,6 @@ export const AppSecurityAuditorScreen: React.FC<AppSecurityAuditorScreenProps> =
             />
 
             <div className="p-4 space-y-4 max-w-7xl mx-auto">
-                {/* Stats */}
                 <div className="grid grid-cols-4 gap-2">
                     <SecureDroidStatCard label="Total" value={stats.total} icon={Package} color="slate" />
                     <SecureDroidStatCard label="High" value={stats.high} icon={AlertTriangle} color={stats.high > 0 ? 'rose' : 'emerald'} />
@@ -174,7 +173,6 @@ export const AppSecurityAuditorScreen: React.FC<AppSecurityAuditorScreenProps> =
                     <SecureDroidStatCard label="Low" value={stats.low} icon={CheckCircle2} color="emerald" />
                 </div>
 
-                {/* Search & Sort */}
                 <div className="flex flex-col sm:flex-row gap-2">
                     <div className="flex-1">
                         <SecureDroidSearchBar
@@ -190,11 +188,7 @@ export const AppSecurityAuditorScreen: React.FC<AppSecurityAuditorScreenProps> =
                             <button
                                 key={option.value}
                                 onClick={() => setSortBy(option.value)}
-                                className={`px-3 py-1.5 rounded-lg text-[10px] font-medium transition-all ${
-                                    sortBy === option.value
-                                        ? 'bg-slate-800 text-zinc-100'
-                                        : 'text-slate-400 hover:text-zinc-200'
-                                }`}
+                                className={`px-3 py-1.5 rounded-lg text-[10px] font-medium transition-all ${sortBy === option.value ? 'bg-slate-800 text-zinc-100' : 'text-slate-400 hover:text-zinc-200'}`}
                             >
                                 {option.label}
                             </button>
@@ -202,7 +196,6 @@ export const AppSecurityAuditorScreen: React.FC<AppSecurityAuditorScreenProps> =
                     </div>
                 </div>
 
-                {/* App List */}
                 <div className="space-y-2.5">
                     {filteredApps.length === 0 ? (
                         <div className="p-8 text-center">
