@@ -284,4 +284,211 @@ function HomeScreen({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
                                         </div>
                                         <div className="text-sm text-slate-400 truncate">{card.description}</div>
                                     </div>
-                                    <Chevron
+                                    <ChevronRight className="w-4 h-4 text-slate-600" />
+                                </div>
+                            </SecureDroidCard>
+                        </button>
+                    );
+                })}
+            </div>
+
+            <div className="text-center text-[10px] text-slate-500 pt-2 pb-1">
+                v1.0.0 • Real-time security monitoring
+            </div>
+        </div>
+    );
+}
+
+// ============================================================
+// SETTINGS SCREEN
+// ============================================================
+function SettingsScreen() {
+    const [darkMode, setDarkMode] = useState(true);
+    const [notifications, setNotifications] = useState(true);
+
+    return (
+        <div className="p-4 pb-24 space-y-4 max-w-7xl mx-auto">
+            <SecureDroidSectionHeader title="Settings" />
+
+            <div className="space-y-2.5">
+                <SecureDroidCard className="p-4">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <Moon className="w-4 h-4 text-slate-400" />
+                            <span className="text-sm text-zinc-200">Dark Mode</span>
+                        </div>
+                        <button
+                            onClick={() => setDarkMode(!darkMode)}
+                            className={`w-11 h-6 rounded-full transition-colors ${darkMode ? 'bg-sky-500' : 'bg-slate-600'}`}
+                        >
+                            <div className={`w-5 h-5 rounded-full bg-white transition-transform ${darkMode ? 'translate-x-5' : 'translate-x-0'}`} />
+                        </button>
+                    </div>
+                </SecureDroidCard>
+
+                <SecureDroidCard className="p-4">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <Bell className="w-4 h-4 text-slate-400" />
+                            <span className="text-sm text-zinc-200">Notifications</span>
+                        </div>
+                        <button
+                            onClick={() => setNotifications(!notifications)}
+                            className={`w-11 h-6 rounded-full transition-colors ${notifications ? 'bg-sky-500' : 'bg-slate-600'}`}
+                        >
+                            <div className={`w-5 h-5 rounded-full bg-white transition-transform ${notifications ? 'translate-x-5' : 'translate-x-0'}`} />
+                        </button>
+                    </div>
+                </SecureDroidCard>
+            </div>
+
+            <SecureDroidSectionHeader title="About" />
+
+            <div className="space-y-2.5">
+                <SecureDroidCard className="p-4">
+                    <div className="flex items-start gap-3">
+                        <Info className="w-4 h-4 text-slate-400 mt-0.5" />
+                        <div>
+                            <div className="font-semibold text-zinc-100">About SecureDroid</div>
+                            <div className="text-sm text-slate-400 mt-1 leading-relaxed">
+                                SecureDroid reports on real, checkable signals about your device and installed
+                                apps. It does not perform malware scanning, hardware attestation, or bootloader
+                                verification, and does not claim capabilities it does not have.
+                            </div>
+                        </div>
+                    </div>
+                </SecureDroidCard>
+
+                <SecureDroidCard className="p-4">
+                    <div className="flex items-start gap-3">
+                        <Shield className="w-4 h-4 text-slate-400 mt-0.5" />
+                        <div>
+                            <div className="font-semibold text-zinc-100">Privacy Policy</div>
+                            <div className="text-sm text-slate-400 mt-1 leading-relaxed">
+                                All security analysis is performed locally on your device. No data is sent
+                                to external servers unless explicitly configured.
+                            </div>
+                        </div>
+                    </div>
+                </SecureDroidCard>
+
+                <SecureDroidCard className="p-4">
+                    <div className="flex items-start gap-3">
+                        <Globe className="w-4 h-4 text-slate-400 mt-0.5" />
+                        <div>
+                            <div className="font-semibold text-zinc-100">Version</div>
+                            <div className="text-sm text-slate-400 mt-1">v1.0.0 • Built with ❤️</div>
+                        </div>
+                    </div>
+                </SecureDroidCard>
+            </div>
+        </div>
+    );
+}
+
+// ============================================================
+// MAIN APP
+// ============================================================
+export default function App() {
+    const { loading, connected, error, reload } = useSecureDroid();
+    const [currentScreen, setCurrentScreen] = useState<Screen>('home');
+    const [selectedApp, setSelectedApp] = useState<string | null>(null);
+
+    if (loading && !connected && !error) {
+        return <LoadingScreen message="Loading security data..." />;
+    }
+
+    if (!connected && error && !error.includes('mock data')) {
+        return <ErrorScreen message={error} onRetry={reload} />;
+    }
+
+    const navigateTo = (screen: Screen) => setCurrentScreen(screen);
+    const handleBack = () => setCurrentScreen('home');
+    const handleAppDetail = (packageName: string) => {
+        setSelectedApp(packageName);
+        setCurrentScreen('app_detail');
+    };
+    const handleAppDetailBack = () => {
+        setSelectedApp(null);
+        setCurrentScreen('app_auditor');
+    };
+
+    const NAV_ITEMS = [
+        { id: 'home' as Screen, label: 'HOME', icon: Home },
+        { id: 'app_auditor' as Screen, label: 'APPS', icon: ShieldCheck },
+        { id: 'threat_model' as Screen, label: 'THREATS', icon: AlertTriangle },
+        { id: 'network' as Screen, label: 'NETWORK', icon: Wifi },
+        { id: 'security_log' as Screen, label: 'LOG', icon: ScrollText },
+        { id: 'settings' as Screen, label: 'SETTINGS', icon: SettingsIcon },
+    ];
+
+    const getTitle = () => {
+        const titles: Record<Screen, string> = {
+            home: 'SecureDroid',
+            threat_model: 'Threat Model Center',
+            app_auditor: 'App Security Auditor',
+            security_log: 'Security Audit Log',
+            network: 'Network Protection',
+            device_security: 'Device Security',
+            privacy_radar: 'Privacy Radar',
+            security_report: 'Security Report',
+            app_detail: 'App Detail',
+            ai_assistant: 'AI Assistant',
+            family: 'Family Protection',
+            settings: 'Settings',
+        };
+        return titles[currentScreen] || 'SecureDroid';
+    };
+
+    return (
+        <div className="min-h-screen bg-slate-950 text-zinc-100 flex flex-col max-w-7xl mx-auto">
+            <SecureDroidTopBar
+                title={getTitle()}
+                onBack={currentScreen !== 'home' ? handleBack : undefined}
+            />
+
+            <main className="flex-1 overflow-y-auto">
+                {currentScreen === 'home' && <HomeScreen onNavigate={navigateTo} />}
+                {currentScreen === 'threat_model' && <ThreatModelCenterScreen onBack={handleBack} />}
+                {currentScreen === 'app_auditor' && (
+                    <AppSecurityAuditorScreen onBack={handleBack} onAppSelect={handleAppDetail} />
+                )}
+                {currentScreen === 'security_log' && <SecurityAuditLogScreen onBack={handleBack} />}
+                {currentScreen === 'network' && <NetworkControlScreen onBack={handleBack} />}
+                {currentScreen === 'device_security' && <DeviceSecurityScreen onBack={handleBack} />}
+                {currentScreen === 'privacy_radar' && <PrivacyRadarScreen onBack={handleBack} />}
+                {currentScreen === 'security_report' && <SecurityReportScreen onBack={handleBack} />}
+                {currentScreen === 'app_detail' && selectedApp && (
+                    <AppDetailScreen onBack={handleAppDetailBack} packageName={selectedApp} />
+                )}
+                {currentScreen === 'ai_assistant' && <AiAssistantScreen onBack={handleBack} />}
+                {currentScreen === 'family' && <FamilyScreen onBack={handleBack} />}
+                {currentScreen === 'settings' && <SettingsScreen />}
+            </main>
+
+            <nav className="fixed bottom-0 left-0 right-0 z-40 bg-slate-950/95 backdrop-blur-lg border-t border-slate-800/80 max-w-7xl mx-auto">
+                <div className="flex items-center justify-around h-16 px-2">
+                    {NAV_ITEMS.map((item) => {
+                        const Icon = item.icon;
+                        const isActive = currentScreen === item.id;
+                        return (
+                            <button
+                                key={item.id}
+                                onClick={() => setCurrentScreen(item.id)}
+                                className={`flex-1 flex flex-col items-center justify-center h-full min-h-[48px] py-1 transition-all relative ${
+                                    isActive ? 'text-sky-400' : 'text-slate-400 hover:text-slate-200'
+                                }`}
+                            >
+                                <Icon className="w-5 h-5" />
+                                <span className="text-[10px] font-bold tracking-wider mt-0.5">{item.label}</span>
+                                {isActive && (
+                                    <div className="absolute top-0 w-8 h-0.5 bg-sky-400 rounded-full" />
+                                )}
+                            </button>
+                        );
+                    })}
+                </div>
+            </nav>
+        </div>
+    );
+}
