@@ -37,8 +37,6 @@ import {
     Globe,
     User,
     Bell,
-    Package,
-    Settings,
 } from 'lucide-react';
 import {
     SecureDroidTopBar,
@@ -48,8 +46,9 @@ import {
     SecureDroidButton,
     SecureDroidSearchBar,
     SecureDroidBadge,
-    SecureDroidListItem,
+    SecureDroidStatCard,
     SecureDroidProgressRing,
+    SecureDroidGlassCard,
 } from './ui/designSystem';
 import { useSecureDroid } from '../hooks/useSecureDroid';
 import type { AppInfo } from '../hooks/useSecureDroid';
@@ -59,7 +58,6 @@ interface PrivacyRadarScreenProps {
     isLight?: boolean;
 }
 
-// Permission categorization
 const PERMISSION_MAP: Record<string, { name: string; icon: React.ElementType; risk: 'LOW' | 'MEDIUM' | 'HIGH'; category: string; description: string }> = {
     'android.permission.CAMERA': { name: 'Camera', icon: Camera, risk: 'HIGH', category: 'CAMERA', description: 'Take photos and videos' },
     'android.permission.RECORD_AUDIO': { name: 'Microphone', icon: Mic, risk: 'HIGH', category: 'MICROPHONE', description: 'Record audio' },
@@ -112,22 +110,8 @@ export const PrivacyRadarScreen: React.FC<PrivacyRadarScreenProps> = ({
 
     const userApps = useMemo(() => apps.filter(app => !app.isSystemApp), [apps]);
 
-    // Build permission usage list
     const permissionItems = useMemo(() => {
-        const items: {
-            id: string;
-            appName: string;
-            packageName: string;
-            permission: string;
-            permissionName: string;
-            permissionIcon: React.ElementType;
-            risk: 'LOW' | 'MEDIUM' | 'HIGH';
-            category: string;
-            granted: boolean;
-            description: string;
-            isSystemApp: boolean;
-        }[] = [];
-
+        const items: any[] = [];
         for (const app of userApps) {
             const requested = app.requestedPermissions || [];
             const grantedSet = new Set(app.grantedPermissions || []);
@@ -135,7 +119,7 @@ export const PrivacyRadarScreen: React.FC<PrivacyRadarScreenProps> = ({
                 const info = getPermissionInfo(perm);
                 items.push({
                     id: `${app.packageName}-${perm}`,
-                    appName: app.appName || app.label || app.packageName,
+                    appName: app.appName,
                     packageName: app.packageName,
                     permission: perm,
                     permissionName: info.name,
@@ -151,7 +135,6 @@ export const PrivacyRadarScreen: React.FC<PrivacyRadarScreenProps> = ({
         return items;
     }, [userApps]);
 
-    // Stats
     const totalPermissions = permissionItems.length;
     const highRiskCount = permissionItems.filter(i => i.risk === 'HIGH').length;
     const mediumRiskCount = permissionItems.filter(i => i.risk === 'MEDIUM').length;
@@ -165,7 +148,6 @@ export const PrivacyRadarScreen: React.FC<PrivacyRadarScreenProps> = ({
     }
     const riskyAppsCount = riskyAppsSet.size;
 
-    // Filter and search
     const filteredItems = useMemo(() => {
         let result = permissionItems;
         if (searchQuery.trim()) {
@@ -186,7 +168,6 @@ export const PrivacyRadarScreen: React.FC<PrivacyRadarScreenProps> = ({
         return result;
     }, [permissionItems, searchQuery, selectedFilter]);
 
-    // Group by app
     const groupedByApp = useMemo(() => {
         const groups: Record<string, typeof permissionItems> = {};
         for (const item of filteredItems) {
@@ -261,7 +242,7 @@ export const PrivacyRadarScreen: React.FC<PrivacyRadarScreenProps> = ({
                     <button
                         onClick={reload}
                         disabled={loading}
-                        className="p-2 rounded-xl bg-slate-800/50 hover:bg-slate-700/50 transition-colors disabled:opacity-50"
+                        className="p-2.5 rounded-xl bg-slate-800/50 hover:bg-slate-700/50 transition-colors disabled:opacity-50"
                     >
                         <RefreshCw className={`w-4 h-4 text-slate-400 ${loading ? 'animate-spin' : ''}`} />
                     </button>
@@ -269,34 +250,16 @@ export const PrivacyRadarScreen: React.FC<PrivacyRadarScreenProps> = ({
             />
 
             <div className="p-4 space-y-4 max-w-7xl mx-auto">
-                {/* Stats */}
                 <div className="grid grid-cols-4 gap-2">
-                    <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-800 text-center">
-                        <div className="text-lg font-bold text-zinc-100">{totalPermissions}</div>
-                        <div className="text-[10px] text-slate-500 uppercase tracking-wider">Total</div>
-                    </div>
-                    <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-800 text-center">
-                        <div className={`text-lg font-bold ${highRiskCount > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
-                            {highRiskCount}
-                        </div>
-                        <div className="text-[10px] text-slate-500 uppercase tracking-wider">High</div>
-                    </div>
-                    <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-800 text-center">
-                        <div className={`text-lg font-bold ${mediumRiskCount > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
-                            {mediumRiskCount}
-                        </div>
-                        <div className="text-[10px] text-slate-500 uppercase tracking-wider">Medium</div>
-                    </div>
-                    <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-800 text-center">
-                        <div className="text-lg font-bold text-emerald-400">{lowRiskCount}</div>
-                        <div className="text-[10px] text-slate-500 uppercase tracking-wider">Low</div>
-                    </div>
+                    <SecureDroidStatCard label="Total" value={totalPermissions} icon={Database} color="slate" />
+                    <SecureDroidStatCard label="High" value={highRiskCount} icon={AlertTriangle} color={highRiskCount > 0 ? 'rose' : 'emerald'} />
+                    <SecureDroidStatCard label="Medium" value={mediumRiskCount} icon={AlertTriangle} color={mediumRiskCount > 0 ? 'amber' : 'emerald'} />
+                    <SecureDroidStatCard label="Low" value={lowRiskCount} icon={CheckCircle2} color="emerald" />
                 </div>
 
-                {/* Privacy Score */}
-                <div className="bg-gradient-to-br from-slate-900 to-slate-800/50 p-4 rounded-2xl border border-slate-700/50">
+                <SecureDroidGlassCard className="p-4">
                     <div className="flex items-center gap-6">
-                        <SecureDroidProgressRing value={privacyScore} size={64} strokeWidth={5} isLight={false}>
+                        <SecureDroidProgressRing value={privacyScore} size={64} strokeWidth={6} color={privacyScore >= 70 ? 'emerald' : privacyScore >= 40 ? 'amber' : 'rose'}>
                             <span className="text-xl font-bold text-zinc-100">{privacyScore}</span>
                         </SecureDroidProgressRing>
                         <div>
@@ -309,38 +272,28 @@ export const PrivacyRadarScreen: React.FC<PrivacyRadarScreenProps> = ({
                             </div>
                         </div>
                     </div>
-                </div>
+                </SecureDroidGlassCard>
 
-                {/* Search & Filter */}
-                <div className="flex flex-col sm:flex-row gap-2">
-                    <div className="flex-1">
-                        <SecureDroidSearchBar
-                            value={searchQuery}
-                            onChange={setSearchQuery}
-                            placeholder="Search apps or permissions..."
-                            isLight={isLight}
-                            onClear={() => setSearchQuery('')}
-                        />
-                    </div>
-                </div>
+                <SecureDroidSearchBar
+                    value={searchQuery}
+                    onChange={setSearchQuery}
+                    placeholder="Search apps or permissions..."
+                    isLight={isLight}
+                    onClear={() => setSearchQuery('')}
+                />
 
                 <div className="flex gap-1 overflow-x-auto pb-1">
                     {filterOptions.map((opt) => (
                         <button
                             key={opt.value}
                             onClick={() => setSelectedFilter(opt.value)}
-                            className={`px-3 py-1.5 rounded-full text-[10px] font-medium whitespace-nowrap transition-all ${
-                                selectedFilter === opt.value
-                                    ? 'bg-sky-500/20 text-sky-400 border border-sky-500/30'
-                                    : 'bg-slate-800/50 text-slate-400 border border-slate-800 hover:border-slate-600'
-                            }`}
+                            className={`px-3 py-1.5 rounded-full text-[10px] font-medium whitespace-nowrap transition-all ${selectedFilter === opt.value ? 'bg-sky-500/20 text-sky-400 border border-sky-500/30' : 'bg-slate-800/50 text-slate-400 border border-slate-800 hover:border-slate-600'}`}
                         >
                             {opt.label}
                         </button>
                     ))}
                 </div>
 
-                {/* Permission Usage List */}
                 <SecureDroidSectionHeader title="Permission Usage" isLight={isLight} />
 
                 <div className="space-y-3">
@@ -353,10 +306,9 @@ export const PrivacyRadarScreen: React.FC<PrivacyRadarScreenProps> = ({
                     ) : (
                         Object.entries(groupedByApp).map(([packageName, items]) => {
                             const app = userApps.find(a => a.packageName === packageName);
-                            const appName = app?.appName || app?.label || packageName;
+                            const appName = app?.appName || packageName;
                             const isExpanded = expandedApp === packageName;
                             const appRisk = getAppRiskLevel(packageName);
-                            const appRiskColor = getRiskColor(appRisk);
 
                             return (
                                 <SecureDroidCard
@@ -378,7 +330,7 @@ export const PrivacyRadarScreen: React.FC<PrivacyRadarScreenProps> = ({
                                                     <span className="font-medium text-zinc-100 text-sm truncate">
                                                         {appName}
                                                     </span>
-                                                    <span className={`px-1.5 py-0.5 rounded-full text-[8px] font-medium ${appRiskColor}`}>
+                                                    <span className={`px-1.5 py-0.5 rounded-full text-[8px] font-medium ${getRiskColor(appRisk)}`}>
                                                         {appRisk}
                                                     </span>
                                                     <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-slate-800 text-slate-400">
@@ -435,7 +387,6 @@ export const PrivacyRadarScreen: React.FC<PrivacyRadarScreenProps> = ({
                     )}
                 </div>
 
-                {/* Recommendation */}
                 {highRiskCount > 0 && (
                     <div className="p-4 rounded-xl border bg-amber-950/20 border-amber-800/30">
                         <div className="flex items-start gap-3">
