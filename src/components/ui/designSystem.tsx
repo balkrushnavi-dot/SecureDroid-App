@@ -1,40 +1,84 @@
-import React from 'react';
-import { ArrowLeft, Shield } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
 
-export function SecureDroidTopBar({
-  title,
-  onBack,
-}: {
-  title: string;
-  onBack?: () => void;
-}) {
-  return (
-    <header className="sticky top-0 z-30 border-b border-slate-800 bg-slate-950">
-      <div className="mx-auto flex h-16 max-w-7xl items-center gap-3 px-4">
-        {onBack ? (
-          <button
-            type="button"
-            onClick={onBack}
-            className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-800 hover:text-white"
-            aria-label="Go back"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </button>
-        ) : (
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-500/10">
-            <Shield className="h-5 w-5 text-sky-400" />
-          </div>
-        )}
-
-        <div className="min-w-0">
-          <h1 className="truncate text-base font-bold text-white">
-            {title}
-          </h1>
-          <p className="text-xs text-slate-500">
-            SecureDroid
-          </p>
-        </div>
-      </div>
-    </header>
-  );
+export interface AppInfo {
+  packageName: string;
+  appName: string;
+  label?: string;
+  versionName: string;
+  versionCode: number;
+  targetSdk?: number;
+  minSdk?: number;
+  isSystemApp: boolean;
+  isEnabled?: boolean;
+  isLaunchable?: boolean;
+  firstInstallTime: number;
+  lastUpdateTime: number;
+  installTime: number;
+  updateTime: number;
+  requestedPermissions: string[];
+  grantedPermissions: string[];
+  dangerousPermissions: string[];
+  installerPackage?: string;
+  installSource: string;
+  installerKnown?: boolean;
+  isSideloaded: boolean;
+  isDebuggable?: boolean;
+  enabled?: boolean;
+  permissions: string[];
+  signingCertSha256?: string;
 }
+
+export interface RiskInfo {
+  appName: string;
+  packageName: string;
+  riskLevel: string;
+  securityScore?: number;
+  findingCount?: number;
+  findings?: Array<{
+    code?: string;
+    title?: string;
+    description?: string;
+    severity?: string;
+    points?: number;
+  }>;
+  reason?: string;
+  installSource?: string;
+  isSystemApp?: boolean;
+}
+
+export interface HardeningFinding {
+  id: string;
+  level: 'GOOD' | 'WARNING' | 'CRITICAL';
+  summary: string;
+}
+
+export const useSecureDroid = () => {
+  const [apps] = useState<AppInfo[]>([]);
+  const [risks] = useState<RiskInfo[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [connected] = useState(false);
+  const [error] = useState<string | null>(null);
+  const [score] = useState(0);
+  const [hardeningFindings] = useState<HardeningFinding[]>([]);
+  const [usingMock] = useState(false);
+
+  const reload = useCallback(async () => {
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    setLoading(false);
+  }, []);
+
+  return {
+    apps,
+    risks,
+    loading,
+    connected,
+    error,
+    score,
+    hardeningFindings,
+    usingMock,
+    reload,
+  };
+};
