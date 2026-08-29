@@ -1,61 +1,315 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Capacitor } from '@capacitor/core';
+import { SecureDroidNative } from '../services/native/SecureDroidNative';
+import type { NativeInstalledApp, NativeAppRiskReport } from '../types/native';
 
-// Mock data for fallback
-const MOCK_APPS = [/* ... your mock apps ... */];
-const MOCK_RISKS = [/* ... your mock risks ... */];
+// ============================================================
+// TYPE EXPORTS — matches what AppSecurityAuditorScreen and PrivacyRadarScreen expect
+// ============================================================
+
+export type AppInfo = NativeInstalledApp & {
+  // Additional fields that may come from the native bridge
+  appName?: string;
+  installerKnown?: boolean;
+  isSideloaded?: boolean;
+  permissions?: string[];
+};
+
+export interface RiskInfo {
+  appName: string;
+  packageName: string;
+  riskLevel: string;
+  securityScore?: number;
+  findingCount?: number;
+  findings?: Array<{
+    code?: string;
+    title?: string;
+    description?: string;
+    severity?: string;
+    points?: number;
+  }>;
+  reason?: string;
+  installSource?: string;
+  isSystemApp?: boolean;
+}
+
+// ============================================================
+// MOCK DATA (used when native bridge fails or in web preview)
+// ============================================================
+
+const MOCK_APPS: AppInfo[] = [
+  {
+    packageName: 'com.example.demo',
+    appName: 'Demo App',
+    label: 'Demo App',
+    versionName: '1.0.0',
+    versionCode: 1,
+    targetSdk: 33,
+    minSdk: 21,
+    isSystemApp: false,
+    isLaunchable: true,
+    firstInstallTime: Date.now() - 86400000,
+    lastUpdateTime: Date.now(),
+    installTime: Date.now() - 86400000,
+    updateTime: Date.now(),
+    requestedPermissions: ['android.permission.CAMERA'],
+    grantedPermissions: ['android.permission.CAMERA'],
+    dangerousPermissions: ['android.permission.CAMERA'],
+    installerPackage: 'com.android.vending',
+    installSource: 'com.android.vending',
+    installerKnown: true,
+    isSideloaded: false,
+    isDebuggable: false,
+    enabled: true,
+    isEnabled: true,
+    permissions: ['android.permission.CAMERA'],
+  },
+  {
+    packageName: 'com.android.chrome',
+    appName: 'Chrome',
+    label: 'Chrome',
+    versionName: '120.0.0',
+    versionCode: 120,
+    targetSdk: 33,
+    minSdk: 21,
+    isSystemApp: true,
+    isLaunchable: true,
+    firstInstallTime: Date.now() - 86400000 * 30,
+    lastUpdateTime: Date.now() - 86400000,
+    installTime: Date.now() - 86400000 * 30,
+    updateTime: Date.now() - 86400000,
+    requestedPermissions: ['android.permission.INTERNET'],
+    grantedPermissions: ['android.permission.INTERNET'],
+    dangerousPermissions: [],
+    installerPackage: 'com.android.vending',
+    installSource: 'com.android.vending',
+    installerKnown: true,
+    isSideloaded: false,
+    isDebuggable: false,
+    enabled: true,
+    isEnabled: true,
+    permissions: ['android.permission.INTERNET'],
+  },
+  {
+    packageName: 'com.whatsapp',
+    appName: 'WhatsApp',
+    label: 'WhatsApp',
+    versionName: '2.24.0',
+    versionCode: 240,
+    targetSdk: 33,
+    minSdk: 21,
+    isSystemApp: false,
+    isLaunchable: true,
+    firstInstallTime: Date.now() - 86400000 * 5,
+    lastUpdateTime: Date.now() - 86400000 * 2,
+    installTime: Date.now() - 86400000 * 5,
+    updateTime: Date.now() - 86400000 * 2,
+    requestedPermissions: ['android.permission.CAMERA', 'android.permission.RECORD_AUDIO', 'android.permission.READ_CONTACTS'],
+    grantedPermissions: ['android.permission.CAMERA', 'android.permission.RECORD_AUDIO', 'android.permission.READ_CONTACTS'],
+    dangerousPermissions: ['android.permission.CAMERA', 'android.permission.RECORD_AUDIO', 'android.permission.READ_CONTACTS'],
+    installerPackage: 'com.android.vending',
+    installSource: 'com.android.vending',
+    installerKnown: true,
+    isSideloaded: false,
+    isDebuggable: false,
+    enabled: true,
+    isEnabled: true,
+    permissions: ['android.permission.CAMERA', 'android.permission.RECORD_AUDIO', 'android.permission.READ_CONTACTS'],
+  },
+];
+
+const MOCK_RISKS: RiskInfo[] = [
+  {
+    appName: 'Demo App',
+    packageName: 'com.example.demo',
+    riskLevel: 'HIGH',
+    findingCount: 1,
+    findings: [{ code: 'CAMERA', title: 'Camera Permission', description: 'App has camera permission', severity: 'HIGH' }],
+  },
+  {
+    appName: 'WhatsApp',
+    packageName: 'com.whatsapp',
+    riskLevel: 'HIGH',
+    findingCount: 1,
+    findings: [{ code: 'CONTACTS', title: 'Contacts Permission', description: 'App can read contacts', severity: 'HIGH' }],
+  },
+];
+
+const MOCK_HARDENING = {
+  score: 60,
+  findings: [
+    { id: 'SCREEN_LOCK_ENABLED', level: 'GOOD', summary: 'Screen lock is configured.' },
+    { id: 'DEVICE_NOT_ENCRYPTED', level: 'WARNING', summary: 'Device storage is not encrypted.' },
+  ],
+};
+
+// ============================================================
+// THE HOOK
+// ============================================================
 
 export const useSecureDroid = () => {
-  // Initialize state with mock data to guarantee a valid state on first render
-  const [state, setState] = useState({
-    apps: MOCK_APPS,
-    risks: MOCK_RISKS,
-    loading: false,
-    connected: false,
-    error: null,
-    score: 0,
-    hardeningFindings: [],
-    usingMock: true,
-  });
+  // Always initialized with mock data so the UI never sees undefined
+  const [apps, setApps] = useState<AppInfo[]>(MOCK_APPS);
+  const [risks, setRisks] = useState<RiskInfo[]>(MOCK_RISKS);
+  const [loading, setLoading] = useState(false);
+  const [connected, setConnected] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [score, setScore] = useState(MOCK_HARDENING.score);
+  const [hardeningFindings, setHardeningFindings] = useState(MOCK_HARDENING.findings);
+  const [usingMock, setUsingMock] = useState(true);
+  const isNative = Capacitor.isNativePlatform();
 
   const loadData = useCallback(async () => {
-    // Update state to loading, preserving mock data as a fallback
-    setState(prev => ({ ...prev, loading: true, error: null }));
+    // Web preview — use mock data
+    if (!isNative) {
+      setConnected(true);
+      setUsingMock(true);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
 
     try {
-      const isNative = Capacitor.isNativePlatform();
-      if (!isNative) {
-        setState(prev => ({ ...prev, loading: false, connected: true, usingMock: true }));
+      // 1. Check connection
+      let connResult;
+      try {
+        connResult = await SecureDroidNative.checkConnection();
+      } catch {
+        setUsingMock(true);
+        setError('Native bridge unavailable — using mock data.');
+        setLoading(false);
         return;
       }
 
-      // Safely import the native module
-      const { SecureDroidNative } = await import('../services/native/SecureDroidNative');
-      const connResult = await SecureDroidNative.checkConnection();
+      if (!connResult.success || !connResult.data?.connected) {
+        setUsingMock(true);
+        setError('Native bridge unavailable — using mock data.');
+        setLoading(false);
+        return;
+      }
+      setConnected(true);
+      setUsingMock(false);
 
-      if (!connResult.success) {
-        setState(prev => ({ ...prev, loading: false, error: 'Bridge unavailable.', usingMock: true }));
+      // 2. Get installed apps
+      let appsResult;
+      try {
+        appsResult = await SecureDroidNative.getInstalledApps();
+      } catch {
+        setUsingMock(true);
+        setLoading(false);
         return;
       }
 
-      // ... fetch apps, risks, and hardening report ...
-      // On any error in this block, fall back to mock data.
-      // Update state with real data or keep mock data as fallback.
+      if (appsResult.success && appsResult.data) {
+        const normalizedApps = appsResult.data.map((app: any): AppInfo => ({
+          packageName: app.packageName || '',
+          appName: app.label || app.appName || app.packageName || 'Unknown',
+          label: app.label || app.appName || app.packageName || 'Unknown',
+          versionName: app.versionName || 'Unknown',
+          versionCode: app.versionCode || 0,
+          targetSdk: app.targetSdk || 0,
+          minSdk: app.minSdk || 0,
+          isSystemApp: app.isSystemApp || false,
+          isLaunchable: app.isLaunchable || false,
+          firstInstallTime: app.firstInstallTime || app.installTime || 0,
+          lastUpdateTime: app.lastUpdateTime || app.updateTime || 0,
+          installTime: app.installTime || app.firstInstallTime || 0,
+          updateTime: app.updateTime || app.lastUpdateTime || 0,
+          requestedPermissions: app.requestedPermissions || app.permissions || [],
+          grantedPermissions: app.grantedPermissions || [],
+          dangerousPermissions: app.dangerousPermissions || [],
+          installerPackage: app.installerPackage || app.installerPackageName || app.installSource || undefined,
+          installSource: app.installSource || app.installerPackage || 'UNKNOWN',
+          installerKnown: !!(app.installerPackage || app.installerPackageName || app.installSource),
+          isSideloaded: app.isSideloaded || false,
+          isDebuggable: app.isDebuggable || false,
+          enabled: app.enabled !== undefined ? app.enabled : true,
+          isEnabled: app.isEnabled !== undefined ? app.isEnabled : true,
+          permissions: app.permissions || app.requestedPermissions || [],
+          signingCertSha256: app.signingCertSha256 || undefined,
+        }));
+        setApps(normalizedApps);
+      }
 
-    } catch (error) {
-      console.error('Failed to load data:', error);
-      setState(prev => ({ ...prev, loading: false, error: 'Failed to load real data. Using mock data.', usingMock: true }));
+      // 3. Get risk reports
+      let riskResult;
+      try {
+        riskResult = await SecureDroidNative.getAppRiskReports();
+      } catch {
+        setUsingMock(true);
+        setLoading(false);
+        return;
+      }
+
+      if (riskResult.success && riskResult.data) {
+        const currentApps = appsResult?.success && appsResult.data ? appsResult.data : MOCK_APPS;
+        const userAppPackageNames = new Set(
+          currentApps.filter((app: any) => !app.isSystemApp).map((app: any) => app.packageName)
+        );
+        const allRiskDetails = riskResult.data.map((report: NativeAppRiskReport): RiskInfo => ({
+          appName: report.label || report.packageName || 'Unknown',
+          packageName: report.packageName || '',
+          riskLevel: report.overallRisk || 'LOW',
+          findingCount: report.findings?.length || 0,
+          findings: report.findings?.map((f: any) => ({
+            code: f.id || f.code || undefined,
+            title: f.title || f.summary || 'Finding',
+            description: f.summary || f.description || '',
+            severity: f.severity || f.level || 'LOW',
+            points: f.points || 0,
+          })) || [],
+          isSystemApp: false,
+        }));
+        const userAppRisks = allRiskDetails.filter(risk =>
+          userAppPackageNames.has(risk.packageName)
+        );
+        const meaningfulRisks = userAppRisks.filter(risk =>
+          ['MEDIUM', 'HIGH', 'CRITICAL'].includes(risk.riskLevel.toUpperCase())
+        );
+        if (meaningfulRisks.length > 0) {
+          setRisks(meaningfulRisks);
+        }
+      }
+
+      // 4. Get hardening report
+      let hardeningResult;
+      try {
+        hardeningResult = await SecureDroidNative.getHardeningReport();
+      } catch {
+        setUsingMock(true);
+        setLoading(false);
+        return;
+      }
+
+      if (hardeningResult.success && hardeningResult.data) {
+        setScore(hardeningResult.data.score || 0);
+        setHardeningFindings(hardeningResult.data.findings || []);
+      }
+
+    } catch {
+      setUsingMock(true);
+      setError('Failed to load real data — using mock data.');
     } finally {
-      setState(prev => ({ ...prev, loading: false }));
+      setLoading(false);
     }
-  }, []);
+  }, [isNative]);
 
+  // Load once on mount
   useEffect(() => {
     loadData();
   }, [loadData]);
 
   return {
-    ...state,
+    apps,
+    risks,
+    loading,
+    connected,
+    error,
+    score,
+    hardeningFindings,
+    usingMock,
     reload: loadData,
   };
 };
