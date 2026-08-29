@@ -38,7 +38,6 @@ import {
     Calendar,
     Eye,
     Package,
-    Settings,
 } from 'lucide-react';
 import {
     SecureDroidTopBar,
@@ -101,8 +100,6 @@ export const AiAssistantScreen: React.FC<AiAssistantScreenProps> = ({
         scrollToBottom();
     }, [messages]);
 
-    // ---- Real data retrieval functions ----
-
     const getHighRiskApps = (): any[] => {
         return risks.filter(r => r.riskLevel === 'HIGH' || r.riskLevel === 'CRITICAL');
     };
@@ -134,12 +131,9 @@ export const AiAssistantScreen: React.FC<AiAssistantScreenProps> = ({
         }
     };
 
-    // ---- Response generation ----
-
     const generateResponse = async (userMessage: string): Promise<{ content: string; type: Message['type'] }> => {
         const lower = userMessage.toLowerCase();
 
-        // Check if device is connected
         if (!connected) {
             return {
                 content: "⚠️ I'm unable to access your device's security data right now. Please make sure SecureDroid is properly connected and try again.",
@@ -147,24 +141,15 @@ export const AiAssistantScreen: React.FC<AiAssistantScreenProps> = ({
             };
         }
 
-        // Score questions
         if (lower.includes('score') || lower.includes('security score') || lower.includes('why is my score')) {
             const issues = getDeviceIssues();
             const high = getHighRiskApps().length;
             const medium = getMediumRiskApps().length;
             let details = `Your overall security score is **${score}** out of 100.\n\n`;
-            if (high > 0) {
-                details += `• ${high} high-risk app${high > 1 ? 's' : ''} detected.\n`;
-            }
-            if (medium > 0) {
-                details += `• ${medium} medium-risk app${medium > 1 ? 's' : ''} detected.\n`;
-            }
-            if (issues.length > 0) {
-                details += `• ${issues.length} device security issue${issues.length > 1 ? 's' : ''} found.\n`;
-            }
-            if (high === 0 && medium === 0 && issues.length === 0) {
-                details += '• No significant issues found. Your device is in good shape.\n';
-            }
+            if (high > 0) details += `• ${high} high-risk app${high > 1 ? 's' : ''} detected.\n`;
+            if (medium > 0) details += `• ${medium} medium-risk app${medium > 1 ? 's' : ''} detected.\n`;
+            if (issues.length > 0) details += `• ${issues.length} device security issue${issues.length > 1 ? 's' : ''} found.\n`;
+            if (high === 0 && medium === 0 && issues.length === 0) details += '• No significant issues found. Your device is in good shape.\n';
             details += '\n**Recommendation**: ' +
                 (high > 0 ? `Review the ${high} high-risk apps first. ` : '') +
                 (issues.length > 0 ? 'Address the device security issues. ' : '') +
@@ -172,7 +157,6 @@ export const AiAssistantScreen: React.FC<AiAssistantScreenProps> = ({
             return { content: details, type: 'security' };
         }
 
-        // High-risk apps
         if (lower.includes('high-risk') || lower.includes('dangerous permissions') || lower.includes('risky app')) {
             const highRisk = getHighRiskApps();
             if (highRisk.length === 0) {
@@ -192,7 +176,6 @@ export const AiAssistantScreen: React.FC<AiAssistantScreenProps> = ({
             return { content: response, type: 'app' };
         }
 
-        // App count
         if ((lower.includes('how many') && lower.includes('app')) || lower.includes('installed')) {
             const total = getTotalApps();
             const user = getUserApps();
@@ -204,7 +187,6 @@ export const AiAssistantScreen: React.FC<AiAssistantScreenProps> = ({
             };
         }
 
-        // Events
         if (lower.includes('event') || lower.includes('activity') || lower.includes('what happened') || lower.includes('today')) {
             const events = await getRecentEvents();
             if (events.length === 0) {
@@ -226,7 +208,6 @@ export const AiAssistantScreen: React.FC<AiAssistantScreenProps> = ({
             return { content: response, type: 'network' };
         }
 
-        // Encryption
         if (lower.includes('encrypt') || lower.includes('encryption')) {
             const encrypted = hardeningFindings.some(f => f.id === 'DEVICE_ENCRYPTED');
             if (encrypted) {
@@ -250,7 +231,6 @@ export const AiAssistantScreen: React.FC<AiAssistantScreenProps> = ({
             }
         }
 
-        // Security patch
         if (lower.includes('security patch') || lower.includes('patch')) {
             const patchFinding = hardeningFindings.find(f => f.id === 'SECURITY_PATCH_GOOD' || f.id === 'STALE_SECURITY_PATCH');
             if (patchFinding) {
@@ -267,7 +247,6 @@ export const AiAssistantScreen: React.FC<AiAssistantScreenProps> = ({
             }
         }
 
-        // System apps
         if (lower.includes('system app') || lower.includes('system apps')) {
             const systemCount = getSystemApps();
             return {
@@ -276,7 +255,6 @@ export const AiAssistantScreen: React.FC<AiAssistantScreenProps> = ({
             };
         }
 
-        // Help
         if (lower.includes('help') || lower.includes('what can you do') || lower.includes('capabilities')) {
             return {
                 content: 'I can answer questions about:\n' +
@@ -291,7 +269,6 @@ export const AiAssistantScreen: React.FC<AiAssistantScreenProps> = ({
             };
         }
 
-        // Unknown
         return {
             content: "I'm sorry, I didn't understand that question. You can ask about:\n" +
                 "- Your security score\n" +
@@ -304,8 +281,6 @@ export const AiAssistantScreen: React.FC<AiAssistantScreenProps> = ({
             type: 'general',
         };
     };
-
-    // ---- Send message ----
 
     const handleSend = async () => {
         if (!input.trim()) return;
@@ -380,7 +355,6 @@ export const AiAssistantScreen: React.FC<AiAssistantScreenProps> = ({
             />
 
             <div className="flex flex-col h-[calc(100vh-180px)] max-w-7xl mx-auto">
-                {/* Messages */}
                 <div className="flex-1 overflow-y-auto p-4 space-y-4">
                     {messages.map((message) => (
                         <div
@@ -442,7 +416,6 @@ export const AiAssistantScreen: React.FC<AiAssistantScreenProps> = ({
                     <div ref={messagesEndRef} />
                 </div>
 
-                {/* Suggestions */}
                 {messages.length < 3 && (
                     <div className="px-4 pb-2">
                         <div className="flex gap-2 overflow-x-auto pb-1">
@@ -459,7 +432,6 @@ export const AiAssistantScreen: React.FC<AiAssistantScreenProps> = ({
                     </div>
                 )}
 
-                {/* Input */}
                 <div className="p-4 border-t border-slate-800">
                     <div className="flex gap-2">
                         <div className="flex-1 relative">
