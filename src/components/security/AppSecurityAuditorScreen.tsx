@@ -37,8 +37,8 @@ import {
     SecureDroidButton,
     SecureDroidSearchBar,
     SecureDroidBadge,
-    SecureDroidListItem,
-    SecureDroidProgressRing,
+    SecureDroidStatCard,
+    SecureDroidGlassCard,
 } from '../ui/designSystem';
 import { useSecureDroid } from '../../hooks/useSecureDroid';
 import type { AppInfo, RiskInfo } from '../../hooks/useSecureDroid';
@@ -61,7 +61,6 @@ export const AppSecurityAuditorScreen: React.FC<AppSecurityAuditorScreenProps> =
     const [sortBy, setSortBy] = useState<SortOption>('risk');
     const [expandedApp, setExpandedApp] = useState<string | null>(null);
 
-    // Filter user apps only and map to risk data
     const userApps = useMemo(() => apps.filter(app => !app.isSystemApp), [apps]);
 
     const appRiskMap = useMemo(() => {
@@ -73,16 +72,14 @@ export const AppSecurityAuditorScreen: React.FC<AppSecurityAuditorScreenProps> =
     const filteredApps = useMemo(() => {
         let result = userApps;
 
-        // Search
         if (searchQuery.trim()) {
             const q = searchQuery.toLowerCase();
             result = result.filter(app =>
-                (app.appName || app.label || '').toLowerCase().includes(q) ||
+                app.appName.toLowerCase().includes(q) ||
                 app.packageName.toLowerCase().includes(q)
             );
         }
 
-        // Sort
         result = [...result].sort((a, b) => {
             const riskA = appRiskMap.get(a.packageName)?.riskLevel || 'LOW';
             const riskB = appRiskMap.get(b.packageName)?.riskLevel || 'LOW';
@@ -92,7 +89,7 @@ export const AppSecurityAuditorScreen: React.FC<AppSecurityAuditorScreenProps> =
                 case 'risk':
                     return (riskOrder[riskA as keyof typeof riskOrder] || 4) - (riskOrder[riskB as keyof typeof riskOrder] || 4);
                 case 'name':
-                    return (a.appName || a.label || '').localeCompare(b.appName || b.label || '');
+                    return a.appName.localeCompare(b.appName);
                 case 'install':
                     return b.firstInstallTime - a.firstInstallTime;
                 default:
@@ -102,6 +99,19 @@ export const AppSecurityAuditorScreen: React.FC<AppSecurityAuditorScreenProps> =
 
         return result;
     }, [userApps, searchQuery, sortBy, appRiskMap]);
+
+    const stats = {
+        total: userApps.length,
+        high: risks.filter(r => r.riskLevel === 'HIGH' || r.riskLevel === 'CRITICAL').length,
+        medium: risks.filter(r => r.riskLevel === 'MEDIUM').length,
+        low: risks.filter(r => r.riskLevel === 'LOW').length,
+    };
+
+    const sortOptions: { value: SortOption; label: string }[] = [
+        { value: 'risk', label: 'Risk Level' },
+        { value: 'name', label: 'Name' },
+        { value: 'install', label: 'Recently Installed' },
+    ];
 
     const getRiskColor = (level?: string) => {
         if (!level) return 'text-slate-400 bg-slate-500/10';
@@ -115,21 +125,6 @@ export const AppSecurityAuditorScreen: React.FC<AppSecurityAuditorScreenProps> =
                 return 'text-emerald-400 bg-emerald-500/10';
             default:
                 return 'text-slate-400 bg-slate-500/10';
-        }
-    };
-
-    const getRiskIcon = (level?: string) => {
-        if (!level) return Shield;
-        switch (level.toUpperCase()) {
-            case 'CRITICAL':
-            case 'HIGH':
-                return ShieldAlert;
-            case 'MEDIUM':
-                return AlertTriangle;
-            case 'LOW':
-                return ShieldCheck;
-            default:
-                return Shield;
         }
     };
 
@@ -152,19 +147,6 @@ export const AppSecurityAuditorScreen: React.FC<AppSecurityAuditorScreenProps> =
         setExpandedApp(expandedApp === packageName ? null : packageName);
     };
 
-    const stats = {
-        total: userApps.length,
-        high: risks.filter(r => r.riskLevel === 'HIGH' || r.riskLevel === 'CRITICAL').length,
-        medium: risks.filter(r => r.riskLevel === 'MEDIUM').length,
-        low: risks.filter(r => r.riskLevel === 'LOW').length,
-    };
-
-    const sortOptions: { value: SortOption; label: string }[] = [
-        { value: 'risk', label: 'Risk Level' },
-        { value: 'name', label: 'Name' },
-        { value: 'install', label: 'Recently Installed' },
-    ];
-
     return (
         <div className={`min-h-full pb-24 transition-colors ${isLight ? 'bg-zinc-50' : 'bg-slate-950'}`}>
             <SecureDroidTopBar
@@ -176,7 +158,7 @@ export const AppSecurityAuditorScreen: React.FC<AppSecurityAuditorScreenProps> =
                     <button
                         onClick={reload}
                         disabled={loading}
-                        className="p-2 rounded-xl bg-slate-800/50 hover:bg-slate-700/50 transition-colors disabled:opacity-50"
+                        className="p-2.5 rounded-xl bg-slate-800/50 hover:bg-slate-700/50 transition-colors disabled:opacity-50"
                     >
                         <RefreshCw className={`w-4 h-4 text-slate-400 ${loading ? 'animate-spin' : ''}`} />
                     </button>
@@ -184,28 +166,12 @@ export const AppSecurityAuditorScreen: React.FC<AppSecurityAuditorScreenProps> =
             />
 
             <div className="p-4 space-y-4 max-w-7xl mx-auto">
-                {/* Stats Overview */}
+                {/* Stats */}
                 <div className="grid grid-cols-4 gap-2">
-                    <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-800 text-center">
-                        <div className="text-lg font-bold text-zinc-100">{stats.total}</div>
-                        <div className="text-[10px] text-slate-500 uppercase tracking-wider">Total</div>
-                    </div>
-                    <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-800 text-center">
-                        <div className={`text-lg font-bold ${stats.high > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
-                            {stats.high}
-                        </div>
-                        <div className="text-[10px] text-slate-500 uppercase tracking-wider">High</div>
-                    </div>
-                    <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-800 text-center">
-                        <div className={`text-lg font-bold ${stats.medium > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
-                            {stats.medium}
-                        </div>
-                        <div className="text-[10px] text-slate-500 uppercase tracking-wider">Medium</div>
-                    </div>
-                    <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-800 text-center">
-                        <div className="text-lg font-bold text-emerald-400">{stats.low}</div>
-                        <div className="text-[10px] text-slate-500 uppercase tracking-wider">Low</div>
-                    </div>
+                    <SecureDroidStatCard label="Total" value={stats.total} icon={Package} color="slate" />
+                    <SecureDroidStatCard label="High" value={stats.high} icon={AlertTriangle} color={stats.high > 0 ? 'rose' : 'emerald'} />
+                    <SecureDroidStatCard label="Medium" value={stats.medium} icon={AlertTriangle} color={stats.medium > 0 ? 'amber' : 'emerald'} />
+                    <SecureDroidStatCard label="Low" value={stats.low} icon={CheckCircle2} color="emerald" />
                 </div>
 
                 {/* Search & Sort */}
@@ -214,7 +180,7 @@ export const AppSecurityAuditorScreen: React.FC<AppSecurityAuditorScreenProps> =
                         <SecureDroidSearchBar
                             value={searchQuery}
                             onChange={setSearchQuery}
-                            placeholder="Search installed apps by name or package..."
+                            placeholder="Search installed apps by name..."
                             isLight={isLight}
                             onClear={() => setSearchQuery('')}
                         />
@@ -236,41 +202,20 @@ export const AppSecurityAuditorScreen: React.FC<AppSecurityAuditorScreenProps> =
                     </div>
                 </div>
 
-                {searchQuery && (
-                    <div className="flex items-center justify-between text-xs text-slate-400 px-1">
-                        <span>Showing {filteredApps.length} of {userApps.length} applications</span>
-                        <button
-                            onClick={() => setSearchQuery('')}
-                            className="text-cyan-400 hover:text-cyan-300 transition-colors text-[11px]"
-                        >
-                            Reset filter
-                        </button>
-                    </div>
-                )}
-
                 {/* App List */}
                 <div className="space-y-2.5">
                     {filteredApps.length === 0 ? (
-                        <div className="p-8 text-center space-y-3 bg-slate-900/40 rounded-2xl border border-slate-800/60">
-                            <Package className="w-10 h-10 text-slate-600 mx-auto" />
-                            <div>
-                                <p className="text-sm font-semibold text-slate-200">No applications match "{searchQuery}"</p>
-                                <p className="text-xs text-slate-400 mt-1">Try checking for typos or clear your search query.</p>
-                            </div>
+                        <div className="p-8 text-center">
+                            <Package className="w-12 h-12 text-slate-600 mx-auto mb-3" />
+                            <p className="text-slate-400">No apps found</p>
                             {searchQuery && (
-                                <button
-                                    onClick={() => setSearchQuery('')}
-                                    className="px-4 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 border border-slate-700 transition-colors inline-block"
-                                >
-                                    Clear search
-                                </button>
+                                <p className="text-sm text-slate-500">Try adjusting your search</p>
                             )}
                         </div>
                     ) : (
                         filteredApps.map((app) => {
                             const risk = appRiskMap.get(app.packageName);
                             const riskLevel = risk?.riskLevel || 'LOW';
-                            const RiskIcon = getRiskIcon(riskLevel);
                             const isExpanded = expandedApp === app.packageName;
                             const findings = risk?.findings || [];
 
@@ -292,13 +237,13 @@ export const AppSecurityAuditorScreen: React.FC<AppSecurityAuditorScreenProps> =
                                     >
                                         <div className="flex items-center gap-3">
                                             <div className="w-10 h-10 rounded-xl bg-slate-800/50 flex items-center justify-center shrink-0">
-                                                <Package className="w-5 h-5 text-slate-400" />
+                                                <Smartphone className="w-5 h-5 text-slate-400" />
                                             </div>
 
                                             <div className="flex-1 min-w-0">
                                                 <div className="flex items-center gap-2">
                                                     <span className="font-medium text-zinc-100 text-sm truncate">
-                                                        {app.appName || app.label || app.packageName}
+                                                        {app.appName}
                                                     </span>
                                                     {app.isSystemApp && (
                                                         <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-slate-800 text-slate-400">
@@ -336,11 +281,10 @@ export const AppSecurityAuditorScreen: React.FC<AppSecurityAuditorScreenProps> =
                                         </div>
                                     </div>
 
-                                    {/* Expanded Findings */}
                                     {isExpanded && findings.length > 0 && (
-                                        <div className="px-4 pb-4 space-y-1.5 border-t border-slate-800/50 pt-3">
+                                        <div className="px-4 pb-4 pt-2 border-t border-slate-800/50 space-y-1.5">
                                             <p className="text-[10px] font-medium text-slate-400 uppercase tracking-wider mb-2">
-                                                Findings
+                                                Risk Findings
                                             </p>
                                             {findings.map((finding, index) => (
                                                 <div
@@ -383,7 +327,6 @@ export const AppSecurityAuditorScreen: React.FC<AppSecurityAuditorScreenProps> =
                     )}
                 </div>
 
-                {/* Loading State */}
                 {loading && (
                     <div className="p-8 text-center">
                         <RefreshCw className="w-8 h-8 text-sky-400 animate-spin mx-auto mb-3" />
