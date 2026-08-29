@@ -371,4 +371,14 @@ export const ThreatModelCenterScreen: React.FC<ThreatModelCenterScreenProps> = (
                                 <p className="p-2.5 rounded-lg bg-slate-800/30 text-slate-300 font-mono text-xs">{selectedThreat.requirement}</p>
                             </div>
                         </div>
-                        <div className="mt-5 pt-3 border-t border-slate-
+                        <div className="mt-5 pt-3 border-t border-slate-800/50 flex justify-end">
+                            <SecureDroidButton variant="primary" onClick={() => setSelectedThreat(null)} isLight={isLight}>Done</SecureDroidButton>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+export default ThreatModelCenterScreen;
