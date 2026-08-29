@@ -26,6 +26,7 @@
         android:icon="@android:drawable/sym_def_app_icon"
         android:label="SecureDroid"
         android:supportsRtl="true"
+        android:usesCleartextTraffic="true"
         android:theme="@style/Theme.SecureDroid">
 
         <!-- Main application screen -->
