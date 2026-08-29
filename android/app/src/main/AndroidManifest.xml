@@ -1,20 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Network access -->
+    <!-- Internet access for Secure VPN -->
     <uses-permission android:name="android.permission.INTERNET" />
 
     <!-- Foreground service -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 
-    <!-- Required for VPN foreground service on Android 14+ -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- Android 14+ special-use foreground service -->
+    <uses-permission
+        android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
-    <!-- Android 13+ notification permission -->
+    <!-- Required on Android 13+ (API 33) to display VPN notifications -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <!-- Used by installed-app inventory -->
+    <!-- Required on Android 11+ (API 30+) to see full installed-app list -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+
+    <!-- Required for Device Administrator -->
+    <uses-permission android:name="android.permission.BIND_DEVICE_ADMIN" />
 
     <application
         android:name=".SecureDroidApplication"
@@ -24,6 +28,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.SecureDroid">
 
+        <!-- Main application screen -->
         <activity
             android:name=".MainActivity"
             android:exported="true">
@@ -35,29 +40,45 @@
 
         </activity>
 
-        <!--
-            Android VPN service.
+        <!-- ============================================================
+             DEVICE ADMINISTRATOR RECEIVER
+             ============================================================ -->
+        <receiver
+            android:name=".admin.SecureDroidDeviceAdminReceiver"
+            android:description="@string/app_name"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_DEVICE_ADMIN">
 
-            BIND_VPN_SERVICE is required by VpnService.
-            exported=false prevents other applications from directly
-            starting this service.
-        -->
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin_receiver" />
+
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+                <action android:name="android.app.action.DEVICE_ADMIN_DISABLED" />
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLE" />
+                <action android:name="android.app.action.DEVICE_ADMIN_DISABLE" />
+            </intent-filter>
+
+        </receiver>
+
+        <!-- ============================================================
+             SECURE VPN SERVICE
+             ============================================================ -->
         <service
             android:name=".vpn.SecureVpnService"
             android:exported="false"
-            android:permission="android.permission.BIND_VPN_SERVICE"
-            android:foregroundServiceType="specialUse">
+            android:foregroundServiceType="specialUse"
+            android:permission="android.permission.BIND_VPN_SERVICE">
 
             <intent-filter>
                 <action android:name="android.net.VpnService" />
             </intent-filter>
 
-            <!--
-                Android 14+ special-use foreground service justification.
-            -->
-            <property
+            <meta-data
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="vpn" />
+                android:value="secure_vpn" />
 
         </service>
 
