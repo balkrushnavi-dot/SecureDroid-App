@@ -4,16 +4,36 @@ import { SecureDroidNative } from '../services/native/SecureDroidNative';
 import type { NativeInstalledApp, NativeAppRiskReport } from '../types/native';
 
 // ============================================================
-// TYPE EXPORTS — matches what AppSecurityAuditorScreen and PrivacyRadarScreen expect
+// TYPE EXPORTS — matches all consuming screens
 // ============================================================
 
-export type AppInfo = NativeInstalledApp & {
-  // Additional fields that may come from the native bridge
-  appName?: string;
+export interface AppInfo {
+  packageName: string;
+  appName: string;
+  label?: string;
+  versionName: string;
+  versionCode: number;
+  targetSdk?: number;
+  minSdk?: number;
+  isSystemApp: boolean;
+  isEnabled?: boolean;
+  isLaunchable?: boolean;
+  firstInstallTime: number;
+  lastUpdateTime: number;
+  installTime: number;
+  updateTime: number;
+  requestedPermissions: string[];
+  grantedPermissions: string[];
+  dangerousPermissions: string[];
+  installerPackage?: string;
+  installSource: string;
   installerKnown?: boolean;
-  isSideloaded?: boolean;
-  permissions?: string[];
-};
+  isSideloaded: boolean;
+  isDebuggable?: boolean;
+  enabled?: boolean;
+  permissions: string[];
+  signingCertSha256?: string;
+}
 
 export interface RiskInfo {
   appName: string;
@@ -31,6 +51,12 @@ export interface RiskInfo {
   reason?: string;
   installSource?: string;
   isSystemApp?: boolean;
+}
+
+export interface HardeningFinding {
+  id: string;
+  level: 'GOOD' | 'WARNING' | 'CRITICAL';
+  summary: string;
 }
 
 // ============================================================
@@ -135,7 +161,7 @@ const MOCK_RISKS: RiskInfo[] = [
   },
 ];
 
-const MOCK_HARDENING = {
+const MOCK_HARDENING: { score: number; findings: HardeningFinding[] } = {
   score: 60,
   findings: [
     { id: 'SCREEN_LOCK_ENABLED', level: 'GOOD', summary: 'Screen lock is configured.' },
@@ -155,7 +181,7 @@ export const useSecureDroid = () => {
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [score, setScore] = useState(MOCK_HARDENING.score);
-  const [hardeningFindings, setHardeningFindings] = useState(MOCK_HARDENING.findings);
+  const [hardeningFindings, setHardeningFindings] = useState<HardeningFinding[]>(MOCK_HARDENING.findings);
   const [usingMock, setUsingMock] = useState(true);
   const isNative = Capacitor.isNativePlatform();
 
@@ -203,33 +229,36 @@ export const useSecureDroid = () => {
       }
 
       if (appsResult.success && appsResult.data) {
-        const normalizedApps = appsResult.data.map((app: any): AppInfo => ({
-          packageName: app.packageName || '',
-          appName: app.label || app.appName || app.packageName || 'Unknown',
-          label: app.label || app.appName || app.packageName || 'Unknown',
-          versionName: app.versionName || 'Unknown',
-          versionCode: app.versionCode || 0,
-          targetSdk: app.targetSdk || 0,
-          minSdk: app.minSdk || 0,
-          isSystemApp: app.isSystemApp || false,
-          isLaunchable: app.isLaunchable || false,
-          firstInstallTime: app.firstInstallTime || app.installTime || 0,
-          lastUpdateTime: app.lastUpdateTime || app.updateTime || 0,
-          installTime: app.installTime || app.firstInstallTime || 0,
-          updateTime: app.updateTime || app.lastUpdateTime || 0,
-          requestedPermissions: app.requestedPermissions || app.permissions || [],
-          grantedPermissions: app.grantedPermissions || [],
-          dangerousPermissions: app.dangerousPermissions || [],
-          installerPackage: app.installerPackage || app.installerPackageName || app.installSource || undefined,
-          installSource: app.installSource || app.installerPackage || 'UNKNOWN',
-          installerKnown: !!(app.installerPackage || app.installerPackageName || app.installSource),
-          isSideloaded: app.isSideloaded || false,
-          isDebuggable: app.isDebuggable || false,
-          enabled: app.enabled !== undefined ? app.enabled : true,
-          isEnabled: app.isEnabled !== undefined ? app.isEnabled : true,
-          permissions: app.permissions || app.requestedPermissions || [],
-          signingCertSha256: app.signingCertSha256 || undefined,
-        }));
+        const normalizedApps: AppInfo[] = appsResult.data.map((app: any): AppInfo => {
+          const requested = app.requestedPermissions || app.permissions || [];
+          return {
+            packageName: app.packageName || '',
+            appName: app.label || app.appName || app.packageName || 'Unknown',
+            label: app.label || app.appName || app.packageName || 'Unknown',
+            versionName: app.versionName || 'Unknown',
+            versionCode: app.versionCode || 0,
+            targetSdk: app.targetSdk || 0,
+            minSdk: app.minSdk || 0,
+            isSystemApp: !!app.isSystemApp,
+            isEnabled: app.isEnabled !== undefined ? app.isEnabled : true,
+            isLaunchable: !!app.isLaunchable,
+            firstInstallTime: app.firstInstallTime || app.installTime || 0,
+            lastUpdateTime: app.lastUpdateTime || app.updateTime || 0,
+            installTime: app.installTime || app.firstInstallTime || 0,
+            updateTime: app.updateTime || app.lastUpdateTime || 0,
+            requestedPermissions: requested,
+            grantedPermissions: app.grantedPermissions || [],
+            dangerousPermissions: app.dangerousPermissions || [],
+            installerPackage: app.installerPackage || app.installerPackageName || app.installSource || undefined,
+            installSource: app.installSource || app.installerPackage || 'UNKNOWN',
+            installerKnown: !!(app.installerPackage || app.installerPackageName || app.installSource),
+            isSideloaded: !!app.isSideloaded,
+            isDebuggable: !!app.isDebuggable,
+            enabled: app.enabled !== undefined ? app.enabled : true,
+            permissions: requested,
+            signingCertSha256: app.signingCertSha256 || undefined,
+          };
+        });
         setApps(normalizedApps);
       }
 
@@ -248,7 +277,8 @@ export const useSecureDroid = () => {
         const userAppPackageNames = new Set(
           currentApps.filter((app: any) => !app.isSystemApp).map((app: any) => app.packageName)
         );
-        const allRiskDetails = riskResult.data.map((report: NativeAppRiskReport): RiskInfo => ({
+
+        const allRiskDetails: RiskInfo[] = riskResult.data.map((report: NativeAppRiskReport): RiskInfo => ({
           appName: report.label || report.packageName || 'Unknown',
           packageName: report.packageName || '',
           riskLevel: report.overallRisk || 'LOW',
@@ -262,14 +292,20 @@ export const useSecureDroid = () => {
           })) || [],
           isSystemApp: false,
         }));
+
         const userAppRisks = allRiskDetails.filter(risk =>
           userAppPackageNames.has(risk.packageName)
         );
+
         const meaningfulRisks = userAppRisks.filter(risk =>
           ['MEDIUM', 'HIGH', 'CRITICAL'].includes(risk.riskLevel.toUpperCase())
         );
+
         if (meaningfulRisks.length > 0) {
           setRisks(meaningfulRisks);
+        } else if (allRiskDetails.length > 0) {
+          // If there are risks but none are medium/high/critical, keep them all (but we'll still filter for display)
+          setRisks(userAppRisks);
         }
       }
 
@@ -284,11 +320,20 @@ export const useSecureDroid = () => {
       }
 
       if (hardeningResult.success && hardeningResult.data) {
-        setScore(hardeningResult.data.score || 0);
-        setHardeningFindings(hardeningResult.data.findings || []);
+        const scoreVal = typeof hardeningResult.data.score === 'number' ? hardeningResult.data.score : 0;
+        setScore(scoreVal);
+        const findings = Array.isArray(hardeningResult.data.findings)
+          ? hardeningResult.data.findings.map((f: any): HardeningFinding => ({
+              id: String(f.id || ''),
+              level: (f.level === 'GOOD' || f.level === 'WARNING' || f.level === 'CRITICAL') ? f.level : 'GOOD',
+              summary: String(f.summary || ''),
+            }))
+          : [];
+        setHardeningFindings(findings);
       }
 
-    } catch {
+    } catch (err) {
+      console.error('SecureDroid loadData error:', err);
       setUsingMock(true);
       setError('Failed to load real data — using mock data.');
     } finally {
