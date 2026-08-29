@@ -60,15 +60,8 @@ export const NetworkControlScreen: React.FC<NetworkControlScreenProps> = ({
     const [needsPermission, setNeedsPermission] = useState(false);
     const [connectionTime, setConnectionTime] = useState<number | null>(null);
     const [elapsedTime, setElapsedTime] = useState<string>('00:00');
-    const [blockedDomains, setBlockedDomains] = useState<DomainEntry[]>([
-        { domain: 'ads.example.com', type: 'blocked', addedAt: Date.now() - 3600000 },
-        { domain: 'tracker.malware.net', type: 'blocked', addedAt: Date.now() - 7200000 },
-        { domain: 'spyware.io', type: 'blocked', addedAt: Date.now() - 10800000 },
-    ]);
-    const [allowedDomains, setAllowedDomains] = useState<DomainEntry[]>([
-        { domain: 'trusted-site.com', type: 'allowed', addedAt: Date.now() - 1800000 },
-        { domain: 'api.myapp.com', type: 'allowed', addedAt: Date.now() - 3600000 },
-    ]);
+    const [blockedDomains, setBlockedDomains] = useState<DomainEntry[]>([]);
+    const [allowedDomains, setAllowedDomains] = useState<DomainEntry[]>([]);
     const [newDomain, setNewDomain] = useState('');
     const [activeTab, setActiveTab] = useState<'blocked' | 'allowed'>('blocked');
     const [domainError, setDomainError] = useState<string | null>(null);
@@ -291,9 +284,7 @@ export const NetworkControlScreen: React.FC<NetworkControlScreenProps> = ({
     const currentList = activeTab === 'blocked' ? blockedDomains : allowedDomains;
 
     return (
-        <div
-            className={`min-h-full pb-24 transition-colors ${isLight ? 'bg-zinc-50' : 'bg-slate-950'}`}
-        >
+        <div className={`min-h-full pb-24 transition-colors ${isLight ? 'bg-zinc-50' : 'bg-slate-950'}`}>
             <SecureDroidTopBar
                 title="Network Protection"
                 subtitle="VPN & Domain Control"
@@ -311,16 +302,10 @@ export const NetworkControlScreen: React.FC<NetworkControlScreenProps> = ({
             />
 
             <div className="p-4 space-y-4 max-w-7xl mx-auto">
-                {/* VPN Status Card */}
                 <SecureDroidGlassCard className="p-6">
                     <div className="flex flex-col items-center text-center">
                         <div
-                            className={`w-20 h-20 rounded-full flex items-center justify-center mb-4 transition-all ${
-                                isConnected ? 'bg-emerald-500/10 ring-4 ring-emerald-500/20' :
-                                isConnecting ? 'bg-amber-500/10 ring-4 ring-amber-500/20' :
-                                isError ? 'bg-rose-500/10 ring-4 ring-rose-500/20' :
-                                'bg-slate-800/50 ring-4 ring-slate-700/20'
-                            }`}
+                            className={`w-20 h-20 rounded-full flex items-center justify-center mb-4 transition-all ${isConnected ? 'bg-emerald-500/10 ring-4 ring-emerald-500/20' : isConnecting ? 'bg-amber-500/10 ring-4 ring-amber-500/20' : isError ? 'bg-rose-500/10 ring-4 ring-rose-500/20' : 'bg-slate-800/50 ring-4 ring-slate-700/20'}`}
                         >
                             {isConnecting ? (
                                 <RefreshCw className={`w-10 h-10 text-amber-400 animate-spin`} />
@@ -409,7 +394,6 @@ export const NetworkControlScreen: React.FC<NetworkControlScreenProps> = ({
                     </div>
                 </SecureDroidGlassCard>
 
-                {/* Connection Details */}
                 {status && (
                     <>
                         <SecureDroidSectionHeader title="Connection Details" isLight={isLight} />
@@ -447,27 +431,18 @@ export const NetworkControlScreen: React.FC<NetworkControlScreenProps> = ({
                     </>
                 )}
 
-                {/* Domain Control */}
                 <SecureDroidSectionHeader title="Domain Control" subtitle="Manage blocked and allowed domains" isLight={isLight} />
 
                 <div className="flex gap-1 bg-slate-900/50 p-1 rounded-xl border border-slate-800">
                     <button
                         onClick={() => setActiveTab('blocked')}
-                        className={`flex-1 py-2 px-4 rounded-lg text-xs font-medium transition-all ${
-                            activeTab === 'blocked'
-                                ? 'bg-slate-800 text-zinc-100'
-                                : 'text-slate-400 hover:text-zinc-200'
-                        }`}
+                        className={`flex-1 py-2 px-4 rounded-lg text-xs font-medium transition-all ${activeTab === 'blocked' ? 'bg-slate-800 text-zinc-100' : 'text-slate-400 hover:text-zinc-200'}`}
                     >
                         Blocked ({blockedDomains.length})
                     </button>
                     <button
                         onClick={() => setActiveTab('allowed')}
-                        className={`flex-1 py-2 px-4 rounded-lg text-xs font-medium transition-all ${
-                            activeTab === 'allowed'
-                                ? 'bg-slate-800 text-zinc-100'
-                                : 'text-slate-400 hover:text-zinc-200'
-                        }`}
+                        className={`flex-1 py-2 px-4 rounded-lg text-xs font-medium transition-all ${activeTab === 'allowed' ? 'bg-slate-800 text-zinc-100' : 'text-slate-400 hover:text-zinc-200'}`}
                     >
                         Allowed ({allowedDomains.length})
                     </button>
@@ -528,7 +503,6 @@ export const NetworkControlScreen: React.FC<NetworkControlScreenProps> = ({
                     )}
                 </div>
 
-                {/* Wi-Fi Security */}
                 <SecureDroidSectionHeader title="Wi-Fi Security" subtitle="Active network status" isLight={isLight} />
 
                 <SecureDroidCard isLight={isLight} className="p-4">
@@ -546,30 +520,25 @@ export const NetworkControlScreen: React.FC<NetworkControlScreenProps> = ({
                     </div>
                 </SecureDroidCard>
 
-                {/* Disclaimer */}
                 <div className="p-4 rounded-xl border bg-amber-950/10 border-amber-800/30">
                     <div className="flex items-start gap-3">
                         <Info className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
                         <div>
                             <p className="text-sm font-medium text-amber-400">Domain-level filtering is not yet implemented.</p>
                             <p className="text-xs text-amber-400/70 mt-1 leading-relaxed">
-                                The VPN tunnel establishes real network isolation, but does not
-                                currently inspect or block specific domains. This feature is coming
-                                in a future update.
+                                The VPN tunnel establishes real network isolation, but does not currently inspect or block specific domains. This feature is coming in a future update.
                             </p>
                         </div>
                     </div>
                 </div>
 
-                {/* Why Use VPN */}
                 <div className="p-4 rounded-xl border bg-slate-900/50 border-slate-800">
                     <div className="flex items-start gap-3">
                         <Shield className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
                         <div>
                             <p className="text-sm font-medium text-zinc-300">Why use a VPN?</p>
                             <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                                A VPN encrypts your internet traffic, protecting your data from
-                                interception on public Wi-Fi and masking your IP address from websites.
+                                A VPN encrypts your internet traffic, protecting your data from interception on public Wi-Fi and masking your IP address from websites.
                             </p>
                         </div>
                     </div>
